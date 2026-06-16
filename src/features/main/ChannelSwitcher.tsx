@@ -1,19 +1,22 @@
 import { useMemo, useState } from 'react'
-import type { Channel, ReadState } from '@/lib/types'
+import type { Channel, ChannelType, ReadState } from '@/lib/types'
+import { CreateChannelModal } from './CreateChannelModal'
 
 const TYPE_ICON: Record<string, string> = { TEXT: '#', VOICE: '🔊', WATCH: '▶' }
 const VOICE_LIVE: Record<string, number> = { ch_call: 3, ch_cs: 2 }
 
 export function ChannelSwitcher({
-  channels, readStates, currentId, onPick, onClose,
+  channels, readStates, currentId, onPick, onClose, onCreateChannel,
 }: {
   channels: Channel[]
   readStates: ReadState[]
   currentId: string
   onPick: (id: string) => void
   onClose: () => void
+  onCreateChannel: (p: { name: string; type: ChannelType }) => Promise<void>
 }) {
   const [q, setQ] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
   const rs = useMemo(() => Object.fromEntries(readStates.map((r) => [r.channelId, r])), [readStates])
   const filtered = channels.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()))
   const byType = (t: string) => filtered.filter((c) => c.type === t)
@@ -40,12 +43,13 @@ export function ChannelSwitcher({
           </Section>
           <Section title="КИНОТЕАТР" last>
             {byType('WATCH').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} onPick={onPick} />)}
-            <div className="tile" style={{ border: '1.5px dashed var(--border-2)', borderRadius: 16, padding: 15, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', minHeight: 96 }}>
+            <div className="tile" onClick={() => setCreateOpen(true)} style={{ border: '1.5px dashed var(--border-2)', borderRadius: 16, padding: 15, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', minHeight: 96 }}>
               <div style={{ fontSize: 22 }}>＋</div>
               <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 5 }}>создать канал</div>
             </div>
           </Section>
         </div>
+        {createOpen && <CreateChannelModal onCreate={onCreateChannel} onClose={() => setCreateOpen(false)} />}
       </div>
     </div>
   )

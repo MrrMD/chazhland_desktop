@@ -52,6 +52,16 @@ function createWindow() {
       .catch(() => callback({}))
   })
 
+  // Бэк проверяет Origin при WS-handshake (setAllowedOriginPatterns). В dev origin = http://localhost:5173,
+  // которого нет в allowedOrigins → /ws отклоняется. Подменяем Origin на разрешённый frontend-домен.
+  win.webContents.session.webRequest.onBeforeSendHeaders(
+    { urls: ['http://api.chazhland.ru/*', 'https://api.chazhland.ru/*', 'ws://api.chazhland.ru/*', 'wss://api.chazhland.ru/*'] },
+    (details, callback) => {
+      details.requestHeaders['Origin'] = 'https://chat.chazhland.ru'
+      callback({ requestHeaders: details.requestHeaders })
+    },
+  )
+
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
     win.webContents.openDevTools({ mode: 'detach' }) // в dev — DevTools (Console/Network) отдельным окном

@@ -32,16 +32,6 @@ export function ChatFeed({ messages, readState, onReact, meId, canModerate, onRe
           <Message m={m} meId={meId} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} />
         </div>
       ))}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 8px', color: 'var(--text-3)', fontSize: 13 }}>
-        <div style={{ width: 42, height: 42, borderRadius: '50%', background: 'var(--surface-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
-          <span style={{ display: 'inline-flex', gap: 3 }}>
-            {[0, 1, 2].map((i) => (
-              <span key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--text-3)', animation: `blink 1.3s ${i * 0.2}s infinite` }} />
-            ))}
-          </span>
-        </div>
-        <span><b style={{ color: 'var(--text-2)' }}>Лена</b> печатает…</span>
-      </div>
     </div>
   )
 }

@@ -132,6 +132,11 @@ export function MainWindow() {
     }
   }
 
+  async function createChannel(p: { name: string; type: ChannelType }) {
+    await api.createChannel(p)
+    setTree(await api.serverTree())
+  }
+
   return (
     <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column' }}>
       {view === 'admin' ? (
@@ -202,6 +207,7 @@ export function MainWindow() {
           currentId={currentId}
           onPick={pickChannel}
           onClose={() => setChannelsOpen(false)}
+          onCreateChannel={createChannel}
         />
       )}
     </div>

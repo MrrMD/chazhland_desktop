@@ -1,7 +1,7 @@
 import { MOCK } from './config'
 import { http, delay, setTokens } from './http'
 import type {
-  AuditEntry, Channel, Category, Invite, Member, Message, Presence, ReadState, Role, TokenResponse, User, WatchState,
+  AuditEntry, Channel, ChannelType, Category, Invite, Member, Message, Presence, ReadState, Role, TokenResponse, User, WatchState,
 } from './types'
 import {
   MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_INVITES, MOCK_MEMBERS,
@@ -96,6 +96,11 @@ export const api = {
     if (MOCK) { await delay(150); return { categories: MOCK_CATEGORIES, channels: MOCK_CHANNELS } }
     const t = await http<TreeDto>('/server/tree')
     return { categories: t.categories, channels: t.channels.map(mapChannel) }
+  },
+
+  async createChannel(p: { name: string; type: ChannelType; categoryId?: string | null; topic?: string | null }): Promise<void> {
+    if (MOCK) return
+    await http('/channels', { method: 'POST', body: JSON.stringify({ name: p.name, type: p.type, categoryId: p.categoryId ?? null, topic: p.topic ?? null }) })
   },
 
   async members(): Promise<Member[]> {
