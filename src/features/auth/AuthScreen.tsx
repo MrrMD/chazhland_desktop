@@ -1,5 +1,17 @@
 import { useState } from 'react'
 import { useAuth } from '@/store/auth'
+import { HttpError } from '@/lib/http'
+
+// разводим реальную причину: пароль/инвайт vs лимит vs сеть/CORS
+function errMsg(e: unknown, fallback: string): string {
+  if (e instanceof HttpError) {
+    if (e.status === 429) return 'Слишком много попыток — подождите ~минуту'
+    if (e.status === 409) return 'Имя пользователя или e-mail уже заняты'
+    if (e.status === 400 || e.status === 401) return fallback
+    return `Ошибка сервера (${e.status})`
+  }
+  return 'Не удалось связаться с сервером — проверьте сеть/консоль (DevTools)'
+}
 
 export function AuthScreen() {
   const { login, register } = useAuth()
@@ -20,14 +32,14 @@ export function AuthScreen() {
     e.preventDefault()
     setLoading(true); setError(null)
     try { await login(loginField, pw) }
-    catch { setError('Неверные данные. Проверьте логин и пароль.') }
+    catch (e) { setError(errMsg(e, 'Неверные данные. Проверьте логин и пароль.')) }
     finally { setLoading(false) }
   }
   async function submitReg(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true); setError(null)
     try { await register({ inviteCode: code, username, email, password: pw }) }
-    catch { setError('Инвайт недействителен, отозван или исчерпан') }
+    catch (e) { setError(errMsg(e, 'Инвайт недействителен, отозван или исчерпан')) }
     finally { setLoading(false) }
   }
 
@@ -60,7 +72,7 @@ export function AuthScreen() {
               </label>
               <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 600, cursor: 'pointer' }}>Забыли пароль?</span>
             </div>
-            {error && <ErrorBox text={error} hint="429 — слишком много попыток, подождите." />}
+            {error && <ErrorBox text={error} />}
             <button type="submit" disabled={loading} className="accent-btn" style={btn}>
               {loading && <Spinner />}{loading ? 'Вход…' : 'Войти'}
             </button>
