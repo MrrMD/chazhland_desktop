@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Search, X, Pin } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Avatar } from '@/components/Avatar'
+import { useEscape } from '@/lib/useEscape'
+import { Skeleton } from '@/components/Skeleton'
 import type { Message } from '@/lib/types'
 
 function when(iso: string) {
@@ -21,6 +23,7 @@ export function ChatPanel({ mode, channelId, channelName, pinsVersion, onClose, 
   const [q, setQ] = useState('')
   const [rows, setRows] = useState<Message[] | null>(null)
   const [loading, setLoading] = useState(false)
+  useEscape(onClose)
 
   useEffect(() => {
     if (mode !== 'pins') return
@@ -62,7 +65,16 @@ export function ChatPanel({ mode, channelId, channelName, pinsVersion, onClose, 
       )}
 
       <div style={{ flex: 1, overflow: 'auto', padding: '4px 10px 14px' }}>
-        {loading && <Hint text="Загрузка…" />}
+        {loading && (
+          <div style={{ padding: '6px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} style={{ display: 'flex', gap: 10, padding: '6px 8px' }}>
+                <Skeleton w={32} h={32} r={32} style={{ flex: 'none' }} />
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}><Skeleton w="45%" h={10} /><Skeleton w="85%" h={10} /></div>
+              </div>
+            ))}
+          </div>
+        )}
         {!loading && mode === 'search' && !q.trim() && <Hint text="Введите запрос для поиска по каналу" />}
         {!loading && rows && rows.length === 0 && <Hint text={mode === 'pins' ? 'Нет закреплённых сообщений' : 'Ничего не найдено'} />}
         {!loading && rows?.map((m) => (

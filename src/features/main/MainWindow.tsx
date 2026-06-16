@@ -48,6 +48,7 @@ export function MainWindow() {
   const [pinsVersion, setPinsVersion] = useState(0)
   const [hasMore, setHasMore] = useState(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
+  const [loadingMessages, setLoadingMessages] = useState(false)
   const [unread, setUnread] = useState<Set<string>>(new Set()) // каналы с непрочитанными (кроме открытого)
 
   useEffect(() => voice.subscribe(setVs), [])
@@ -76,6 +77,8 @@ export function MainWindow() {
     if (!currentId) return
     let alive = true
     setLoadingOlder(false)
+    setLoadingMessages(true)
+    setMessages([]) // чистим прошлый канал, чтобы показать скелетоны, а не чужую ленту
     setUnread((u) => { if (!u.has(currentId)) return u; const n = new Set(u); n.delete(currentId); return n }) // открыли — прочитано
     api.messages(currentId).then((ms) => {
       if (!alive) return // защита от гонки при быстром переключении каналов
@@ -86,7 +89,7 @@ export function MainWindow() {
         api.markRead(currentId, last.id).catch(() => {})
         setReadStates((rs) => rs.map((r) => (r.channelId === currentId ? { ...r, lastReadMessageId: last.id, mentionCount: 0 } : r)))
       }
-    }).catch(() => {})
+    }).catch(() => {}).finally(() => { if (alive) setLoadingMessages(false) })
     return () => { alive = false }
   }, [currentId])
 
@@ -333,7 +336,7 @@ export function MainWindow() {
               <WatchView channelId={currentId} />
             ) : (
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
-                <ChatFeed messages={messages} readState={readState} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} />
+                <ChatFeed messages={messages} readState={readState} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} />
                 <TypingIndicator names={typing.map((t) => t.name)} />
                 <Composer channelName={channel?.name ?? ''} onSend={send} onType={() => ws.typing(currentId)} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>

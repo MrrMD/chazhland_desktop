@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react'
 import { Reply, SmilePlus, Pencil, Trash2, Ban, Download, X, Pin, File as FileIcon } from 'lucide-react'
 import { Avatar } from '@/components/Avatar'
 import { toast } from '@/lib/toast'
+import { useEscape } from '@/lib/useEscape'
 import type { Attachment, Message as Msg } from '@/lib/types'
 
 // скачивание через blob: cross-origin download-атрибут Chromium игнорирует (навигация → блок navigation-guard)
@@ -71,6 +72,8 @@ export function Message({ m, meId, meName, grouped, canModerate, onReact, onRepl
   const [val, setVal] = useState('')
   const [picker, setPicker] = useState<null | 'top' | 'bottom'>(null)
   const [lightbox, setLightbox] = useState<string | null>(null)
+  useEscape(() => setLightbox(null), !!lightbox)
+  useEscape(() => setPicker(null), !!picker)
 
   const mention = !!m.content && isMentioningMe(m.content, meName)
   const isOwn = !!meId && m.authorId === meId

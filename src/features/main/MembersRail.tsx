@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ChevronRight, ChevronLeft, MicOff, Crown, Volume2 } from 'lucide-react'
 import { Avatar, presenceColor } from '@/components/Avatar'
+import { Skeleton } from '@/components/Skeleton'
 import { presence } from '@/lib/presence'
 import { MOCK } from '@/lib/config'
 import type { Member, Presence } from '@/lib/types'
@@ -32,6 +33,12 @@ export function MembersRail({ members, expanded, onToggle, voiceParticipants, vo
         <button className="ib no-drag" onClick={onToggle} style={{ marginLeft: 'auto', background: 'var(--surface-2)', width: 28, height: 28 }}>{expanded ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}</button>
       </div>
       <div style={{ overflow: 'auto', flex: 1, padding: '10px 9px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {members.length === 0 && [0, 1, 2, 3].map((i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 6 }}>
+            <Skeleton w={38} h={38} r={38} style={{ flex: 'none' }} />
+            {expanded && <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 5 }}><Skeleton w="60%" h={10} /><Skeleton w="40%" h={9} /></div>}
+          </div>
+        ))}
         {voiceChannelName && (voiceParticipants?.length ?? 0) > 0 && (
           <>
             <Group label={`${voiceChannelName} · ${voiceParticipants!.length}`} show={expanded} color="var(--green)" icon={<Volume2 size={12} />} />

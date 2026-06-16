@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useRef } from 'react'
 import { Message } from './Message'
+import { Skeleton } from '@/components/Skeleton'
 import type { Message as Msg, ReadState } from '@/lib/types'
 
 const GROUP_GAP_MS = 5 * 60 * 1000 // серия одного автора рвётся после 5 минут паузы
@@ -19,7 +20,7 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })
 }
 
-export function ChatFeed({ messages, readState, onReact, meId, meName, canModerate, onReply, onEdit, onDelete, onPin, onLoadOlder, hasMore, loadingOlder }: {
+export function ChatFeed({ messages, readState, onReact, meId, meName, canModerate, onReply, onEdit, onDelete, onPin, onLoadOlder, hasMore, loadingOlder, loading }: {
   messages: Msg[]
   readState?: ReadState
   onReact?: (messageId: string, emoji: string) => void
@@ -33,6 +34,7 @@ export function ChatFeed({ messages, readState, onReact, meId, meName, canModera
   onLoadOlder?: () => void
   hasMore?: boolean
   loadingOlder?: boolean
+  loading?: boolean
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const anchorRef = useRef<{ h: number; t: number } | null>(null)
@@ -66,9 +68,22 @@ export function ChatFeed({ messages, readState, onReact, meId, meName, canModera
 
   return (
     <div ref={scrollRef} onScroll={onScroll} style={{ flex: 1, overflow: 'auto', padding: '20px 26px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {loading && messages.length === 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, paddingTop: 6 }}>
+          {[60, 80, 45, 70, 55].map((w, i) => (
+            <div key={i} style={{ display: 'flex', gap: 13, padding: '4px 0' }}>
+              <Skeleton w={42} h={42} r={42} style={{ flex: 'none' }} />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                <Skeleton w={120} h={11} />
+                <Skeleton w={`${w}%`} h={13} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {loadingOlder && <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 12, padding: '6px 0' }}>Загрузка…</div>}
-      {!hasMore && messages.length > 0 && <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 11.5, padding: '8px 0 6px' }}>Начало канала</div>}
-      {messages.length === 0 && (
+      {!hasMore && !loading && messages.length > 0 && <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 11.5, padding: '8px 0 6px' }}>Начало канала</div>}
+      {!loading && messages.length === 0 && (
         <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 13, padding: '40px 0' }}>
           В канале пока нет сообщений — напишите первым.
         </div>

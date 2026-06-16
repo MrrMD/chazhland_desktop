@@ -3,6 +3,7 @@ import { Search, X, Hash, Volume2, Play, Plus } from 'lucide-react'
 import type { Channel, ChannelType, Dm, ReadState } from '@/lib/types'
 import { Avatar } from '@/components/Avatar'
 import { CreateChannelModal } from './CreateChannelModal'
+import { useEscape } from '@/lib/useEscape'
 import { MOCK } from '@/lib/config'
 
 const TYPE_ICON: Record<string, React.ReactNode> = { TEXT: <Hash size={18} />, VOICE: <Volume2 size={17} />, WATCH: <Play size={17} /> }
@@ -25,6 +26,7 @@ export function ChannelSwitcher({
 }) {
   const [q, setQ] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
+  useEscape(onClose, !createOpen) // когда открыт вложенный модал создания — ESC закрывает его, не свитчер
   const rs = useMemo(() => Object.fromEntries(readStates.map((r) => [r.channelId, r])), [readStates])
   const filtered = channels.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()))
   const byType = (t: string) => filtered.filter((c) => c.type === t)

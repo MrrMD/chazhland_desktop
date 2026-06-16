@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { ChevronLeft, ChevronDown, Lock, Key, X, UserMinus, ArrowLeftRight, Plus, Volume2, AlertTriangle } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Avatar, presenceColor } from '@/components/Avatar'
+import { Skeleton } from '@/components/Skeleton'
 import { ConfirmModal, ChangeRoleModal } from './modals'
 import type { AuditEntry, Member } from '@/lib/types'
 
@@ -142,5 +143,15 @@ function Card({ children }: { children: React.ReactNode }) {
 }
 
 function Loading() {
-  return <div style={{ color: 'var(--text-3)', fontSize: 13, padding: '40px 0', textAlign: 'center' }}>Загрузка…</div>
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 16, overflow: 'hidden', animation: 'fadeIn .3s ease' }}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 20px', borderBottom: i < 4 ? '1px solid var(--surface-2)' : undefined }}>
+          <Skeleton w={36} h={36} r={36} style={{ flex: 'none' }} />
+          <Skeleton w="22%" h={12} />
+          <Skeleton w="14%" h={12} style={{ marginLeft: 'auto' }} />
+        </div>
+      ))}
+    </div>
+  )
 }
