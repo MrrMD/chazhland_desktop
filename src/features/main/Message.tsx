@@ -11,6 +11,9 @@ function hhmm(iso: string): string {
 const MENTION_RE = /(@everyone|@here|@[\p{L}\p{N}_]{2,32})/gu // \p{L} — и кириллические ники тоже
 const IS_MENTION = /^(?:@everyone|@here|@[\p{L}\p{N}_]{2,32})$/u // без /g — .test() без stateful lastIndex
 
+// набор реакций для пикера (это контент-эмодзи, а не иконки UI)
+const EMOJIS = ['👍', '❤️', '😂', '🔥', '🎉', '😮', '😢', '👏', '🙏', '💯', '✅', '👀', '🚀', '🤔', '😍', '😅']
+
 function escapeRegExp(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 // упоминание текущего пользователя: @everyone/@here или @<его ник> как отдельный токен
 function isMentioningMe(content: string, meName?: string): boolean {
@@ -39,6 +42,7 @@ interface Props {
   m: Msg
   meId?: string
   meName?: string
+  grouped?: boolean // часть серии того же автора — без аватара/шапки
   canModerate?: boolean
   onReact?: (emoji: string) => void
   onReply?: (m: Msg) => void
@@ -46,10 +50,11 @@ interface Props {
   onDelete?: (id: string) => void
 }
 
-export function Message({ m, meId, meName, canModerate, onReact, onReply, onEdit, onDelete }: Props) {
+export function Message({ m, meId, meName, grouped, canModerate, onReact, onReply, onEdit, onDelete }: Props) {
   const [hover, setHover] = useState(false)
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
+  const [picker, setPicker] = useState<null | 'top' | 'bottom'>(null)
 
   const mention = !!m.content && isMentioningMe(m.content, meName)
   const isOwn = !!meId && m.authorId === meId
@@ -69,34 +74,43 @@ export function Message({ m, meId, meName, canModerate, onReact, onReply, onEdit
     setEditing(false)
     if (v && v !== m.content) onEdit?.(m.id, v)
   }
+  function pick(emoji: string) { onReact?.(emoji); setPicker(null) }
 
   return (
     <div
       className={mention ? undefined : 'msg-row'}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{ display: 'flex', gap: 13, padding: mention ? '9px 8px' : '7px 8px', borderRadius: 12, position: 'relative', background: mention ? 'var(--accent-tint)' : undefined }}
+      style={{ display: 'flex', gap: 13, padding: mention ? '9px 8px' : grouped ? '1px 8px' : '7px 8px', borderRadius: 12, position: 'relative', background: mention ? 'var(--accent-tint)' : undefined }}
     >
       {mention && <div style={{ position: 'absolute', left: 0, top: 9, bottom: 9, width: 3, borderRadius: 3, background: 'var(--accent)' }} />}
 
-      {hover && !editing && (
+      {(hover || picker) && !editing && (
         <div style={{ position: 'absolute', top: -12, right: 10, display: 'flex', gap: 2, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 9, padding: 3, boxShadow: '0 6px 18px -8px var(--shadow)', zIndex: 2 }}>
           <ToolBtn title="Ответить" onClick={() => onReply?.(m)}><Reply size={15} /></ToolBtn>
-          <ToolBtn title="Реакция" onClick={() => onReact?.('👍')}><SmilePlus size={15} /></ToolBtn>
+          <ToolBtn title="Реакция" onClick={() => setPicker((p) => (p === 'top' ? null : 'top'))}><SmilePlus size={15} /></ToolBtn>
           {isOwn && <ToolBtn title="Изменить" onClick={startEdit}><Pencil size={14} /></ToolBtn>}
           {canDelete && <ToolBtn title="Удалить" danger onClick={() => onDelete?.(m.id)}><Trash2 size={14} /></ToolBtn>}
         </div>
       )}
 
-      <Avatar name={m.authorName} size={42} />
+      {picker && <EmojiPicker anchor={picker} onPick={pick} onClose={() => setPicker(null)} />}
+
+      {grouped ? (
+        <span style={{ width: 42, flex: 'none', fontSize: 10, color: 'var(--text-3)', textAlign: 'right', paddingTop: 3, opacity: hover ? 1 : 0, transition: 'opacity .12s' }}>{hhmm(m.createdAt)}</span>
+      ) : (
+        <Avatar name={m.authorName} size={42} />
+      )}
       <div style={{ minWidth: 0, flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginBottom: 3 }}>
-          <span style={{ fontWeight: 700, fontSize: 14.5 }}>{m.authorName}</span>
-          {m.authorRole && roleBadge[m.authorRole] && (
-            <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>
-          )}
-          <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{hhmm(m.createdAt)}</span>
-        </div>
+        {!grouped && (
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginBottom: 3 }}>
+            <span style={{ fontWeight: 700, fontSize: 14.5 }}>{m.authorName}</span>
+            {m.authorRole && roleBadge[m.authorRole] && (
+              <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>
+            )}
+            <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{hhmm(m.createdAt)}</span>
+          </div>
+        )}
         {m.replyPreview && (
           <div style={{ borderLeft: '2px solid var(--border-2)', paddingLeft: 10, marginBottom: 5, fontSize: 12.5, color: 'var(--text-3)' }}>
             ↳ {m.replyPreview.authorName}: {m.replyPreview.content}
@@ -142,11 +156,24 @@ export function Message({ m, meId, meName, canModerate, onReact, onReply, onEdit
             {m.reactions.map((r) => (
               <div key={r.emoji} onClick={() => onReact?.(r.emoji)} className={'reaction' + (r.mine ? ' mine' : '')} style={{ padding: '3px 11px', fontSize: 13, fontWeight: 600, color: r.mine ? undefined : 'var(--text-2)' }}>{r.emoji} {r.count}</div>
             ))}
-            <div className="reaction" onClick={() => onReact?.('👍')} style={{ justifyContent: 'center', width: 30, height: 26, color: 'var(--text-3)' }} title="Добавить реакцию"><SmilePlus size={15} /></div>
+            <div className="reaction" onClick={() => setPicker((p) => (p === 'bottom' ? null : 'bottom'))} style={{ justifyContent: 'center', width: 30, height: 26, color: 'var(--text-3)' }} title="Добавить реакцию"><SmilePlus size={15} /></div>
           </div>
         )}
       </div>
     </div>
+  )
+}
+
+function EmojiPicker({ anchor, onPick, onClose }: { anchor: 'top' | 'bottom'; onPick: (e: string) => void; onClose: () => void }) {
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+      <div style={{ position: 'absolute', zIndex: 41, width: 280, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 14px 34px -12px var(--shadow)', padding: 7, display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 1, ...(anchor === 'top' ? { top: 18, right: 10 } : { top: '100%', left: 55 }) }}>
+      {EMOJIS.map((em) => (
+        <button key={em} className="ib no-drag" onClick={() => onPick(em)} style={{ width: 32, height: 32, fontSize: 17, borderRadius: 8 }}>{em}</button>
+      ))}
+      </div>
+    </>
   )
 }
 

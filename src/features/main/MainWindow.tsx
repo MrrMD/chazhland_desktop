@@ -36,6 +36,8 @@ export function MainWindow() {
   const [vs, setVs] = useState<VoiceState>(voice.state)
   const [screenFull, setScreenFull] = useState(false)
   const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
+  const [typing, setTyping] = useState<{ id: string; name: string }[]>([])
+  const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
 
   useEffect(() => voice.subscribe(setVs), [])
   useEffect(() => { presence.start(); return () => presence.stop() }, [])
@@ -73,7 +75,17 @@ export function MainWindow() {
   // live-сообщения по WS для текущего канала (no-op в mock-режиме)
   useEffect(() => {
     if (!currentId) return
-    return ws.onChannel(currentId, (e) => {
+    const off = ws.onChannel(currentId, (e) => {
+      // эфемерный TYPING — показываем «печатает…», авто-сброс через 6 с
+      if (e.type === 'TYPING') {
+        const uid = e.userId, name = e.username
+        if (!uid || uid === user.id) return
+        setTyping((t) => (t.some((x) => x.id === uid) ? t : [...t, { id: uid, name: name || 'кто-то' }]))
+        const timers = typingTimers.current
+        const prev = timers.get(uid); if (prev) clearTimeout(prev)
+        timers.set(uid, setTimeout(() => { timers.delete(uid); setTyping((t) => t.filter((x) => x.id !== uid)) }, 6000))
+        return
+      }
       // Реакции прилетают без message — обновляем агрегат по messageId+emoji (см. DESIGN_BRIEF).
       if (e.type === 'REACTION_ADDED' || e.type === 'REACTION_REMOVED') {
         const mid = e.messageId, emoji = e.emoji
@@ -106,8 +118,17 @@ export function MainWindow() {
       if (e.type === 'MESSAGE_CREATED') {
         api.markRead(currentId, m.id).catch(() => {})
         setReadStates((rs) => rs.map((r) => (r.channelId === currentId ? { ...r, lastReadMessageId: m.id, mentionCount: 0 } : r)))
+        // автор прислал сообщение — он больше не «печатает»
+        const tm = typingTimers.current.get(m.authorId); if (tm) { clearTimeout(tm); typingTimers.current.delete(m.authorId) }
+        setTyping((t) => t.filter((x) => x.id !== m.authorId))
       }
     })
+    return () => {
+      off()
+      typingTimers.current.forEach((t) => clearTimeout(t))
+      typingTimers.current.clear()
+      setTyping([]) // сбрасываем индикатор при смене канала
+    }
   }, [currentId])
 
   const channel = useMemo(() => tree.channels.find((c) => c.id === currentId), [tree, currentId])
@@ -209,7 +230,8 @@ export function MainWindow() {
             ) : (
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
                 <ChatFeed messages={messages} readState={readState} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} />
-                <Composer channelName={channel?.name ?? ''} onSend={send} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
+                <TypingIndicator names={typing.map((t) => t.name)} />
+                <Composer channelName={channel?.name ?? ''} onSend={send} onType={() => ws.typing(currentId)} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>
             ))}
             {!screenFull && <MembersRail members={members} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} voiceParticipants={vs.participants} voiceChannelName={vs.channelName} />}
@@ -249,6 +271,23 @@ export function MainWindow() {
       )}
 
       {voiceSettingsOpen && <VoiceSettingsModal onClose={() => setVoiceSettingsOpen(false)} />}
+    </div>
+  )
+}
+
+function TypingIndicator({ names }: { names: string[] }) {
+  if (names.length === 0) return null
+  const text = names.length === 1 ? `${names[0]} печатает…`
+    : names.length === 2 ? `${names[0]} и ${names[1]} печатают…`
+    : 'Несколько человек печатают…'
+  return (
+    <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '0 28px 4px', height: 18, fontSize: 12, color: 'var(--text-3)' }}>
+      <span style={{ display: 'inline-flex', gap: 3 }}>
+        {[0, 1, 2].map((i) => (
+          <span key={i} style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--text-3)', animation: 'live 1.2s infinite', animationDelay: `${i * 0.18}s` }} />
+        ))}
+      </span>
+      {text}
     </div>
   )
 }

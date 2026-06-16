@@ -1,5 +1,23 @@
+import { Fragment, useEffect, useRef } from 'react'
 import { Message } from './Message'
 import type { Message as Msg, ReadState } from '@/lib/types'
+
+const GROUP_GAP_MS = 5 * 60 * 1000 // серия одного автора рвётся после 5 минут паузы
+
+function dayKey(iso: string) {
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? iso : `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+}
+function dayLabel(iso: string) {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const now = new Date()
+  const same = (a: Date, b: Date) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
+  if (same(d, now)) return 'Сегодня'
+  const y = new Date(now); y.setDate(now.getDate() - 1)
+  if (same(d, y)) return 'Вчера'
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })
+}
 
 export function ChatFeed({ messages, readState, onReact, meId, meName, canModerate, onReply, onEdit, onDelete }: {
   messages: Msg[]
@@ -12,6 +30,14 @@ export function ChatFeed({ messages, readState, onReact, meId, meName, canModera
   onEdit?: (id: string, content: string) => void
   onDelete?: (id: string) => void
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const lastId = messages[messages.length - 1]?.id
+  // держим ленту прижатой к низу при загрузке/новых сообщениях
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [lastId, messages.length])
+
   // индекс первого непрочитанного (после lastReadMessageId)
   let firstUnread = -1
   if (readState?.lastReadMessageId) {
@@ -20,19 +46,26 @@ export function ChatFeed({ messages, readState, onReact, meId, meName, canModera
   }
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: '20px 26px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-      <Divider label="Сегодня" />
+    <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '20px 26px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
       {messages.length === 0 && (
         <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 13, padding: '40px 0' }}>
           В канале пока нет сообщений — напишите первым.
         </div>
       )}
-      {messages.map((m, i) => (
-        <div key={m.id}>
-          {i === firstUnread && <UnreadDivider />}
-          <Message m={m} meId={meId} meName={meName} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} />
-        </div>
-      ))}
+      {messages.map((m, i) => {
+        const prev = messages[i - 1]
+        const newDay = !prev || dayKey(prev.createdAt) !== dayKey(m.createdAt)
+        const isUnread = i === firstUnread
+        const grouped = !newDay && !isUnread && !!prev && prev.authorId === m.authorId && !prev.deleted && !m.deleted &&
+          new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() < GROUP_GAP_MS
+        return (
+          <Fragment key={m.id}>
+            {newDay && <Divider label={dayLabel(m.createdAt)} />}
+            {isUnread && <UnreadDivider />}
+            <Message m={m} grouped={grouped} meId={meId} meName={meName} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} />
+          </Fragment>
+        )
+      })}
     </div>
   )
 }
