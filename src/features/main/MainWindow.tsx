@@ -3,7 +3,7 @@ import { api, type ServerTree } from '@/lib/api'
 import { useAuth } from '@/store/auth'
 import { voice, type VoiceState } from '@/lib/voice'
 import { presence } from '@/lib/presence'
-import type { AttachmentInput, ChannelType, Member, Message, Presence, ReadState } from '@/lib/types'
+import type { AttachmentInput, Channel, ChannelType, Dm, Member, Message, Presence, ReadState } from '@/lib/types'
 import { ChatFeed } from './ChatFeed'
 import { Composer } from './Composer'
 import { MembersRail } from './MembersRail'
@@ -17,15 +17,16 @@ import { ChatPanel } from './ChatPanel'
 import { AdminScreen } from '@/features/admin/AdminScreen'
 import { ws } from '@/lib/ws'
 import { toast } from '@/lib/toast'
-import { Search, Pin, Bell, Users, Hash, Volume2, Play } from 'lucide-react'
+import { Search, Pin, Bell, Users, Hash, Volume2, Play, AtSign } from 'lucide-react'
 
-const TYPE_ICON: Record<ChannelType, React.ReactNode> = { TEXT: <Hash size={18} />, VOICE: <Volume2 size={18} />, WATCH: <Play size={18} /> }
+const TYPE_ICON: Record<ChannelType, React.ReactNode> = { TEXT: <Hash size={18} />, VOICE: <Volume2 size={18} />, WATCH: <Play size={18} />, DM: <AtSign size={18} /> }
 
 export function MainWindow() {
   const { session, logout } = useAuth()
   const user = session!.user
 
   const [tree, setTree] = useState<ServerTree>({ categories: [], channels: [] })
+  const [dms, setDms] = useState<Dm[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [readStates, setReadStates] = useState<ReadState[]>([])
   const [messages, setMessages] = useState<Message[]>([])
@@ -61,6 +62,7 @@ export function MainWindow() {
     }).catch(() => {})
     api.members().then(setMembers).catch(() => {})
     api.readStates().then(setReadStates).catch(() => {})
+    api.listDms().then(setDms).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -145,7 +147,12 @@ export function MainWindow() {
     }
   }, [currentId])
 
-  const channel = useMemo(() => tree.channels.find((c) => c.id === currentId), [tree, currentId])
+  const channel = useMemo<Channel | undefined>(() => {
+    const c = tree.channels.find((x) => x.id === currentId)
+    if (c) return c
+    const dm = dms.find((d) => d.id === currentId) // DM-каналы скрыты из дерева — собираем синтетический Channel
+    return dm ? { id: dm.id, name: dm.name, type: 'DM', categoryId: null, topic: null, position: 0 } : undefined
+  }, [tree, dms, currentId])
   const readState = readStates.find((r) => r.channelId === currentId)
   const myRole = members.find((m) => m.userId === user.id)?.role
   const canModerate = myRole === 'OWNER' || myRole === 'ADMIN'
@@ -213,6 +220,18 @@ export function MainWindow() {
     }
   }
 
+  async function openDm(userId: string) {
+    if (!userId || userId === user.id) return
+    try {
+      const dm = await api.openDm(userId)
+      setDms((d) => (d.some((x) => x.id === dm.id) ? d : [...d, dm]))
+      setCurrentId(dm.id)
+      setView('chat')
+      setChannelsOpen(false)
+      setPanel(null)
+    } catch { toast.error('Не удалось открыть личные сообщения') }
+  }
+
   async function createChannel(p: { name: string; type: ChannelType }) {
     const ch = await api.createChannel(p)
     setTree(await api.serverTree())
@@ -232,7 +251,7 @@ export function MainWindow() {
             </div>
             <div style={{ lineHeight: 1.25, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{channel?.name ?? '—'}</div>
-              <div style={{ fontSize: 12.5, color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{channel?.topic ?? (isWatch ? 'совместный просмотр' : 'без темы')}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{channel?.topic ?? (isWatch ? 'совместный просмотр' : channel?.type === 'DM' ? 'личные сообщения' : 'без темы')}</div>
             </div>
             {vs.screenOn && (
               <div style={{ marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--accent-tint)', border: '1px solid var(--accent)', color: 'var(--accent)', borderRadius: 30, padding: '5px 13px', fontSize: 12.5, fontWeight: 700 }}>
@@ -259,7 +278,7 @@ export function MainWindow() {
                 <Composer channelName={channel?.name ?? ''} onSend={send} onType={() => ws.typing(currentId)} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>
             ))}
-            {!screenFull && <MembersRail members={members} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} voiceParticipants={vs.participants} voiceChannelName={vs.channelName} />}
+            {!screenFull && <MembersRail members={members} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} voiceParticipants={vs.participants} voiceChannelName={vs.channelName} meId={user.id} onOpenDm={openDm} />}
             {panel && currentId && (
               <ChatPanel mode={panel} channelId={currentId} channelName={channel?.name ?? ''} pinsVersion={pinsVersion} onClose={() => setPanel(null)} onUnpin={(id) => pinMsg(id, false)} />
             )}
@@ -291,6 +310,7 @@ export function MainWindow() {
       {channelsOpen && (
         <ChannelSwitcher
           channels={tree.channels}
+          dms={dms}
           readStates={readStates}
           currentId={currentId}
           onPick={pickChannel}

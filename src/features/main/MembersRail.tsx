@@ -8,12 +8,14 @@ import type { VoiceParticipant } from '@/lib/voice'
 
 const SUB: Record<string, string> = { online: 'в сети', idle: 'отошёл', dnd: 'не беспокоить', offline: 'не в сети' }
 
-export function MembersRail({ members, expanded, onToggle, voiceParticipants, voiceChannelName }: {
+export function MembersRail({ members, expanded, onToggle, voiceParticipants, voiceChannelName, meId, onOpenDm }: {
   members: Member[]
   expanded: boolean
   onToggle: () => void
   voiceParticipants?: VoiceParticipant[]
   voiceChannelName?: string | null
+  meId?: string
+  onOpenDm?: (userId: string) => void
 }) {
   const [, setTick] = useState(0)
   useEffect(() => presence.subscribe(() => setTick((t) => t + 1)), [])
@@ -43,9 +45,9 @@ export function MembersRail({ members, expanded, onToggle, voiceParticipants, vo
           </>
         )}
         {online.length > 0 && <Group label={`В СЕТИ · ${online.length}`} show={expanded} />}
-        {online.map((m) => <Row key={m.userId} m={m} status={stat(m)} expanded={expanded} />)}
+        {online.map((m) => <Row key={m.userId} m={m} status={stat(m)} expanded={expanded} self={m.userId === meId} onOpenDm={onOpenDm} />)}
         {offline.length > 0 && <Group label={`НЕ В СЕТИ · ${offline.length}`} show={expanded} />}
-        {offline.map((m) => <Row key={m.userId} m={m} status="offline" expanded={expanded} dim />)}
+        {offline.map((m) => <Row key={m.userId} m={m} status="offline" expanded={expanded} dim self={m.userId === meId} onOpenDm={onOpenDm} />)}
       </div>
     </div>
   )
@@ -56,9 +58,9 @@ function Group({ label, show, color, icon }: { label: string; show: boolean; col
   return <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', color: color || 'var(--text-3)', padding: '11px 8px 7px', display: 'flex', alignItems: 'center', gap: 5 }}>{icon}{label}</div>
 }
 
-function Row({ m, status, expanded, dim }: { m: Member; status: Presence; expanded: boolean; dim?: boolean }) {
+function Row({ m, status, expanded, dim, self, onOpenDm }: { m: Member; status: Presence; expanded: boolean; dim?: boolean; self?: boolean; onOpenDm?: (userId: string) => void }) {
   return (
-    <div className="member-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 6 }}>
+    <div className="member-row" onClick={() => { if (!self) onOpenDm?.(m.userId) }} title={self ? undefined : 'Личные сообщения'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 6, cursor: self ? 'default' : 'pointer' }}>
       <Avatar name={m.username} src={m.avatarUrl} size={38} presence={status} dim={dim} />
       {expanded && (
         <>

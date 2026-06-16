@@ -1,7 +1,7 @@
 import { MOCK } from './config'
 import { http, delay, setTokens } from './http'
 import type {
-  AttachmentInput, AuditEntry, Channel, ChannelType, Category, Member, Message, Presence, ReadState, Role, TokenResponse, User, WatchState,
+  AttachmentInput, AuditEntry, Channel, ChannelType, Category, Dm, Member, Message, Presence, ReadState, Role, TokenResponse, User, WatchState,
 } from './types'
 import {
   MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_MEMBERS,
@@ -25,6 +25,7 @@ interface MessageDto {
   attachments: AttachmentDto[]; reactions: ReactionGroupDto[]
 }
 interface AuditDto { id: string; actorId: string; action: string; targetType: string | null; targetId: string | null; metadata: unknown; createdAt: string }
+interface DmDto { channelId: string; otherUserId: string; otherUsername: string; otherAvatarUrl: string | null; lastMessageId: string | null }
 
 // ---- кэш для резолва авторов сообщений/аудита ----
 let meId = ''
@@ -148,6 +149,18 @@ export const api = {
     if (MOCK) return { id: 'ch_' + crypto.randomUUID().slice(0, 8), name: p.name, type: p.type, categoryId: p.categoryId ?? null, topic: p.topic ?? null, position: 0, lastMessageId: null }
     const dto = await http<ChannelDto>('/channels', { method: 'POST', body: JSON.stringify({ name: p.name, type: p.type, categoryId: p.categoryId ?? null, topic: p.topic ?? null }) })
     return mapChannel(dto)
+  },
+
+  // ---- личные сообщения (DM = скрытый канал type=DM) ----
+  async openDm(userId: string): Promise<Dm> {
+    if (MOCK) { await delay(150); return { id: 'dm_' + userId, name: memberMap.get(userId)?.username ?? 'Личные', avatarUrl: memberMap.get(userId)?.avatarUrl ?? null, otherUserId: userId } }
+    const d = await http<DmDto>(`/dm/${userId}`, { method: 'POST' })
+    return { id: d.channelId, name: d.otherUsername, avatarUrl: d.otherAvatarUrl, otherUserId: d.otherUserId }
+  },
+  async listDms(): Promise<Dm[]> {
+    if (MOCK) return []
+    const list = await http<DmDto[]>('/dm')
+    return list.map((d) => ({ id: d.channelId, name: d.otherUsername, avatarUrl: d.otherAvatarUrl, otherUserId: d.otherUserId }))
   },
 
   async members(): Promise<Member[]> {

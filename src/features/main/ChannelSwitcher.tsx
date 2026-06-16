@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Search, X, Hash, Volume2, Play, Plus } from 'lucide-react'
-import type { Channel, ChannelType, ReadState } from '@/lib/types'
+import type { Channel, ChannelType, Dm, ReadState } from '@/lib/types'
+import { Avatar } from '@/components/Avatar'
 import { CreateChannelModal } from './CreateChannelModal'
 import { MOCK } from '@/lib/config'
 
@@ -10,9 +11,10 @@ const TYPE_ICON: Record<string, React.ReactNode> = { TEXT: <Hash size={18} />, V
 const VOICE_LIVE: Record<string, number> = MOCK ? { ch_call: 3, ch_cs: 2 } : {}
 
 export function ChannelSwitcher({
-  channels, readStates, currentId, onPick, onClose, onCreateChannel,
+  channels, dms, readStates, currentId, onPick, onClose, onCreateChannel,
 }: {
   channels: Channel[]
+  dms: Dm[]
   readStates: ReadState[]
   currentId: string
   onPick: (id: string) => void
@@ -45,13 +47,24 @@ export function ChannelSwitcher({
           <Section title="ГОЛОСОВЫЕ">
             {byType('VOICE').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} onPick={onPick} />)}
           </Section>
-          <Section title="КИНОТЕАТР" last>
+          <Section title="КИНОТЕАТР" last={dms.length === 0}>
             {byType('WATCH').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} onPick={onPick} />)}
             <div className="tile" onClick={() => setCreateOpen(true)} style={{ border: '1.5px dashed var(--border-2)', borderRadius: 16, padding: 15, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', minHeight: 96 }}>
               <Plus size={22} />
               <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 5 }}>создать канал</div>
             </div>
           </Section>
+          {dms.length > 0 && (
+            <Section title="ЛИЧНЫЕ" last>
+              {dms.filter((d) => d.name.toLowerCase().includes(q.toLowerCase())).map((d) => (
+                <div key={d.id} onClick={() => onPick(d.id)} className={d.id === currentId ? undefined : 'tile'} style={{ background: d.id === currentId ? 'var(--accent-tint)' : 'var(--surface)', border: d.id === currentId ? '1.5px solid var(--accent)' : '1px solid var(--border)', borderRadius: 16, padding: 15, cursor: 'pointer' }}>
+                  <Avatar name={d.name} src={d.avatarUrl} size={38} />
+                  <div style={{ fontWeight: 700, fontSize: 14.5, marginTop: 10, color: d.id === currentId ? 'var(--accent)' : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.name}</div>
+                  <div style={{ fontSize: 11.5, color: d.id === currentId ? 'var(--accent)' : 'var(--text-3)' }}>{d.id === currentId ? 'открыт сейчас' : 'личные'}</div>
+                </div>
+              ))}
+            </Section>
+          )}
         </div>
         {createOpen && <CreateChannelModal onCreate={onCreateChannel} onClose={() => setCreateOpen(false)} />}
       </div>

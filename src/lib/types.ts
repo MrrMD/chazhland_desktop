@@ -1,7 +1,15 @@
 // DTO по контракту бэка com.chazhland.messenger (см. docs/DESIGN_BRIEF.md).
 export type Role = 'OWNER' | 'ADMIN' | 'MEMBER'
 export type Presence = 'online' | 'idle' | 'dnd' | 'offline'
-export type ChannelType = 'TEXT' | 'VOICE' | 'WATCH'
+export type ChannelType = 'TEXT' | 'VOICE' | 'WATCH' | 'DM'
+
+// личный диалог (бэк: DmResponse) — channelId используется как обычный канал
+export interface Dm {
+  id: string // channelId
+  name: string
+  avatarUrl: string | null
+  otherUserId: string
+}
 
 export interface User {
   id: string
