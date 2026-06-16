@@ -2,16 +2,19 @@ import { Moon, Sun, Minus, Square, X } from 'lucide-react'
 import { useTheme } from '@/theme/ThemeProvider'
 
 const bridge = typeof window !== 'undefined' ? window.chazh : undefined
+// macOS: нативные «светофоры» слева — прячем свои кнопки и сдвигаем контент.
+// Детект устойчивый: bridge.platform, а если его нет — navigator (на случай, если preload не отдал platform).
+const isMacUA = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent || '')
+const mac = !!bridge && (bridge.platform === 'darwin' || isMacUA)
 
 export function TitleBar() {
   const { theme, toggleTheme } = useTheme()
-  const mac = bridge?.platform === 'darwin' // на macOS — нативные «светофоры» слева, свои кнопки прячем
   return (
     <div
       className="drag"
       style={{
         height: 36, flex: 'none', display: 'flex', alignItems: 'center', gap: 10,
-        padding: mac ? '0 12px 0 78px' : '0 12px', background: 'var(--surface)', borderBottom: '1px solid var(--border)',
+        padding: mac ? '0 12px 0 82px' : '0 12px', background: 'var(--surface)', borderBottom: '1px solid var(--border)',
         userSelect: 'none',
       }}
     >
