@@ -1,3 +1,4 @@
+import { Moon, Sun, Minus, Square, X } from 'lucide-react'
 import { useTheme } from '@/theme/ThemeProvider'
 
 const bridge = typeof window !== 'undefined' ? window.chazh : undefined
@@ -20,27 +21,19 @@ export function TitleBar() {
       <span style={{ fontSize: 12.5, color: 'var(--text-3)', fontWeight: 500 }}>chazhland</span>
 
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
-        <button
-          className="ib no-drag"
-          onClick={toggleTheme}
-          title="Сменить тему"
-          style={{ width: 30, height: 26, fontSize: 14 }}
-        >
-          {theme === 'dark' ? '☾' : '☀'}
+        <button className="ib no-drag" onClick={toggleTheme} title="Сменить тему" style={{ width: 30, height: 26 }}>
+          {theme === 'dark' ? <Moon size={15} /> : <Sun size={15} />}
         </button>
-        <button className="ib no-drag" onClick={() => bridge?.minimize()} title="Свернуть" style={{ width: 34, height: 26 }}>–</button>
-        <button className="ib no-drag" onClick={() => bridge?.maximize()} title="Развернуть" style={{ width: 34, height: 26, fontSize: 11 }}>▢</button>
+        <button className="ib no-drag" onClick={() => bridge?.minimize()} title="Свернуть" style={{ width: 34, height: 26 }}><Minus size={16} /></button>
+        <button className="ib no-drag" onClick={() => bridge?.maximize()} title="Развернуть" style={{ width: 34, height: 26 }}><Square size={13} /></button>
         <button
           className="no-drag"
           onClick={() => bridge?.close()}
           title="Закрыть"
-          style={{
-            width: 34, height: 26, border: 'none', background: 'transparent', color: 'var(--text-2)',
-            borderRadius: 7, cursor: 'pointer', fontSize: 13,
-          }}
+          style={{ width: 34, height: 26, border: 'none', background: 'transparent', color: 'var(--text-2)', borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff' }}
           onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)' }}
-        >✕</button>
+        ><X size={16} /></button>
       </div>
     </div>
   )

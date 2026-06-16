@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Eye, EyeOff, AlertTriangle, Check } from 'lucide-react'
 import { useAuth } from '@/store/auth'
 import { api } from '@/lib/api'
 import { HttpError } from '@/lib/http'
@@ -95,7 +96,7 @@ export function AuthScreen() {
             <label style={lbl}>Имя пользователя или e-mail</label>
             <div className="field" style={fieldS}><span style={{ color: 'var(--text-3)' }}>@</span><input value={loginField} onChange={(e) => setLoginField(e.target.value)} placeholder="you@chazhland · или ник" autoFocus /></div>
             <label style={lbl}>Пароль</label>
-            <div className="field" style={fieldS}><input type={showPw ? 'text' : 'password'} value={pw} onChange={(e) => setPw(e.target.value)} placeholder="••••••••" /><span onClick={() => setShowPw((v) => !v)} style={eye}>{showPw ? '🙈' : '👁'}</span></div>
+            <div className="field" style={fieldS}><input type={showPw ? 'text' : 'password'} value={pw} onChange={(e) => setPw(e.target.value)} placeholder="••••••••" /><span onClick={() => setShowPw((v) => !v)} style={eye}>{showPw ? <EyeOff size={16} /> : <Eye size={16} />}</span></div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '6px 0 14px' }}>
               <span onClick={() => go('reset')} style={link}>Забыли пароль?</span>
             </div>
@@ -122,7 +123,7 @@ export function AuthScreen() {
             <div className="field" style={fieldS}><input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ваш ник" /></div>
             <div style={{ fontSize: 11.5, color: 'var(--text-3)', margin: '-4px 0 9px 2px' }}>2–32 символа</div>
             <label style={lbl}>Пароль</label>
-            <div className="field" style={fieldS}><input type={showPw ? 'text' : 'password'} value={pw} onChange={(e) => setPw(e.target.value)} placeholder="••••••••" /><span onClick={() => setShowPw((v) => !v)} style={eye}>{showPw ? '🙈' : '👁'}</span></div>
+            <div className="field" style={fieldS}><input type={showPw ? 'text' : 'password'} value={pw} onChange={(e) => setPw(e.target.value)} placeholder="••••••••" /><span onClick={() => setShowPw((v) => !v)} style={eye}>{showPw ? <EyeOff size={16} /> : <Eye size={16} />}</span></div>
             <Strength pw={pw} />
             {info && <InfoBox text={info} />}
             {error && <ErrorBox text={error} />}
@@ -144,7 +145,7 @@ export function AuthScreen() {
             <label style={lbl}>Код из письма</label>
             <div className="field" style={{ ...fieldS, fontFamily: 'ui-monospace,monospace' }}><input value={zCode} onChange={(e) => setZCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" inputMode="numeric" style={{ letterSpacing: '.3em' }} /></div>
             <label style={lbl}>Новый пароль</label>
-            <div className="field" style={fieldS}><input type={showPw ? 'text' : 'password'} value={zPw} onChange={(e) => setZPw(e.target.value)} placeholder="••••••••" /><span onClick={() => setShowPw((v) => !v)} style={eye}>{showPw ? '🙈' : '👁'}</span></div>
+            <div className="field" style={fieldS}><input type={showPw ? 'text' : 'password'} value={zPw} onChange={(e) => setZPw(e.target.value)} placeholder="••••••••" /><span onClick={() => setShowPw((v) => !v)} style={eye}>{showPw ? <EyeOff size={16} /> : <Eye size={16} />}</span></div>
             <Strength pw={zPw} />
             {info && <InfoBox text={info} />}
             {error && <ErrorBox text={error} />}
@@ -163,7 +164,7 @@ const lbl: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, color: 'var(
 const fieldS: React.CSSProperties = { padding: '12px 14px', margin: '7px 0 12px' }
 const btn: React.CSSProperties = { width: '100%', borderRadius: 13, padding: 14, fontWeight: 700, fontSize: 15, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, boxShadow: '0 8px 20px var(--accent-tint)' }
 const link: React.CSSProperties = { fontSize: 13, color: 'var(--accent)', fontWeight: 600, cursor: 'pointer' }
-const eye: React.CSSProperties = { cursor: 'pointer' }
+const eye: React.CSSProperties = { cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-3)' }
 
 function Blob({ style }: { style: React.CSSProperties }) {
   return <div style={{ position: 'absolute', width: 230, height: 230, borderRadius: '50%', pointerEvents: 'none', ...style }} />
@@ -194,10 +195,10 @@ function Strength({ pw }: { pw: string }) {
   )
 }
 function ErrorBox({ text }: { text: string }) {
-  return <div style={{ display: 'flex', gap: 10, background: 'var(--danger-tint)', border: '1px solid rgba(224,57,47,.35)', borderRadius: 12, padding: '11px 13px', marginBottom: 14, fontSize: 13, color: 'var(--danger)', fontWeight: 500 }}>⚠ {text}</div>
+  return <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, background: 'var(--danger-tint)', border: '1px solid rgba(224,57,47,.35)', borderRadius: 12, padding: '11px 13px', marginBottom: 14, fontSize: 13, color: 'var(--danger)', fontWeight: 500 }}><AlertTriangle size={16} style={{ flexShrink: 0, marginTop: 1 }} />{text}</div>
 }
 function InfoBox({ text }: { text: string }) {
-  return <div style={{ display: 'flex', gap: 10, background: 'var(--green-tint)', border: '1px solid rgba(47,170,106,.35)', borderRadius: 12, padding: '11px 13px', marginBottom: 14, fontSize: 13, color: 'var(--green)', fontWeight: 500 }}>✓ {text}</div>
+  return <div style={{ display: 'flex', alignItems: 'flex-start', gap: 9, background: 'var(--green-tint)', border: '1px solid rgba(47,170,106,.35)', borderRadius: 12, padding: '11px 13px', marginBottom: 14, fontSize: 13, color: 'var(--green)', fontWeight: 500 }}><Check size={16} style={{ flexShrink: 0, marginTop: 1 }} />{text}</div>
 }
 function Spinner() {
   return <span style={{ width: 16, height: 16, border: '2.5px solid rgba(255,255,255,.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />

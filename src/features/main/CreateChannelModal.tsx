@@ -1,12 +1,13 @@
 import { useState } from 'react'
+import { Hash, Volume2, Play } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { toast } from '@/lib/toast'
 import type { ChannelType } from '@/lib/types'
 
-const TYPES: { type: ChannelType; icon: string; label: string; desc: string }[] = [
-  { type: 'TEXT', icon: '#', label: 'Текстовый', desc: 'переписка' },
-  { type: 'VOICE', icon: '🔊', label: 'Голосовой', desc: 'звонок + экран' },
-  { type: 'WATCH', icon: '▶', label: 'Кинозал', desc: 'совместный просмотр' },
+const TYPES: { type: ChannelType; icon: React.ReactNode; label: string; desc: string }[] = [
+  { type: 'TEXT', icon: <Hash size={18} />, label: 'Текстовый', desc: 'переписка' },
+  { type: 'VOICE', icon: <Volume2 size={18} />, label: 'Голосовой', desc: 'звонок + экран' },
+  { type: 'WATCH', icon: <Play size={18} />, label: 'Кинозал', desc: 'совместный просмотр' },
 ]
 
 export function CreateChannelModal({ onCreate, onClose }: {
@@ -30,7 +31,7 @@ export function CreateChannelModal({ onCreate, onClose }: {
       <div style={{ display: 'flex', gap: 8, margin: '8px 0 16px' }}>
         {TYPES.map((t) => (
           <button key={t.type} onClick={() => setType(t.type)} className="no-drag" style={{ flex: 1, textAlign: 'left', border: `1.5px solid ${type === t.type ? 'var(--accent)' : 'var(--border)'}`, background: type === t.type ? 'var(--accent-tint)' : 'var(--surface)', borderRadius: 12, padding: '10px 12px', cursor: 'pointer', color: type === t.type ? 'var(--accent)' : 'var(--text)' }}>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{t.icon}</div>
+            <div style={{ display: 'flex' }}>{t.icon}</div>
             <div style={{ fontWeight: 700, fontSize: 13, marginTop: 4 }}>{t.label}</div>
             <div style={{ fontSize: 11, color: 'var(--text-3)' }}>{t.desc}</div>
           </button>

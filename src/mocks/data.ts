@@ -1,5 +1,5 @@
 import type {
-  AuditEntry, Category, Channel, Invite, Member, Message, ReadState, User,
+  AuditEntry, Category, Channel, Member, Message, ReadState, User,
 } from '@/lib/types'
 
 export const MOCK_USER: User = { id: 'u_me', username: 'я_дизайнер', avatarUrl: null }
@@ -57,13 +57,6 @@ export const MOCK_MESSAGES: Record<string, Message[]> = {
 export const MOCK_READ_STATES: ReadState[] = [
   { channelId: 'ch_general', lastReadMessageId: '01HX0002', mentionCount: 1 },
   { channelId: 'ch_design', lastReadMessageId: null, mentionCount: 0 },
-]
-
-export const MOCK_INVITES: Invite[] = [
-  { id: 'i1', maxUses: 10, uses: 3, expiresAt: '2026-06-30', revoked: false, createdBy: 'Аня', createdAt: '2026-06-14' },
-  { id: 'i2', maxUses: null, uses: 5, expiresAt: null, revoked: false, createdBy: 'Марк', createdAt: '2026-06-10' },
-  { id: 'i3', maxUses: 10, uses: 10, expiresAt: null, revoked: false, createdBy: 'Аня', createdAt: '2026-06-01' },
-  { id: 'i4', maxUses: 5, uses: 0, expiresAt: '2026-05-28', revoked: false, createdBy: 'Марк', createdAt: '2026-05-20' },
 ]
 
 export const MOCK_AUDIT: AuditEntry[] = [

@@ -1,4 +1,5 @@
 import { Fragment, useState } from 'react'
+import { Reply, SmilePlus, Pencil, Trash2, Ban, Download } from 'lucide-react'
 import { Avatar } from '@/components/Avatar'
 import type { Message as Msg } from '@/lib/types'
 
@@ -57,7 +58,7 @@ export function Message({ m, meId, meName, canModerate, onReact, onReply, onEdit
   if (m.deleted) {
     return (
       <div style={{ display: 'flex', gap: 13, padding: '7px 8px', alignItems: 'center', color: 'var(--text-3)', fontStyle: 'italic', fontSize: 13 }}>
-        <span style={{ width: 42, textAlign: 'center' }}>⊘</span>Сообщение удалено
+        <span style={{ width: 42, display: 'flex', justifyContent: 'center' }}><Ban size={15} /></span>Сообщение удалено
       </div>
     )
   }
@@ -80,10 +81,10 @@ export function Message({ m, meId, meName, canModerate, onReact, onReply, onEdit
 
       {hover && !editing && (
         <div style={{ position: 'absolute', top: -12, right: 10, display: 'flex', gap: 2, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 9, padding: 3, boxShadow: '0 6px 18px -8px var(--shadow)', zIndex: 2 }}>
-          <ToolBtn title="Ответить" onClick={() => onReply?.(m)}>↩</ToolBtn>
-          <ToolBtn title="Реакция" onClick={() => onReact?.('👍')}>＋</ToolBtn>
-          {isOwn && <ToolBtn title="Изменить" onClick={startEdit}>✎</ToolBtn>}
-          {canDelete && <ToolBtn title="Удалить" danger onClick={() => onDelete?.(m.id)}>🗑</ToolBtn>}
+          <ToolBtn title="Ответить" onClick={() => onReply?.(m)}><Reply size={15} /></ToolBtn>
+          <ToolBtn title="Реакция" onClick={() => onReact?.('👍')}><SmilePlus size={15} /></ToolBtn>
+          {isOwn && <ToolBtn title="Изменить" onClick={startEdit}><Pencil size={14} /></ToolBtn>}
+          {canDelete && <ToolBtn title="Удалить" danger onClick={() => onDelete?.(m.id)}><Trash2 size={14} /></ToolBtn>}
         </div>
       )}
 
@@ -129,7 +130,7 @@ export function Message({ m, meId, meName, canModerate, onReact, onReply, onEdit
 
         {m.attachments.map((a, i) => (
           <div key={i} style={{ marginTop: 9, width: 330, maxWidth: '100%', height: 184, borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border)', position: 'relative', background: 'linear-gradient(135deg,#fbe3ee,#e7ecff)' }}>
-            <button className="ib no-drag" style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, background: 'rgba(0,0,0,.5)', color: '#fff' }} title="Скачать">⤓</button>
+            <button className="ib no-drag" style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, background: 'rgba(0,0,0,.5)', color: '#fff' }} title="Скачать"><Download size={15} /></button>
             <div style={{ position: 'absolute', left: 14, bottom: 12, background: 'rgba(0,0,0,.55)', color: '#fff', fontSize: 11, fontWeight: 600, borderRadius: 7, padding: '3px 9px' }}>
               {a.width && a.height ? `${a.width} × ${a.height}` : a.contentType}
             </div>
@@ -141,7 +142,7 @@ export function Message({ m, meId, meName, canModerate, onReact, onReply, onEdit
             {m.reactions.map((r) => (
               <div key={r.emoji} onClick={() => onReact?.(r.emoji)} className={'reaction' + (r.mine ? ' mine' : '')} style={{ padding: '3px 11px', fontSize: 13, fontWeight: 600, color: r.mine ? undefined : 'var(--text-2)' }}>{r.emoji} {r.count}</div>
             ))}
-            <div className="reaction" onClick={() => onReact?.('👍')} style={{ justifyContent: 'center', width: 30, height: 26, color: 'var(--text-3)' }} title="Добавить реакцию">＋</div>
+            <div className="reaction" onClick={() => onReact?.('👍')} style={{ justifyContent: 'center', width: 30, height: 26, color: 'var(--text-3)' }} title="Добавить реакцию"><SmilePlus size={15} /></div>
           </div>
         )}
       </div>

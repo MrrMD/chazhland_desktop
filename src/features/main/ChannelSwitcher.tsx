@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react'
+import { Search, X, Hash, Volume2, Play, Plus } from 'lucide-react'
 import type { Channel, ChannelType, ReadState } from '@/lib/types'
 import { CreateChannelModal } from './CreateChannelModal'
 import { MOCK } from '@/lib/config'
 
-const TYPE_ICON: Record<string, string> = { TEXT: '#', VOICE: '🔊', WATCH: '▶' }
+const TYPE_ICON: Record<string, React.ReactNode> = { TEXT: <Hash size={18} />, VOICE: <Volume2 size={17} />, WATCH: <Play size={17} /> }
 // Демо-индикатор «в эфире» — только в mock: у реальных каналов backend-id, а живых счётчиков
 // по каналам бэк сюда пока не отдаёт (показывать выдуманные числа в проде нельзя).
 const VOICE_LIVE: Record<string, number> = MOCK ? { ch_call: 3, ch_cs: 2 } : {}
@@ -30,11 +31,11 @@ export function ChannelSwitcher({
         <div style={{ padding: '18px 22px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 14, flex: 'none' }}>
           <span style={{ fontWeight: 800, fontSize: 19, whiteSpace: 'nowrap' }}>Сменить канал</span>
           <div className="field" style={{ flex: 1, maxWidth: 360, margin: '0 auto', border: '1px solid var(--border)', borderRadius: 12, background: 'var(--surface)', padding: '9px 14px' }}>
-            <span style={{ color: 'var(--text-3)' }}>🔍</span>
+            <span style={{ color: 'var(--text-3)', display: 'flex' }}><Search size={15} /></span>
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Поиск канала…" autoFocus />
             <span style={{ fontSize: 11, fontWeight: 600, border: '1px solid var(--border)', borderRadius: 6, padding: '1px 6px', color: 'var(--text-3)' }}>⌘K</span>
           </div>
-          <button className="ib no-drag" onClick={onClose} style={{ background: 'var(--surface-2)', width: 34, height: 34, fontSize: 15 }}>✕</button>
+          <button className="ib no-drag" onClick={onClose} style={{ background: 'var(--surface-2)', width: 34, height: 34 }}><X size={15} /></button>
         </div>
 
         <div style={{ overflow: 'auto', padding: '20px 22px 24px' }}>
@@ -47,7 +48,7 @@ export function ChannelSwitcher({
           <Section title="КИНОТЕАТР" last>
             {byType('WATCH').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} onPick={onPick} />)}
             <div className="tile" onClick={() => setCreateOpen(true)} style={{ border: '1.5px dashed var(--border-2)', borderRadius: 16, padding: 15, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', minHeight: 96 }}>
-              <div style={{ fontSize: 22 }}>＋</div>
+              <Plus size={22} />
               <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 5 }}>создать канал</div>
             </div>
           </Section>

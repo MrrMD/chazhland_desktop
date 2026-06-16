@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { LayoutGrid, Settings, Check, Mic, MicOff, Shield, LogOut, Volume2, Headphones, MonitorUp, PhoneOff } from 'lucide-react'
 import { Avatar, presenceColor } from '@/components/Avatar'
 import type { Presence, User } from '@/lib/types'
 
@@ -34,16 +35,16 @@ export function BottomBar(p: Props) {
       {/* left */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, justifySelf: 'start', position: 'relative' }}>
         <button className="pill no-drag" onClick={p.onOpenChannels} style={{ padding: '10px 15px', fontWeight: 600, fontSize: 13.5, position: 'relative' }}>
-          <span style={{ fontSize: 15 }}>⊞</span> Сменить канал
+          <LayoutGrid size={16} /> Сменить канал
           {p.unreadTotal > 0 && <span style={{ position: 'absolute', top: -7, right: -7, background: 'var(--danger)', color: '#fff', borderRadius: 30, fontSize: 10, fontWeight: 700, padding: '1px 6px', border: '2px solid var(--surface)' }}>{p.unreadTotal}</span>}
         </button>
-        <button className="pill no-drag" onClick={() => setMenuOpen((v) => !v)} title="Настройки" style={{ width: 46, height: 46, justifyContent: 'center', fontSize: 17, color: 'var(--text-2)' }}>⚙</button>
+        <button className="pill no-drag" onClick={() => setMenuOpen((v) => !v)} title="Настройки" style={{ width: 46, height: 46, justifyContent: 'center', color: 'var(--text-2)' }}><Settings size={18} /></button>
         {menuOpen && (
           <Popover onClose={() => setMenuOpen(false)} style={{ left: 0 }}>
-            <MenuItem label="Прочитать всё" icon="✔" onClick={() => { setMenuOpen(false); p.onAckAll() }} />
-            <MenuItem label="Настройки голоса" icon="🎙" onClick={() => { setMenuOpen(false); p.onOpenVoiceSettings() }} />
-            <MenuItem label="Админ-панель" icon="🛡" onClick={() => { setMenuOpen(false); p.onOpenAdmin() }} />
-            <MenuItem label="Выйти" icon="⎋" danger onClick={() => { setMenuOpen(false); p.onLogout() }} />
+            <MenuItem label="Прочитать всё" icon={<Check size={15} />} onClick={() => { setMenuOpen(false); p.onAckAll() }} />
+            <MenuItem label="Настройки голоса" icon={<Mic size={15} />} onClick={() => { setMenuOpen(false); p.onOpenVoiceSettings() }} />
+            <MenuItem label="Админ-панель" icon={<Shield size={15} />} onClick={() => { setMenuOpen(false); p.onOpenAdmin() }} />
+            <MenuItem label="Выйти" icon={<LogOut size={15} />} danger onClick={() => { setMenuOpen(false); p.onLogout() }} />
           </Popover>
         )}
       </div>
@@ -73,13 +74,13 @@ export function BottomBar(p: Props) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, justifySelf: 'end' }}>
         {p.voiceChannelName ? (
           <>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--green)', fontSize: 13, fontWeight: 600, padding: '0 6px' }}>🔊 {p.voiceChannelName}</span>
-            <VBtn active={p.muted} onClick={p.onMute} title={p.muted ? 'Включить микрофон' : 'Выключить микрофон'}>{p.muted ? '🔇' : '🎤'}</VBtn>
-            <VBtn active={p.deafened} onClick={p.onDeaf} title="Наушники">🎧</VBtn>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--green)', fontSize: 13, fontWeight: 600, padding: '0 6px' }}><Volume2 size={15} /> {p.voiceChannelName}</span>
+            <VBtn active={p.muted} onClick={p.onMute} title={p.muted ? 'Включить микрофон' : 'Выключить микрофон'}>{p.muted ? <MicOff size={18} /> : <Mic size={18} />}</VBtn>
+            <VBtn active={p.deafened} onClick={p.onDeaf} title="Наушники"><Headphones size={18} /></VBtn>
             <button onClick={p.onGoLive} className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 9, border: `1px solid ${p.streamOn ? 'var(--accent)' : 'var(--border)'}`, background: p.streamOn ? 'var(--accent-tint)' : 'var(--win)', color: p.streamOn ? 'var(--accent)' : 'var(--text-2)', borderRadius: 13, padding: '0 16px', height: 46, fontWeight: 600, fontSize: 13.5, cursor: 'pointer' }}>
-              <span style={{ fontSize: 15 }}>🖥</span> Демонстрация
+              <MonitorUp size={16} /> Демонстрация
             </button>
-            <button onClick={p.onLeaveVoice} className="danger-btn no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 13, padding: '0 17px', height: 46, fontWeight: 700, fontSize: 13.5, boxShadow: '0 4px 12px rgba(224,57,47,.25)' }}>📞 Выйти</button>
+            <button onClick={p.onLeaveVoice} className="danger-btn no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 13, padding: '0 17px', height: 46, fontWeight: 700, fontSize: 13.5, boxShadow: '0 4px 12px rgba(224,57,47,.25)' }}><PhoneOff size={16} /> Выйти</button>
           </>
         ) : (
           <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>не в звонке</span>
@@ -106,11 +107,11 @@ function Popover({ children, style, onClose }: { children: React.ReactNode; styl
   )
 }
 
-function MenuItem({ label, icon, dot, danger, active, onClick }: { label: string; icon?: string; dot?: string; danger?: boolean; active?: boolean; onClick: () => void }) {
+function MenuItem({ label, icon, dot, danger, active, onClick }: { label: string; icon?: React.ReactNode; dot?: string; danger?: boolean; active?: boolean; onClick: () => void }) {
   return (
     <button onClick={onClick} className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', border: 'none', background: active ? 'var(--surface-2)' : 'transparent', color: danger ? 'var(--danger)' : 'var(--text)', borderRadius: 8, padding: '9px 11px', cursor: 'pointer', fontSize: 13.5, fontWeight: 500 }}>
       {dot && <span style={{ width: 10, height: 10, borderRadius: '50%', background: dot }} />}
-      {icon && <span style={{ fontSize: 15 }}>{icon}</span>}
+      {icon && <span style={{ display: 'flex' }}>{icon}</span>}
       {label}
     </button>
   )

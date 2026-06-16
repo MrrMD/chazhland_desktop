@@ -14,8 +14,9 @@ import { ScreenSharePane } from './ScreenSharePane'
 import { VoiceSettingsModal } from './VoiceSettingsModal'
 import { AdminScreen } from '@/features/admin/AdminScreen'
 import { ws } from '@/lib/ws'
+import { Search, Pin, Bell, Users, Hash, Volume2, Play } from 'lucide-react'
 
-const TYPE_ICON: Record<ChannelType, string> = { TEXT: '#', VOICE: '🔊', WATCH: '▶' }
+const TYPE_ICON: Record<ChannelType, React.ReactNode> = { TEXT: <Hash size={18} />, VOICE: <Volume2 size={18} />, WATCH: <Play size={18} /> }
 
 export function MainWindow() {
   const { session, logout } = useAuth()
@@ -181,7 +182,7 @@ export function MainWindow() {
           {/* header */}
           <div style={{ height: 62, flex: 'none', display: 'flex', alignItems: 'center', gap: 13, padding: '0 22px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--accent-tint)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, flex: 'none' }}>
-              {channel ? TYPE_ICON[channel.type] : '#'}
+              {channel ? TYPE_ICON[channel.type] : <Hash size={18} />}
             </div>
             <div style={{ lineHeight: 1.25, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{channel?.name ?? '—'}</div>
@@ -193,10 +194,10 @@ export function MainWindow() {
               </div>
             )}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button className="ib no-drag" style={{ width: 38, height: 38, fontSize: 16 }} title="Поиск">🔍</button>
-              <button className="ib no-drag" style={{ width: 38, height: 38, fontSize: 16 }} title="Закреплённые">📌</button>
-              <button className="ib no-drag" style={{ width: 38, height: 38, fontSize: 16 }} title="Уведомления">🔔</button>
-              <button className="ib no-drag" onClick={() => setMembersExpanded((v) => !v)} style={{ width: 38, height: 38, fontSize: 16, background: 'var(--accent-tint)', color: 'var(--accent)' }} title="Участники">👥</button>
+              <button className="ib no-drag" style={{ width: 38, height: 38 }} title="Поиск"><Search size={16} /></button>
+              <button className="ib no-drag" style={{ width: 38, height: 38 }} title="Закреплённые"><Pin size={16} /></button>
+              <button className="ib no-drag" style={{ width: 38, height: 38 }} title="Уведомления"><Bell size={16} /></button>
+              <button className="ib no-drag" onClick={() => setMembersExpanded((v) => !v)} style={{ width: 38, height: 38, background: 'var(--accent-tint)', color: 'var(--accent)' }} title="Участники"><Users size={16} /></button>
             </div>
           </div>
 

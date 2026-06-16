@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Film, Link2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { ws } from '@/lib/ws'
 import { toast } from '@/lib/toast'
@@ -87,7 +88,7 @@ export function WatchView({ channelId }: { channelId: string }) {
         />
         {!state?.url && (
           <div style={{ textAlign: 'center', color: '#8a847a' }}>
-            <div style={{ fontSize: 40, marginBottom: 10 }}>🎬</div>
+            <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center' }}><Film size={40} /></div>
             <div style={{ fontWeight: 700, fontSize: 17, color: '#e9e3d8' }}>Кинозал пуст</div>
             <div style={{ fontSize: 13, marginTop: 4 }}>Вставьте ссылку на видео ниже — все увидят синхронно</div>
           </div>
@@ -101,7 +102,7 @@ export function WatchView({ channelId }: { channelId: string }) {
       </div>
       <div style={{ flex: 'none', display: 'flex', gap: 10, padding: '12px 16px', borderTop: '1px solid var(--border)', alignItems: 'center' }}>
         <div className="field" style={{ flex: 1, padding: '10px 14px' }}>
-          <span style={{ color: 'var(--text-3)' }}>🔗</span>
+          <span style={{ color: 'var(--text-3)', display: 'flex' }}><Link2 size={15} /></span>
           <input value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="https://… (mp4/webm)" onKeyDown={(e) => { if (e.key === 'Enter') loadUrl() }} />
         </div>
         <button className="accent-btn no-drag" onClick={loadUrl} style={{ borderRadius: 12, padding: '10px 18px', fontWeight: 700 }}>Загрузить</button>

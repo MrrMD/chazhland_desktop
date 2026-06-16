@@ -76,18 +76,6 @@ export interface ReadState {
   mentionCount: number
 }
 
-export type InviteStatus = 'active' | 'exhausted' | 'expired' | 'revoked'
-export interface Invite {
-  id: string
-  code?: string // приходит ТОЛЬКО при создании
-  maxUses: number | null
-  uses: number
-  expiresAt: string | null
-  revoked: boolean
-  createdBy: string
-  createdAt: string
-}
-
 export interface AuditEntry {
   id: string
   action: string // member.kick | member.role-change | invite.create | invite.revoke | ...
