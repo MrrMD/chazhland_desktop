@@ -1,10 +1,10 @@
 import { MOCK } from './config'
 import { http, delay, setTokens } from './http'
 import type {
-  AuditEntry, Channel, ChannelType, Category, Invite, Member, Message, Presence, ReadState, Role, TokenResponse, User, WatchState,
+  AuditEntry, Channel, ChannelType, Category, Member, Message, Presence, ReadState, Role, TokenResponse, User, WatchState,
 } from './types'
 import {
-  MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_INVITES, MOCK_MEMBERS,
+  MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_MEMBERS,
   MOCK_MESSAGES, MOCK_READ_STATES, MOCK_USER,
 } from '@/mocks/data'
 
@@ -24,7 +24,6 @@ interface MessageDto {
   createdAt: string; editedAt: string | null; deleted: boolean
   attachments: AttachmentDto[]; reactions: ReactionGroupDto[]
 }
-interface InviteDto { id: string; expiresAt: string | null; maxUses: number | null; uses: number; revoked: boolean; createdBy: string; createdAt: string }
 interface AuditDto { id: string; actorId: string; action: string; targetType: string | null; targetId: string | null; metadata: unknown; createdAt: string }
 
 // ---- кэш для резолва авторов сообщений/аудита ----
@@ -78,11 +77,27 @@ export const api = {
     return { token, user: await this.me(token.accessToken) }
   },
 
-  async register(p: { inviteCode: string; username: string; email: string; password: string }): Promise<AuthResult> {
+  // Шаг 1 регистрации: код на e-mail (открытая регистрация, без инвайтов)
+  async requestEmailCode(email: string): Promise<void> {
+    if (MOCK) { await delay(300); return }
+    await http('/auth/email-code', { method: 'POST', body: JSON.stringify({ email }) })
+  },
+  // Шаг 2: e-mail + 6-значный код + ник + пароль
+  async register(p: { email: string; code: string; username: string; password: string }): Promise<AuthResult> {
     if (MOCK) { await delay(550); return { token: MOCK_TOKEN, user: { ...MOCK_USER, username: p.username } } }
     const token = await http<TokenResponse>('/auth/register', { method: 'POST', body: JSON.stringify(p) })
-    setTokens(token.accessToken, token.refreshToken) // иначе следующий /users/me уйдёт без Authorization → 401
-    return { token, user: await this.me(token.accessToken) }
+    setTokens(token.accessToken, token.refreshToken)
+    return { token, user: await this.me() }
+  },
+
+  // Сброс пароля по коду на e-mail
+  async requestPasswordReset(email: string): Promise<void> {
+    if (MOCK) { await delay(300); return }
+    await http('/auth/password-reset/request', { method: 'POST', body: JSON.stringify({ email }) })
+  },
+  async confirmPasswordReset(p: { email: string; code: string; newPassword: string }): Promise<void> {
+    if (MOCK) { await delay(300); return }
+    await http('/auth/password-reset/confirm', { method: 'POST', body: JSON.stringify(p) })
   },
 
   async me(_pendingAccess?: string): Promise<User> {
@@ -155,13 +170,6 @@ export const api = {
     return http<ReadState[]>('/read-states/ack-all', { method: 'POST' })
   },
 
-  async invites(): Promise<Invite[]> {
-    if (MOCK) { await delay(150); return MOCK_INVITES }
-    const list = await http<InviteDto[]>('/invites')
-    if (memberMap.size === 0) await this.members()
-    return list.map((i) => ({ id: i.id, maxUses: i.maxUses, uses: i.uses, expiresAt: i.expiresAt, revoked: i.revoked, createdBy: resolveName(i.createdBy), createdAt: i.createdAt }))
-  },
-
   async audit(): Promise<AuditEntry[]> {
     if (MOCK) { await delay(150); return MOCK_AUDIT }
     const list = await http<AuditDto[]>('/admin/audit')
@@ -193,18 +201,6 @@ export const api = {
   async changeRole(userId: string, role: Role): Promise<void> {
     if (MOCK) return
     await http(`/members/${userId}`, { method: 'PATCH', body: JSON.stringify({ role }) })
-  },
-  async createInvite(p: { maxUses: number | null; expiresAt: string | null }): Promise<{ code: string; maxUses: number | null; expiresAt: string | null }> {
-    if (MOCK) {
-      await delay(200)
-      const rnd = () => Math.random().toString(36).slice(2, 6).toUpperCase()
-      return { code: `CHZ-${rnd()}-${rnd()}`, maxUses: p.maxUses, expiresAt: p.expiresAt }
-    }
-    return http(`/invites`, { method: 'POST', body: JSON.stringify(p) })
-  },
-  async revokeInvite(id: string): Promise<void> {
-    if (MOCK) return
-    await http(`/invites/${id}`, { method: 'DELETE' })
   },
 
   // ---- voice (LiveKit) ----

@@ -11,7 +11,7 @@ interface AuthCtx {
   session: Session | null
   loading: boolean
   login: (login: string, password: string) => Promise<void>
-  register: (p: { inviteCode: string; username: string; email: string; password: string }) => Promise<void>
+  register: (p: { email: string; code: string; username: string; password: string }) => Promise<void>
   logout: () => void
 }
 

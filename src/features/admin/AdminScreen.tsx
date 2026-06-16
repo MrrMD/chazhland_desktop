@@ -1,10 +1,10 @@
 import { Fragment, useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import { Avatar, presenceColor } from '@/components/Avatar'
-import { ConfirmModal, ChangeRoleModal, CreateInviteModal } from './modals'
-import type { AuditEntry, Invite, Member } from '@/lib/types'
+import { ConfirmModal, ChangeRoleModal } from './modals'
+import type { AuditEntry, Member } from '@/lib/types'
 
-type Tab = 'members' | 'invites' | 'audit'
+type Tab = 'members' | 'audit'
 
 export function AdminScreen({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('members')
@@ -14,16 +14,15 @@ export function AdminScreen({ onClose }: { onClose: () => void }) {
         <button className="ib no-drag" onClick={onClose} title="Назад" style={{ width: 34, height: 30, fontSize: 16 }}>‹</button>
         <span style={{ fontWeight: 800, fontSize: 17 }}>Админка</span>
         <div style={{ marginLeft: 'auto', display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 11, padding: 3 }}>
-          {(['members', 'invites', 'audit'] as Tab[]).map((t) => (
+          {(['members', 'audit'] as Tab[]).map((t) => (
             <button key={t} className={'seg-btn no-drag' + (tab === t ? ' on' : '')} onClick={() => setTab(t)} style={{ fontSize: 13, padding: '6px 13px' }}>
-              {t === 'members' ? 'Участники' : t === 'invites' ? 'Инвайты' : 'Аудит'}
+              {t === 'members' ? 'Участники' : 'Аудит'}
             </button>
           ))}
         </div>
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: '26px 30px' }}>
         {tab === 'members' && <MembersTab />}
-        {tab === 'invites' && <InvitesTab />}
         {tab === 'audit' && <AuditTab />}
       </div>
     </div>
@@ -82,54 +81,6 @@ function MembersTab() {
   )
 }
 
-function inviteStatus(i: Invite): { label: string; bg: string; color: string } {
-  if (i.revoked) return { label: 'Отозван', bg: 'var(--surface-2)', color: 'var(--text-3)' }
-  if (i.maxUses != null && i.uses >= i.maxUses) return { label: 'Исчерпан', bg: 'var(--surface-2)', color: 'var(--text-3)' }
-  if (i.expiresAt && new Date(i.expiresAt).getTime() < Date.now()) return { label: 'Просрочен', bg: 'var(--warn-tint)', color: 'var(--warn)' }
-  return { label: 'Активен', bg: 'var(--green-tint)', color: 'var(--green)' }
-}
-
-function InvitesTab() {
-  const [rows, setRows] = useState<Invite[] | null>(null)
-  const [createOpen, setCreateOpen] = useState(false)
-  const [revokeT, setRevokeT] = useState<Invite | null>(null)
-  useEffect(() => { let a = true; api.invites().then((r) => { if (a) setRows(r) }); return () => { a = false } }, [])
-  if (!rows) return <Loading />
-  const cols = '1.4fr 1fr 1fr 1fr .9fr auto'
-  return (
-    <div style={{ animation: 'fadeIn .35s ease' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
-        <div style={{ fontWeight: 800, fontSize: 24, letterSpacing: '-.02em' }}>Приглашения</div>
-        <button onClick={() => setCreateOpen(true)} className="accent-btn no-drag" style={{ marginLeft: 'auto', borderRadius: 12, padding: '10px 18px', fontWeight: 700, fontSize: 13.5, boxShadow: '0 8px 20px var(--accent-tint)' }}>＋ Создать приглашение</button>
-      </div>
-      <div style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 18 }}>Сам код виден только в момент создания</div>
-      {createOpen && <CreateInviteModal onCreate={(p) => api.createInvite(p)} onClose={() => { setCreateOpen(false); api.invites().then(setRows) }} />}
-      {revokeT && <ConfirmModal title="Отозвать приглашение" message="Код перестанет работать. История приглашений сохранится." confirmLabel="Отозвать" danger onConfirm={() => { const id = revokeT.id; api.revokeInvite(id).then(() => setRows((rs) => (rs ? rs.map((x) => (x.id === id ? { ...x, revoked: true } : x)) : rs))).catch(() => {}); setRevokeT(null) }} onClose={() => setRevokeT(null)} />}
-      <Card>
-        <div style={{ display: 'grid', gridTemplateColumns: cols, gap: 12, padding: '12px 20px', borderBottom: '1px solid var(--border)', fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-3)' }}>
-          <span>СОЗДАЛ</span><span>СОЗДАНО</span><span>ИСПОЛЬЗ.</span><span>ИСТЕКАЕТ</span><span>СТАТУС</span><span></span>
-        </div>
-        {rows.map((i) => {
-          const st = inviteStatus(i)
-          const dead = st.label === 'Исчерпан' || st.label === 'Просрочен' || st.label === 'Отозван'
-          return (
-            <div key={i.id} style={{ display: 'grid', gridTemplateColumns: cols, gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--surface-2)', alignItems: 'center', fontSize: 13, opacity: dead ? 0.55 : 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}><Avatar name={i.createdBy} size={30} />{i.createdBy}</div>
-              <span style={{ color: 'var(--text-2)' }}>{fmtDate(i.createdAt)}</span>
-              <span style={{ background: 'var(--surface-2)', borderRadius: 30, padding: '3px 11px', width: 'fit-content', fontWeight: 600 }}>{i.uses} / {i.maxUses ?? '∞'}</span>
-              <span style={{ color: 'var(--text-2)' }}>{i.expiresAt ? fmtDate(i.expiresAt) : 'бессрочно'}</span>
-              <span style={{ background: st.bg, color: st.color, borderRadius: 30, padding: '3px 11px', width: 'fit-content', fontWeight: 700 }}>{st.label}</span>
-              {dead
-                ? <span style={{ color: 'var(--border-2)' }}>—</span>
-                : <button onClick={() => setRevokeT(i)} className="no-drag" style={{ border: '1px solid rgba(224,57,47,.4)', background: 'var(--surface)', color: 'var(--danger)', borderRadius: 9, padding: '6px 13px', fontWeight: 600, fontSize: 12, cursor: 'pointer' }}>Отозвать</button>}
-            </div>
-          )
-        })}
-      </Card>
-    </div>
-  )
-}
-
 const AUDIT_ICON: Record<string, { ch: string; bg: string; color: string }> = {
   'member.kick': { ch: '⊖', bg: 'var(--danger-tint)', color: 'var(--danger)' },
   'member.role-change': { ch: '⇅', bg: 'var(--blue-tint)', color: 'var(--blue)' },
@@ -165,11 +116,6 @@ function AuditTab() {
       </Card>
     </div>
   )
-}
-
-function fmtDate(s: string): string {
-  const d = new Date(s)
-  return isNaN(d.getTime()) ? s : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })
 }
 
 function Card({ children }: { children: React.ReactNode }) {
