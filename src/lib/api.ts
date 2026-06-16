@@ -155,4 +155,38 @@ export const api = {
       createdAt: fmtDateTime(d.createdAt),
     }))
   },
+
+  // ---- actions ----
+  async addReaction(messageId: string, emoji: string): Promise<void> {
+    if (MOCK) return
+    await http(`/messages/${messageId}/reactions`, { method: 'POST', body: JSON.stringify({ emoji }) })
+  },
+  async removeReaction(messageId: string, emoji: string): Promise<void> {
+    if (MOCK) return
+    await http(`/messages/${messageId}/reactions?emoji=${encodeURIComponent(emoji)}`, { method: 'DELETE' })
+  },
+  async markRead(channelId: string, lastReadMessageId: string): Promise<void> {
+    if (MOCK) return
+    await http(`/channels/${channelId}/read-state`, { method: 'PUT', body: JSON.stringify({ lastReadMessageId }) })
+  },
+  async kick(userId: string): Promise<void> {
+    if (MOCK) return
+    await http(`/members/${userId}`, { method: 'DELETE' })
+  },
+  async changeRole(userId: string, role: Role): Promise<void> {
+    if (MOCK) return
+    await http(`/members/${userId}`, { method: 'PATCH', body: JSON.stringify({ role }) })
+  },
+  async createInvite(p: { maxUses: number | null; expiresAt: string | null }): Promise<{ code: string; maxUses: number | null; expiresAt: string | null }> {
+    if (MOCK) {
+      await delay(200)
+      const rnd = () => Math.random().toString(36).slice(2, 6).toUpperCase()
+      return { code: `CHZ-${rnd()}-${rnd()}`, maxUses: p.maxUses, expiresAt: p.expiresAt }
+    }
+    return http(`/invites`, { method: 'POST', body: JSON.stringify(p) })
+  },
+  async revokeInvite(id: string): Promise<void> {
+    if (MOCK) return
+    await http(`/invites/${id}`, { method: 'DELETE' })
+  },
 }

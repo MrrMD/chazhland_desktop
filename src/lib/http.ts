@@ -3,6 +3,7 @@ import { API_BASE } from './config'
 let accessToken: string | null = null
 let refreshToken: string | null = null
 let onAuthFail: (() => void) | null = null
+let onTokenRefresh: ((access: string) => void) | null = null
 let refreshing: Promise<boolean> | null = null
 
 const LS_REFRESH = 'chazh.refresh'
@@ -13,6 +14,8 @@ export function setTokens(access: string | null, refresh: string | null) {
 }
 export function getAccessToken() { return accessToken }
 export function setOnAuthFail(cb: () => void) { onAuthFail = cb }
+/** Вызывается после ротации access-токена — чтобы переподключить WS с свежим токеном. */
+export function setOnTokenRefresh(cb: (access: string) => void) { onTokenRefresh = cb }
 
 // Ротация refresh-токена. Single-flight: параллельные 401 не дёргают /auth/refresh повторно
 // (иначе reuse-detection погасит все сессии — см. бриф).
@@ -29,6 +32,7 @@ async function doRefresh(): Promise<boolean> {
         accessToken = t.accessToken
         refreshToken = t.refreshToken
         localStorage.setItem(LS_REFRESH, t.refreshToken) // refresh одноразовый — сразу заменяем
+        onTokenRefresh?.(t.accessToken) // WS переподключается с новым токеном
         return true
       })
       .catch(() => false)

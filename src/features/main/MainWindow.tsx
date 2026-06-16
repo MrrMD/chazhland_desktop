@@ -36,7 +36,19 @@ export function MainWindow() {
     api.members().then(setMembers)
     api.readStates().then(setReadStates)
   }, [])
-  useEffect(() => { api.messages(currentId).then(setMessages) }, [currentId])
+  useEffect(() => {
+    let alive = true
+    api.messages(currentId).then((ms) => {
+      if (!alive) return // защита от гонки при быстром переключении каналов
+      setMessages(ms)
+      const last = ms[ms.length - 1]
+      if (last) {
+        api.markRead(currentId, last.id).catch(() => {})
+        setReadStates((rs) => rs.map((r) => (r.channelId === currentId ? { ...r, lastReadMessageId: last.id, mentionCount: 0 } : r)))
+      }
+    })
+    return () => { alive = false }
+  }, [currentId])
 
   // live-сообщения по WS для текущего канала (no-op в mock-режиме)
   useEffect(() => {
@@ -50,6 +62,11 @@ export function MainWindow() {
         if (i >= 0) { const c = ms.slice(); c[i] = m; return c }
         return ms
       })
+      if (e.type === 'MESSAGE_CREATED') {
+        // канал открыт — сразу отмечаем прочитанным, чтобы не копился unread
+        api.markRead(currentId, m.id).catch(() => {})
+        setReadStates((rs) => rs.map((r) => (r.channelId === currentId ? { ...r, lastReadMessageId: m.id, mentionCount: 0 } : r)))
+      }
     })
   }, [currentId])
 
@@ -61,6 +78,31 @@ export function MainWindow() {
 
   function send(text: string) {
     api.sendMessage(currentId, text).then((m) => setMessages((ms) => [...ms, m]))
+  }
+
+  function react(messageId: string, emoji: string) {
+    // намерение считаем из текущего состояния (не из устаревшего пропа) — устойчиво к быстрым кликам
+    const mine = !!messages.find((m) => m.id === messageId)?.reactions.find((r) => r.emoji === emoji)?.mine
+    setMessages((ms) => ms.map((m) => {
+      if (m.id !== messageId) return m
+      const rs = m.reactions.slice()
+      const i = rs.findIndex((r) => r.emoji === emoji)
+      if (mine) {
+        if (i >= 0) { const c = rs[i].count - 1; if (c <= 0) rs.splice(i, 1); else rs[i] = { ...rs[i], count: c, mine: false } }
+      } else if (i >= 0) {
+        rs[i] = { ...rs[i], count: rs[i].count + 1, mine: true }
+      } else {
+        rs.push({ emoji, count: 1, mine: true })
+      }
+      return { ...m, reactions: rs }
+    }))
+    const ch = currentId
+    ;(mine ? api.removeReaction(messageId, emoji) : api.addReaction(messageId, emoji))
+      .catch(() => { api.messages(ch).then(setMessages) }) // откат: перечитываем авторитетное состояние канала
+  }
+
+  function ackAll() {
+    api.ackAll().then(setReadStates).catch(() => {})
   }
 
   return (
@@ -96,7 +138,7 @@ export function MainWindow() {
             {streamOn && <StreamPane full={streamFull} onToggleFull={() => setStream((s) => (s === 'full' ? 'split' : 'full'))} />}
             {!streamFull && (
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
-                <ChatFeed messages={messages} readState={readState} />
+                <ChatFeed messages={messages} readState={readState} onReact={react} />
                 <Composer channelName={channel?.name ?? ''} onSend={send} />
               </div>
             )}
@@ -118,6 +160,7 @@ export function MainWindow() {
         voiceChannelName={voiceChannel}
         onOpenChannels={() => setChannelsOpen(true)}
         unreadTotal={unreadTotal}
+        onAckAll={ackAll}
         onOpenAdmin={() => setView('admin')}
         onLogout={logout}
         onLeaveVoice={() => setVoiceChannel(null)}

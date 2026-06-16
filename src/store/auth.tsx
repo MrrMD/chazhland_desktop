@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { api } from '@/lib/api'
-import { setTokens, setOnAuthFail, getAccessToken } from '@/lib/http'
+import { setTokens, setOnAuthFail, setOnTokenRefresh, getAccessToken } from '@/lib/http'
 import { ws } from '@/lib/ws'
 import type { User } from '@/lib/types'
 
@@ -30,6 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setOnAuthFail(clear) // 401 после неудачного refresh (reuse-detection/кик/смена пароля) → принудительный logout
+    setOnTokenRefresh((access) => ws.connect(access)) // после ротации токена — переподключить WS свежим токеном
     const saved = localStorage.getItem(LS_REFRESH)
     if (!saved) return
     setLoading(true)

@@ -8,11 +8,12 @@ function hhmm(iso: string): string {
 }
 
 const MENTION_RE = /(@everyone|@here|@[A-Za-z0-9_]{3,32})/g
+const IS_MENTION = /^(?:@everyone|@here|@[A-Za-z0-9_]{3,32})$/ // без /g — .test() без stateful lastIndex
 
 function renderContent(text: string) {
   const parts = text.split(MENTION_RE)
   return parts.map((p, i) =>
-    MENTION_RE.test(p) ? (
+    IS_MENTION.test(p) ? (
       <span key={i} style={{ background: 'var(--accent)', color: '#fff', borderRadius: 6, padding: '1px 7px', fontWeight: 600 }}>{p}</span>
     ) : (
       <Fragment key={i}>{p}</Fragment>
@@ -25,7 +26,7 @@ const roleBadge: Record<string, React.CSSProperties> = {
   ADMIN: { background: 'var(--surface-3)', color: 'var(--text-2)' },
 }
 
-export function Message({ m }: { m: Msg }) {
+export function Message({ m, onReact }: { m: Msg; onReact?: (emoji: string) => void }) {
   const mention = !!m.content && /(@everyone|@here|@я_дизайнер)/.test(m.content)
 
   if (m.deleted) {
@@ -76,9 +77,9 @@ export function Message({ m }: { m: Msg }) {
         {m.reactions.length > 0 && (
           <div style={{ marginTop: 9, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
             {m.reactions.map((r) => (
-              <div key={r.emoji} className={'reaction' + (r.mine ? ' mine' : '')} style={{ padding: '3px 11px', fontSize: 13, fontWeight: 600, color: r.mine ? undefined : 'var(--text-2)' }}>{r.emoji} {r.count}</div>
+              <div key={r.emoji} onClick={() => onReact?.(r.emoji)} className={'reaction' + (r.mine ? ' mine' : '')} style={{ padding: '3px 11px', fontSize: 13, fontWeight: 600, color: r.mine ? undefined : 'var(--text-2)' }}>{r.emoji} {r.count}</div>
             ))}
-            <div className="reaction" style={{ justifyContent: 'center', width: 30, height: 26, color: 'var(--text-3)' }}>＋</div>
+            <div className="reaction" onClick={() => onReact?.('👍')} style={{ justifyContent: 'center', width: 30, height: 26, color: 'var(--text-3)' }} title="Добавить реакцию">＋</div>
           </div>
         )}
       </div>

@@ -1,7 +1,7 @@
 import { Message } from './Message'
 import type { Message as Msg, ReadState } from '@/lib/types'
 
-export function ChatFeed({ messages, readState }: { messages: Msg[]; readState?: ReadState }) {
+export function ChatFeed({ messages, readState, onReact }: { messages: Msg[]; readState?: ReadState; onReact?: (messageId: string, emoji: string) => void }) {
   // индекс первого непрочитанного (после lastReadMessageId)
   let firstUnread = -1
   if (readState?.lastReadMessageId) {
@@ -20,7 +20,7 @@ export function ChatFeed({ messages, readState }: { messages: Msg[]; readState?:
       {messages.map((m, i) => (
         <div key={m.id}>
           {i === firstUnread && <UnreadDivider />}
-          <Message m={m} />
+          <Message m={m} onReact={(emoji) => onReact?.(m.id, emoji)} />
         </div>
       ))}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 8px', color: 'var(--text-3)', fontSize: 13 }}>
