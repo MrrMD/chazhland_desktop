@@ -69,13 +69,19 @@ export function BottomBar(p: Props) {
 
       {/* right voice controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, justifySelf: 'end' }}>
-        {p.voiceChannelName && <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--green)', fontSize: 13, fontWeight: 600, padding: '0 6px' }}>🔊 {p.voiceChannelName}</span>}
-        <VBtn active={p.muted} onClick={p.onMute} title={p.muted ? 'Включить микрофон' : 'Выключить микрофон'}>{p.muted ? '🔇' : '🎤'}</VBtn>
-        <VBtn active={p.deafened} onClick={p.onDeaf} title="Наушники">🎧</VBtn>
-        <button onClick={p.onGoLive} className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 9, border: `1px solid ${p.streamOn ? 'var(--accent)' : 'var(--border)'}`, background: p.streamOn ? 'var(--accent-tint)' : 'var(--win)', color: p.streamOn ? 'var(--accent)' : 'var(--text-2)', borderRadius: 13, padding: '0 16px', height: 46, fontWeight: 600, fontSize: 13.5, cursor: 'pointer' }}>
-          <span style={{ fontSize: 15 }}>🖥</span> Демонстрация
-        </button>
-        <button onClick={p.onLeaveVoice} className="danger-btn no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 13, padding: '0 17px', height: 46, fontWeight: 700, fontSize: 13.5, boxShadow: '0 4px 12px rgba(224,57,47,.25)' }}>📞 Выйти</button>
+        {p.voiceChannelName ? (
+          <>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--green)', fontSize: 13, fontWeight: 600, padding: '0 6px' }}>🔊 {p.voiceChannelName}</span>
+            <VBtn active={p.muted} onClick={p.onMute} title={p.muted ? 'Включить микрофон' : 'Выключить микрофон'}>{p.muted ? '🔇' : '🎤'}</VBtn>
+            <VBtn active={p.deafened} onClick={p.onDeaf} title="Наушники">🎧</VBtn>
+            <button onClick={p.onGoLive} className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 9, border: `1px solid ${p.streamOn ? 'var(--accent)' : 'var(--border)'}`, background: p.streamOn ? 'var(--accent-tint)' : 'var(--win)', color: p.streamOn ? 'var(--accent)' : 'var(--text-2)', borderRadius: 13, padding: '0 16px', height: 46, fontWeight: 600, fontSize: 13.5, cursor: 'pointer' }}>
+              <span style={{ fontSize: 15 }}>🖥</span> Демонстрация
+            </button>
+            <button onClick={p.onLeaveVoice} className="danger-btn no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 13, padding: '0 17px', height: 46, fontWeight: 700, fontSize: 13.5, boxShadow: '0 4px 12px rgba(224,57,47,.25)' }}>📞 Выйти</button>
+          </>
+        ) : (
+          <span style={{ fontSize: 12.5, color: 'var(--text-3)' }}>не в звонке</span>
+        )}
       </div>
     </div>
   )

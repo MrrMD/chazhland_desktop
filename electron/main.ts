@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, desktopCapturer } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -39,6 +39,14 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // Демонстрация экрана (Go Live): getDisplayMedia в Electron требует обработчик (TZ р.6).
+  // Базово выдаём первый экран; позже — нативный пикер источника.
+  win.webContents.session.setDisplayMediaRequestHandler((_request, callback) => {
+    desktopCapturer.getSources({ types: ['screen', 'window'] })
+      .then((sources) => callback(sources[0] ? { video: sources[0] } : {}))
+      .catch(() => callback({}))
   })
 
   if (VITE_DEV_SERVER_URL) {

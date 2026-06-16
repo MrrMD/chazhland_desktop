@@ -104,6 +104,17 @@ export interface TokenResponse {
   expiresIn: number
 }
 
+// Watch-party (синхронный просмотр) — /topic/watch.{id} + /app/watch.{id}.control
+export type WatchAction = 'PLAY' | 'PAUSE' | 'SEEK'
+export interface WatchState {
+  url: string | null
+  paused: boolean
+  positionSeconds: number
+  updatedAt: number // epoch ms серверного времени
+  hostId: string
+  lastActionBy: string
+}
+
 // Realtime-события из /topic/channel.{id}
 export type ChatEventType = 'MESSAGE_CREATED' | 'MESSAGE_EDITED' | 'MESSAGE_DELETED' | 'TYPING' | 'REACTION'
 export interface ChatEvent {

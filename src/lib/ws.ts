@@ -1,15 +1,16 @@
 import { Client, type IMessage, type StompSubscription } from '@stomp/stompjs'
 import { MOCK, WS_URL } from './config'
+import type { WatchAction, WatchState } from './types'
 
 export interface WsEvent { type: string; channelId?: string; message?: unknown; userId?: string }
 export type WsStatus = 'online' | 'connecting'
 
-interface Spec { channelId: string; cb: (e: WsEvent) => void; sub: StompSubscription | null }
+interface Spec { topic: string; cb: (body: any) => void; sub: StompSubscription | null }
 
 // STOMP-over-WebSocket клиент. В mock-режиме — no-op, статус всегда online (баннер скрыт).
 class Ws {
   private client: Client | null = null
-  private specs = new Set<Spec>() // логические подписки компонентов — переживают реконнект
+  private specs = new Set<Spec>() // логические подписки — переживают реконнект
   private status: WsStatus = 'online'
   private statusCbs = new Set<(s: WsStatus) => void>()
 
@@ -25,7 +26,6 @@ class Ws {
     this.statusCbs.forEach((c) => c(s))
   }
 
-  /** (Пере)подключение с актуальным токеном. Подписки переустанавливаются в onConnect. */
   connect(token: string) {
     if (MOCK) { this.setStatus('online'); return }
     this.teardownClient()
@@ -38,7 +38,7 @@ class Ws {
       heartbeatOutgoing: 10000,
       onConnect: () => {
         this.setStatus('online')
-        this.specs.forEach((s) => this.subscribeSpec(s)) // переподписка после (ре)коннекта
+        this.specs.forEach((s) => this.subscribeSpec(s))
       },
       onWebSocketClose: () => this.setStatus('connecting'),
       onStompError: () => this.setStatus('connecting'),
@@ -48,33 +48,44 @@ class Ws {
 
   private subscribeSpec(s: Spec) {
     if (!this.client?.connected) return
-    s.sub = this.client.subscribe(`/topic/channel.${s.channelId}`, (m: IMessage) => {
-      try { s.cb(JSON.parse(m.body) as WsEvent) } catch { /* ignore */ }
+    try { s.sub?.unsubscribe() } catch { /* */ } // не плодим дубли (StrictMode/реконнект)
+    s.sub = this.client.subscribe(s.topic, (m: IMessage) => {
+      try { s.cb(JSON.parse(m.body)) } catch { /* ignore */ }
     })
   }
 
-  /** Подписка на /topic/channel.{id}. Возвращает функцию отписки. */
-  onChannel(channelId: string, cb: (e: WsEvent) => void): () => void {
+  private subscribeTopic(topic: string, cb: (body: any) => void): () => void {
     if (MOCK) return () => {}
-    const s: Spec = { channelId, cb, sub: null }
+    const s: Spec = { topic, cb, sub: null }
     this.specs.add(s)
     this.subscribeSpec(s)
     return () => { s.sub?.unsubscribe(); this.specs.delete(s) }
   }
 
+  /** Сообщения канала: /topic/channel.{id} */
+  onChannel(channelId: string, cb: (e: WsEvent) => void): () => void {
+    return this.subscribeTopic(`/topic/channel.${channelId}`, cb as (b: any) => void)
+  }
   typing(channelId: string) {
     if (MOCK || !this.client?.connected) return
     this.client.publish({ destination: `/app/channel.${channelId}.typing`, body: '{}' })
   }
 
-  /** Сброс соединения с сохранением логических подписок (для реконнекта/смены токена). */
+  /** Watch-party: подписка на /topic/watch.{id} */
+  onWatch(channelId: string, cb: (s: WatchState) => void): () => void {
+    return this.subscribeTopic(`/topic/watch.${channelId}`, cb as (b: any) => void)
+  }
+  sendWatchControl(channelId: string, action: WatchAction, positionSeconds: number) {
+    if (MOCK || !this.client?.connected) return
+    this.client.publish({ destination: `/app/watch.${channelId}.control`, body: JSON.stringify({ action, positionSeconds }) })
+  }
+
   private teardownClient() {
     this.specs.forEach((s) => { s.sub = null })
     this.client?.deactivate()
     this.client = null
   }
 
-  /** Полный сброс (logout). */
   disconnect() {
     this.specs.clear()
     this.client?.deactivate()

@@ -1,7 +1,7 @@
 import { MOCK } from './config'
 import { http, delay } from './http'
 import type {
-  AuditEntry, Channel, Category, Invite, Member, Message, Presence, ReadState, Role, TokenResponse, User,
+  AuditEntry, Channel, Category, Invite, Member, Message, Presence, ReadState, Role, TokenResponse, User, WatchState,
 } from './types'
 import {
   MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_INVITES, MOCK_MEMBERS,
@@ -197,5 +197,26 @@ export const api = {
   async revokeInvite(id: string): Promise<void> {
     if (MOCK) return
     await http(`/invites/${id}`, { method: 'DELETE' })
+  },
+
+  // ---- voice (LiveKit) ----
+  async livekitToken(channelId: string): Promise<{ token: string; url: string; room: string }> {
+    if (MOCK) return { token: '', url: '', room: channelId }
+    return http(`/livekit/token`, { method: 'POST', body: JSON.stringify({ channelId }) })
+  },
+
+  // ---- watch-party ----
+  async watchState(channelId: string): Promise<WatchState | null> {
+    if (MOCK) return null
+    const s = await http<WatchState | undefined>(`/channels/${channelId}/watch`).catch(() => null)
+    return s ?? null // 204 (нет источника) → null
+  },
+  async setWatchSource(channelId: string, url: string): Promise<WatchState> {
+    if (MOCK) return { url, paused: true, positionSeconds: 0, updatedAt: Date.now(), hostId: '', lastActionBy: '' }
+    return http(`/channels/${channelId}/watch/source`, { method: 'POST', body: JSON.stringify({ url }) })
+  },
+  async stopWatch(channelId: string): Promise<void> {
+    if (MOCK) return
+    await http(`/channels/${channelId}/watch`, { method: 'DELETE' })
   },
 }

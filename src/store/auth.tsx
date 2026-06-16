@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { api } from '@/lib/api'
 import { setTokens, setOnAuthFail, setOnTokenRefresh, getAccessToken } from '@/lib/http'
 import { ws } from '@/lib/ws'
+import { voice } from '@/lib/voice'
 import type { User } from '@/lib/types'
 
 interface Session { user: User; token: string }
@@ -24,6 +25,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   function clear() {
     localStorage.removeItem(LS_REFRESH)
     setTokens(null, null)
+    voice.leave() // освобождаем микрофон/соединение голоса
     ws.disconnect()
     setSession(null)
   }

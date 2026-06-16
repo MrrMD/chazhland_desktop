@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, type ServerTree } from '@/lib/api'
 import { useAuth } from '@/store/auth'
+import { voice, type VoiceState } from '@/lib/voice'
 import type { ChannelType, Member, Message, Presence, ReadState } from '@/lib/types'
 import { ChatFeed } from './ChatFeed'
 import { Composer } from './Composer'
 import { MembersRail } from './MembersRail'
 import { ChannelSwitcher } from './ChannelSwitcher'
 import { BottomBar } from './BottomBar'
+import { WatchView } from './WatchView'
 import { AdminScreen } from '@/features/admin/AdminScreen'
 import { ws } from '@/lib/ws'
 
@@ -20,24 +22,29 @@ export function MainWindow() {
   const [members, setMembers] = useState<Member[]>([])
   const [readStates, setReadStates] = useState<ReadState[]>([])
   const [messages, setMessages] = useState<Message[]>([])
-  const [currentId, setCurrentId] = useState('ch_general')
+  const [currentId, setCurrentId] = useState('')
 
   const [view, setView] = useState<'chat' | 'admin'>('chat')
   const [channelsOpen, setChannelsOpen] = useState(false)
   const [membersExpanded, setMembersExpanded] = useState(true)
-  const [stream, setStream] = useState<'off' | 'split' | 'full'>('off')
-  const [muted, setMuted] = useState(false)
-  const [deafened, setDeafened] = useState(false)
   const [status, setStatus] = useState<Presence>('online')
-  const [voiceChannel, setVoiceChannel] = useState<string | null>('созвон')
   const [replyTo, setReplyTo] = useState<Message | null>(null)
+  const [vs, setVs] = useState<VoiceState>(voice.state)
+
+  useEffect(() => voice.subscribe(setVs), [])
 
   useEffect(() => {
-    api.serverTree().then(setTree)
-    api.members().then(setMembers)
-    api.readStates().then(setReadStates)
+    api.serverTree().then((t) => {
+      setTree(t)
+      // первый открытый канал — первый текстовый (или любой), а не захардкоженный id
+      setCurrentId((cur) => (cur && t.channels.some((c) => c.id === cur) ? cur : (t.channels.find((c) => c.type === 'TEXT')?.id ?? t.channels[0]?.id ?? '')))
+    }).catch(() => {})
+    api.members().then(setMembers).catch(() => {})
+    api.readStates().then(setReadStates).catch(() => {})
   }, [])
+
   useEffect(() => {
+    if (!currentId) return
     let alive = true
     api.messages(currentId).then((ms) => {
       if (!alive) return // защита от гонки при быстром переключении каналов
@@ -47,12 +54,13 @@ export function MainWindow() {
         api.markRead(currentId, last.id).catch(() => {})
         setReadStates((rs) => rs.map((r) => (r.channelId === currentId ? { ...r, lastReadMessageId: last.id, mentionCount: 0 } : r)))
       }
-    })
+    }).catch(() => {})
     return () => { alive = false }
   }, [currentId])
 
   // live-сообщения по WS для текущего канала (no-op в mock-режиме)
   useEffect(() => {
+    if (!currentId) return
     return ws.onChannel(currentId, (e) => {
       if (!e.message) return
       const m = api.mapIncoming(e.message)
@@ -64,7 +72,6 @@ export function MainWindow() {
         return ms
       })
       if (e.type === 'MESSAGE_CREATED') {
-        // канал открыт — сразу отмечаем прочитанным, чтобы не копился unread
         api.markRead(currentId, m.id).catch(() => {})
         setReadStates((rs) => rs.map((r) => (r.channelId === currentId ? { ...r, lastReadMessageId: m.id, mentionCount: 0 } : r)))
       }
@@ -76,14 +83,12 @@ export function MainWindow() {
   const myRole = members.find((m) => m.userId === user.id)?.role
   const canModerate = myRole === 'OWNER' || myRole === 'ADMIN'
   const unreadTotal = readStates.reduce((a, r) => a + r.mentionCount, 0)
-  const streamOn = stream !== 'off'
-  const streamFull = stream === 'full'
+  const isWatch = channel?.type === 'WATCH'
 
   function send(text: string) {
     api.sendMessage(currentId, text, replyTo?.id).then((m) => setMessages((ms) => [...ms, m]))
     setReplyTo(null)
   }
-
   function editMsg(id: string, content: string) {
     setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, content, editedAt: new Date().toISOString() } : m)))
     api.editMessage(id, content).catch(() => {})
@@ -92,9 +97,7 @@ export function MainWindow() {
     setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, deleted: true, content: null } : m)))
     api.deleteMessage(id).catch(() => {})
   }
-
   function react(messageId: string, emoji: string) {
-    // намерение считаем из текущего состояния (не из устаревшего пропа) — устойчиво к быстрым кликам
     const mine = !!messages.find((m) => m.id === messageId)?.reactions.find((r) => r.emoji === emoji)?.mine
     setMessages((ms) => ms.map((m) => {
       if (m.id !== messageId) return m
@@ -111,11 +114,21 @@ export function MainWindow() {
     }))
     const ch = currentId
     ;(mine ? api.removeReaction(messageId, emoji) : api.addReaction(messageId, emoji))
-      .catch(() => { api.messages(ch).then(setMessages) }) // откат: перечитываем авторитетное состояние канала
+      .catch(() => { api.messages(ch).then(setMessages) })
   }
-
   function ackAll() {
     api.ackAll().then(setReadStates).catch(() => {})
+  }
+
+  function pickChannel(id: string) {
+    const ch = tree.channels.find((c) => c.id === id)
+    setChannelsOpen(false)
+    if (ch?.type === 'VOICE') {
+      voice.join(id, ch.name) // в голосовой — заходим, не меняя открытый текст/watch-канал
+    } else {
+      setCurrentId(id)
+      setView('chat')
+    }
   }
 
   return (
@@ -131,11 +144,11 @@ export function MainWindow() {
             </div>
             <div style={{ lineHeight: 1.25, minWidth: 0 }}>
               <div style={{ fontWeight: 700, fontSize: 16 }}>{channel?.name ?? '—'}</div>
-              <div style={{ fontSize: 12.5, color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{channel?.topic ?? 'без темы'}</div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{channel?.topic ?? (isWatch ? 'совместный просмотр' : 'без темы')}</div>
             </div>
-            {streamOn && (
+            {vs.screenOn && (
               <div style={{ marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--accent-tint)', border: '1px solid var(--accent)', color: 'var(--accent)', borderRadius: 30, padding: '5px 13px', fontSize: 12.5, fontWeight: 700 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#e0392f', animation: 'live 1.6s infinite' }} />Аня в эфире · демонстрация
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#e0392f', animation: 'live 1.6s infinite' }} />Вы в эфире · демонстрация
               </div>
             )}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -148,14 +161,15 @@ export function MainWindow() {
 
           {/* body */}
           <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-            {streamOn && <StreamPane full={streamFull} onToggleFull={() => setStream((s) => (s === 'full' ? 'split' : 'full'))} />}
-            {!streamFull && (
+            {isWatch ? (
+              <WatchView channelId={currentId} />
+            ) : (
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
                 <ChatFeed messages={messages} readState={readState} onReact={react} meId={user.id} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} />
                 <Composer channelName={channel?.name ?? ''} onSend={send} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>
             )}
-            {!streamFull && <MembersRail members={members} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} />}
+            <MembersRail members={members} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} />
           </div>
         </div>
       )}
@@ -164,19 +178,19 @@ export function MainWindow() {
         user={user}
         status={status}
         onStatus={setStatus}
-        muted={muted}
-        onMute={() => setMuted((v) => !v)}
-        deafened={deafened}
-        onDeaf={() => setDeafened((v) => !v)}
-        streamOn={streamOn}
-        onGoLive={() => setStream((s) => (s === 'off' ? 'split' : 'off'))}
-        voiceChannelName={voiceChannel}
+        muted={!vs.micOn}
+        onMute={() => voice.toggleMic()}
+        deafened={vs.deafened}
+        onDeaf={() => voice.toggleDeaf()}
+        streamOn={vs.screenOn}
+        onGoLive={() => voice.toggleScreen()}
+        voiceChannelName={vs.channelName}
         onOpenChannels={() => setChannelsOpen(true)}
         unreadTotal={unreadTotal}
         onAckAll={ackAll}
         onOpenAdmin={() => setView('admin')}
         onLogout={logout}
-        onLeaveVoice={() => setVoiceChannel(null)}
+        onLeaveVoice={() => voice.leave()}
       />
 
       {channelsOpen && (
@@ -184,28 +198,10 @@ export function MainWindow() {
           channels={tree.channels}
           readStates={readStates}
           currentId={currentId}
-          onPick={(id) => { setCurrentId(id); setChannelsOpen(false); setView('chat') }}
+          onPick={pickChannel}
           onClose={() => setChannelsOpen(false)}
         />
       )}
-    </div>
-  )
-}
-
-function StreamPane({ full, onToggleFull }: { full: boolean; onToggleFull: () => void }) {
-  return (
-    <div style={{ flex: full ? 1 : 1.2, minWidth: 0, display: 'flex', flexDirection: 'column', background: '#0e0d0c', position: 'relative', borderRight: '1px solid var(--border)' }}>
-      <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'radial-gradient(120% 120% at 50% 35%,#26241f,#0e0d0c)' }}>
-        <div style={{ textAlign: 'center', color: '#8a847a' }}>
-          <div style={{ width: 78, height: 78, borderRadius: 22, background: 'rgba(255,255,255,.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 34, margin: '0 auto 14px' }}>🖥</div>
-          <div style={{ fontWeight: 700, fontSize: 17, color: '#e9e3d8' }}>Демонстрация экрана</div>
-          <div style={{ fontSize: 12.5, marginTop: 3 }}>Аня показывает · 1920 × 1080 · 60 fps</div>
-        </div>
-        <div style={{ position: 'absolute', left: 16, bottom: 16, display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,0,0,.5)', borderRadius: 30, padding: '6px 13px' }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#e0392f', animation: 'live 1.6s infinite' }} /><span style={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>в эфире</span>
-        </div>
-        <button onClick={onToggleFull} className="no-drag" style={{ position: 'absolute', right: 16, top: 16, border: 'none', background: 'rgba(0,0,0,.5)', color: '#fff', borderRadius: 11, width: 40, height: 40, fontSize: 15, cursor: 'pointer' }} title={full ? 'свернуть' : 'на весь экран'}>⛶</button>
-      </div>
     </div>
   )
 }
