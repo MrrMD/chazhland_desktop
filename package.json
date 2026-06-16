@@ -9,7 +9,21 @@
     "dev": "vite",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "icons": "node scripts/gen-icons.mjs",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac"
+  },
+  "build": {
+    "appId": "ru.chazhland.desktop",
+    "productName": "chazhland",
+    "directories": { "output": "release", "buildResources": "build" },
+    "files": ["dist/**", "dist-electron/**", "build/tray*.png", "package.json"],
+    "asar": true,
+    "win": { "target": [{ "target": "zip", "arch": ["x64"] }], "icon": "build/icon.png" },
+    "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true },
+    "mac": { "target": ["dmg"], "icon": "build/icon.png", "identity": null }
   },
   "dependencies": {
     "@stomp/stompjs": "^7.0.0",
@@ -24,6 +38,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
     "vite-plugin-electron": "^0.29.0",

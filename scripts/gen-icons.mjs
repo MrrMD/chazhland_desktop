@@ -68,10 +68,41 @@ function bubbleIcon(size, color) {
   return png(size, size, rgba)
 }
 
+// иконка приложения: акцентный «squircle» + белое облачко по центру (для electron-builder)
+function appIcon(size) {
+  const rgba = Buffer.alloc(size * size * 4)
+  const S = 3
+  const r = 0.22 // радиус скругления фона (доля size)
+  const inRoundSquare = (nx, ny) => {
+    const cx = Math.min(Math.max(nx, r), 1 - r)
+    const cy = Math.min(Math.max(ny, r), 1 - r)
+    return Math.hypot(nx - cx, ny - cy) <= r
+  }
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    let bg = 0, fg = 0
+    for (let sy = 0; sy < S; sy++) for (let sx = 0; sx < S; sx++) {
+      const nx = (x + (sx + 0.5) / S) / size
+      const ny = (y + (sy + 0.5) / S) / size
+      if (inRoundSquare(nx, ny)) bg++
+      // облачко в центральной области [0.2..0.8]
+      const bx = (nx - 0.2) / 0.6, by = (ny - 0.2) / 0.6
+      if (bx >= 0 && bx <= 1 && by >= 0 && by <= 1 && inBubble(bx, by)) fg++
+    }
+    const bgA = bg / (S * S), fgA = fg / (S * S)
+    const i = (y * size + x) * 4
+    rgba[i] = Math.round(255 * fgA + 224 * (1 - fgA))
+    rgba[i + 1] = Math.round(255 * fgA + 69 * (1 - fgA))
+    rgba[i + 2] = Math.round(255 * fgA + 123 * (1 - fgA))
+    rgba[i + 3] = Math.round(bgA * 255)
+  }
+  return png(size, size, rgba)
+}
+
 const ACCENT = [224, 69, 123] // #e0457b
 const BLACK = [0, 0, 0]
 writeFileSync(path.join(outDir, 'tray.png'), bubbleIcon(32, ACCENT))
 writeFileSync(path.join(outDir, 'tray@2x.png'), bubbleIcon(64, ACCENT))
 writeFileSync(path.join(outDir, 'tray-template.png'), bubbleIcon(32, BLACK))
 writeFileSync(path.join(outDir, 'tray-template@2x.png'), bubbleIcon(64, BLACK))
-console.log('tray icons written to', outDir)
+writeFileSync(path.join(outDir, 'icon.png'), appIcon(512)) // иконка приложения для electron-builder
+console.log('icons written to', outDir)
