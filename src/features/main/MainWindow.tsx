@@ -30,6 +30,7 @@ export function MainWindow() {
   const [deafened, setDeafened] = useState(false)
   const [status, setStatus] = useState<Presence>('online')
   const [voiceChannel, setVoiceChannel] = useState<string | null>('созвон')
+  const [replyTo, setReplyTo] = useState<Message | null>(null)
 
   useEffect(() => {
     api.serverTree().then(setTree)
@@ -72,12 +73,24 @@ export function MainWindow() {
 
   const channel = useMemo(() => tree.channels.find((c) => c.id === currentId), [tree, currentId])
   const readState = readStates.find((r) => r.channelId === currentId)
+  const myRole = members.find((m) => m.userId === user.id)?.role
+  const canModerate = myRole === 'OWNER' || myRole === 'ADMIN'
   const unreadTotal = readStates.reduce((a, r) => a + r.mentionCount, 0)
   const streamOn = stream !== 'off'
   const streamFull = stream === 'full'
 
   function send(text: string) {
-    api.sendMessage(currentId, text).then((m) => setMessages((ms) => [...ms, m]))
+    api.sendMessage(currentId, text, replyTo?.id).then((m) => setMessages((ms) => [...ms, m]))
+    setReplyTo(null)
+  }
+
+  function editMsg(id: string, content: string) {
+    setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, content, editedAt: new Date().toISOString() } : m)))
+    api.editMessage(id, content).catch(() => {})
+  }
+  function deleteMsg(id: string) {
+    setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, deleted: true, content: null } : m)))
+    api.deleteMessage(id).catch(() => {})
   }
 
   function react(messageId: string, emoji: string) {
@@ -138,8 +151,8 @@ export function MainWindow() {
             {streamOn && <StreamPane full={streamFull} onToggleFull={() => setStream((s) => (s === 'full' ? 'split' : 'full'))} />}
             {!streamFull && (
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
-                <ChatFeed messages={messages} readState={readState} onReact={react} />
-                <Composer channelName={channel?.name ?? ''} onSend={send} />
+                <ChatFeed messages={messages} readState={readState} onReact={react} meId={user.id} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} />
+                <Composer channelName={channel?.name ?? ''} onSend={send} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>
             )}
             {!streamFull && <MembersRail members={members} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} />}

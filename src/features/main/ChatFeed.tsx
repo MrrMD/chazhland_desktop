@@ -1,7 +1,16 @@
 import { Message } from './Message'
 import type { Message as Msg, ReadState } from '@/lib/types'
 
-export function ChatFeed({ messages, readState, onReact }: { messages: Msg[]; readState?: ReadState; onReact?: (messageId: string, emoji: string) => void }) {
+export function ChatFeed({ messages, readState, onReact, meId, canModerate, onReply, onEdit, onDelete }: {
+  messages: Msg[]
+  readState?: ReadState
+  onReact?: (messageId: string, emoji: string) => void
+  meId?: string
+  canModerate?: boolean
+  onReply?: (m: Msg) => void
+  onEdit?: (id: string, content: string) => void
+  onDelete?: (id: string) => void
+}) {
   // индекс первого непрочитанного (после lastReadMessageId)
   let firstUnread = -1
   if (readState?.lastReadMessageId) {
@@ -20,7 +29,7 @@ export function ChatFeed({ messages, readState, onReact }: { messages: Msg[]; re
       {messages.map((m, i) => (
         <div key={m.id}>
           {i === firstUnread && <UnreadDivider />}
-          <Message m={m} onReact={(emoji) => onReact?.(m.id, emoji)} />
+          <Message m={m} meId={meId} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} />
         </div>
       ))}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 8px', color: 'var(--text-3)', fontSize: 13 }}>

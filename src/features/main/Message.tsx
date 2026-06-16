@@ -1,4 +1,4 @@
-import { Fragment } from 'react'
+import { Fragment, useState } from 'react'
 import { Avatar } from '@/components/Avatar'
 import type { Message as Msg } from '@/lib/types'
 
@@ -26,8 +26,24 @@ const roleBadge: Record<string, React.CSSProperties> = {
   ADMIN: { background: 'var(--surface-3)', color: 'var(--text-2)' },
 }
 
-export function Message({ m, onReact }: { m: Msg; onReact?: (emoji: string) => void }) {
+interface Props {
+  m: Msg
+  meId?: string
+  canModerate?: boolean
+  onReact?: (emoji: string) => void
+  onReply?: (m: Msg) => void
+  onEdit?: (id: string, content: string) => void
+  onDelete?: (id: string) => void
+}
+
+export function Message({ m, meId, canModerate, onReact, onReply, onEdit, onDelete }: Props) {
+  const [hover, setHover] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [val, setVal] = useState('')
+
   const mention = !!m.content && /(@everyone|@here|@я_дизайнер)/.test(m.content)
+  const isOwn = !!meId && m.authorId === meId
+  const canDelete = isOwn || !!canModerate
 
   if (m.deleted) {
     return (
@@ -37,15 +53,31 @@ export function Message({ m, onReact }: { m: Msg; onReact?: (emoji: string) => v
     )
   }
 
+  function startEdit() { setVal(m.content ?? ''); setEditing(true) }
+  function saveEdit() {
+    const v = val.trim()
+    setEditing(false)
+    if (v && v !== m.content) onEdit?.(m.id, v)
+  }
+
   return (
     <div
       className={mention ? undefined : 'msg-row'}
-      style={{
-        display: 'flex', gap: 13, padding: mention ? '9px 8px' : '7px 8px', borderRadius: 12, position: 'relative',
-        background: mention ? 'var(--accent-tint)' : undefined,
-      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      style={{ display: 'flex', gap: 13, padding: mention ? '9px 8px' : '7px 8px', borderRadius: 12, position: 'relative', background: mention ? 'var(--accent-tint)' : undefined }}
     >
       {mention && <div style={{ position: 'absolute', left: 0, top: 9, bottom: 9, width: 3, borderRadius: 3, background: 'var(--accent)' }} />}
+
+      {hover && !editing && (
+        <div style={{ position: 'absolute', top: -12, right: 10, display: 'flex', gap: 2, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 9, padding: 3, boxShadow: '0 6px 18px -8px var(--shadow)', zIndex: 2 }}>
+          <ToolBtn title="Ответить" onClick={() => onReply?.(m)}>↩</ToolBtn>
+          <ToolBtn title="Реакция" onClick={() => onReact?.('👍')}>＋</ToolBtn>
+          {isOwn && <ToolBtn title="Изменить" onClick={startEdit}>✎</ToolBtn>}
+          {canDelete && <ToolBtn title="Удалить" danger onClick={() => onDelete?.(m.id)}>🗑</ToolBtn>}
+        </div>
+      )}
+
       <Avatar name={m.authorName} size={42} />
       <div style={{ minWidth: 0, flex: 1 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginBottom: 3 }}>
@@ -60,12 +92,32 @@ export function Message({ m, onReact }: { m: Msg; onReact?: (emoji: string) => v
             ↳ {m.replyPreview.authorName}: {m.replyPreview.content}
           </div>
         )}
-        {m.content && (
-          <div style={{ fontSize: 14.5, lineHeight: 1.55, color: 'var(--text)' }}>
-            {renderContent(m.content)}
-            {m.editedAt && <span style={{ color: 'var(--text-3)', fontSize: 11, marginLeft: 6 }}>(изменено)</span>}
+
+        {editing ? (
+          <div>
+            <textarea
+              autoFocus
+              value={val}
+              onChange={(e) => setVal(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit() }
+                else if (e.key === 'Escape') setEditing(false)
+              }}
+              style={{ width: '100%', minHeight: 40, resize: 'vertical', border: '1px solid var(--accent)', borderRadius: 10, background: 'var(--surface)', color: 'var(--text)', font: 'inherit', fontSize: 14.5, padding: '9px 12px', outline: 'none' }}
+            />
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginTop: 4 }}>
+              Enter — сохранить · <span onClick={() => setEditing(false)} style={{ color: 'var(--accent)', cursor: 'pointer' }}>Esc — отмена</span>
+            </div>
           </div>
+        ) : (
+          m.content && (
+            <div style={{ fontSize: 14.5, lineHeight: 1.55, color: 'var(--text)' }}>
+              {renderContent(m.content)}
+              {m.editedAt && <span style={{ color: 'var(--text-3)', fontSize: 11, marginLeft: 6 }}>(изменено)</span>}
+            </div>
+          )
         )}
+
         {m.attachments.map((a, i) => (
           <div key={i} style={{ marginTop: 9, width: 330, maxWidth: '100%', height: 184, borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border)', position: 'relative', background: 'linear-gradient(135deg,#fbe3ee,#e7ecff)' }}>
             <button className="ib no-drag" style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, background: 'rgba(0,0,0,.5)', color: '#fff' }} title="Скачать">⤓</button>
@@ -74,6 +126,7 @@ export function Message({ m, onReact }: { m: Msg; onReact?: (emoji: string) => v
             </div>
           </div>
         ))}
+
         {m.reactions.length > 0 && (
           <div style={{ marginTop: 9, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
             {m.reactions.map((r) => (
@@ -84,5 +137,11 @@ export function Message({ m, onReact }: { m: Msg; onReact?: (emoji: string) => v
         )}
       </div>
     </div>
+  )
+}
+
+function ToolBtn({ children, title, onClick, danger }: { children: React.ReactNode; title: string; onClick: () => void; danger?: boolean }) {
+  return (
+    <button className="ib no-drag" onClick={onClick} title={title} style={{ width: 28, height: 26, fontSize: 14, color: danger ? 'var(--danger)' : undefined }}>{children}</button>
   )
 }

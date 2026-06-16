@@ -114,14 +114,23 @@ export const api = {
     return items.map((m) => mapMessage(m, idMap))
   },
 
-  async sendMessage(channelId: string, content: string): Promise<Message> {
+  async sendMessage(channelId: string, content: string, replyToId?: string | null): Promise<Message> {
     const clientMessageId = crypto.randomUUID()
     if (MOCK) {
       await delay(120)
-      return { id: 'tmp_' + clientMessageId, channelId, authorId: MOCK_USER.id, authorName: MOCK_USER.username, content, attachments: [], reactions: [], createdAt: new Date().toISOString(), clientMessageId }
+      return { id: 'tmp_' + clientMessageId, channelId, authorId: MOCK_USER.id, authorName: MOCK_USER.username, content, attachments: [], reactions: [], replyToId: replyToId ?? null, createdAt: new Date().toISOString(), clientMessageId }
     }
-    const dto = await http<MessageDto>(`/channels/${channelId}/messages`, { method: 'POST', body: JSON.stringify({ content, clientMessageId }) })
+    const dto = await http<MessageDto>(`/channels/${channelId}/messages`, { method: 'POST', body: JSON.stringify({ content, clientMessageId, replyToId: replyToId ?? null }) })
     return mapMessage(dto)
+  },
+
+  async editMessage(messageId: string, content: string): Promise<void> {
+    if (MOCK) return
+    await http(`/messages/${messageId}`, { method: 'PATCH', body: JSON.stringify({ content }) })
+  },
+  async deleteMessage(messageId: string): Promise<void> {
+    if (MOCK) return
+    await http(`/messages/${messageId}`, { method: 'DELETE' })
   },
 
   /** маппинг входящего WS-события (raw MessageDto) → UI Message */
