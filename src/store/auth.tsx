@@ -1,13 +1,10 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { api } from '@/lib/api'
-import { setAccessToken } from '@/lib/http'
+import { setTokens, setOnAuthFail, getAccessToken } from '@/lib/http'
 import { ws } from '@/lib/ws'
 import type { User } from '@/lib/types'
 
-interface Session {
-  user: User
-  token: string
-}
+interface Session { user: User; token: string }
 
 interface AuthCtx {
   session: Session | null
@@ -18,32 +15,41 @@ interface AuthCtx {
 }
 
 const Ctx = createContext<AuthCtx | null>(null)
-const LS_TOKEN = 'chazh.refresh'
+const LS_REFRESH = 'chazh.refresh'
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(false)
 
-  // авто-восстановление сессии при наличии токена (в mock — сразу)
+  function clear() {
+    localStorage.removeItem(LS_REFRESH)
+    setTokens(null, null)
+    ws.disconnect()
+    setSession(null)
+  }
+
   useEffect(() => {
-    const t = localStorage.getItem(LS_TOKEN)
-    if (!t) return
+    setOnAuthFail(clear) // 401 после неудачного refresh (reuse-detection/кик/смена пароля) → принудительный logout
+    const saved = localStorage.getItem(LS_REFRESH)
+    if (!saved) return
     setLoading(true)
+    setTokens(null, saved) // нет access — первый /users/me словит 401 и обновится по refresh
     api.me()
       .then((user) => {
-        setAccessToken(t)
-        setSession({ user, token: t })
-        ws.connect(t)
+        const token = getAccessToken() ?? saved
+        setSession({ user, token })
+        ws.connect(token)
       })
-      .catch(() => localStorage.removeItem(LS_TOKEN))
+      .catch(() => clear())
       .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const apply = (token: string, user: User) => {
-    localStorage.setItem(LS_TOKEN, token)
-    setAccessToken(token)
-    setSession({ user, token })
-    ws.connect(token)
+  function apply(access: string, refresh: string, user: User) {
+    localStorage.setItem(LS_REFRESH, refresh)
+    setTokens(access, refresh)
+    setSession({ user, token: access })
+    ws.connect(access)
   }
 
   const value: AuthCtx = {
@@ -51,18 +57,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     async login(login, password) {
       const { token, user } = await api.login(login, password)
-      apply(token.accessToken, user)
+      apply(token.accessToken, token.refreshToken, user)
     },
     async register(p) {
       const { token, user } = await api.register(p)
-      apply(token.accessToken, user)
+      apply(token.accessToken, token.refreshToken, user)
     },
-    logout() {
-      localStorage.removeItem(LS_TOKEN)
-      setAccessToken(null)
-      ws.disconnect()
-      setSession(null)
-    },
+    logout: clear,
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

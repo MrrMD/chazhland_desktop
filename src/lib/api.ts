@@ -1,91 +1,134 @@
 import { MOCK } from './config'
 import { http, delay } from './http'
 import type {
-  AuditEntry, Channel, Category, Invite, Member, Message, ReadState, TokenResponse, User,
+  AuditEntry, Channel, Category, Invite, Member, Message, Presence, ReadState, Role, TokenResponse, User,
 } from './types'
 import {
   MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_INVITES, MOCK_MEMBERS,
   MOCK_MESSAGES, MOCK_READ_STATES, MOCK_USER,
 } from '@/mocks/data'
 
-export interface ServerTree {
-  categories: Category[]
-  channels: Channel[]
+export interface ServerTree { categories: Category[]; channels: Channel[] }
+export interface AuthResult { token: TokenResponse; user: User }
+
+// ---- сырые DTO бэка (com.chazhland.messenger.web.dto) ----
+interface Page<T> { items: T[]; nextCursor: string | null; hasMore: boolean }
+interface UserDto { id: string; username: string; avatarUrl: string | null; status?: string; role?: Role }
+interface MemberDto { userId: string; username: string; avatarUrl: string | null; role: Role; status: string; joinedAt: string }
+interface ChannelDto { id: string; categoryId: string | null; name: string; type: Channel['type']; topic: string | null; position: number; userLimit: number | null; lastMessageId: string | null }
+interface TreeDto { serverId: string; categories: Category[]; channels: ChannelDto[] }
+interface AttachmentDto { id: string; url: string; contentType: string; size: number | null; filename: string | null; width: number | null; height: number | null; thumbnailUrl: string | null }
+interface ReactionGroupDto { emoji: string; userIds: string[] }
+interface MessageDto {
+  id: string; channelId: string; authorId: string; content: string | null; replyToId: string | null
+  createdAt: string; editedAt: string | null; deleted: boolean
+  attachments: AttachmentDto[]; reactions: ReactionGroupDto[]
 }
-export interface AuthResult {
-  token: TokenResponse
-  user: User
+interface InviteDto { id: string; expiresAt: string | null; maxUses: number | null; uses: number; revoked: boolean; createdBy: string; createdAt: string }
+interface AuditDto { id: string; actorId: string; action: string; targetType: string | null; targetId: string | null; metadata: unknown; createdAt: string }
+
+// ---- кэш для резолва авторов сообщений/аудита ----
+let meId = ''
+const memberMap = new Map<string, Member>()
+const resolveName = (id: string) => memberMap.get(id)?.username ?? id
+
+const MOCK_TOKEN: TokenResponse = { accessToken: 'mock.access', refreshToken: 'mock.refresh', tokenType: 'Bearer', expiresIn: 900 }
+
+function mapMember(d: MemberDto): Member {
+  return { userId: d.userId, username: d.username, avatarUrl: d.avatarUrl, role: d.role, status: (d.status as Presence) || 'offline', joinedAt: d.joinedAt }
+}
+function mapChannel(d: ChannelDto): Channel {
+  return { id: d.id, name: d.name, type: d.type, categoryId: d.categoryId, topic: d.topic, position: d.position, userLimit: d.userLimit, lastMessageId: d.lastMessageId }
+}
+function mapMessage(d: MessageDto, idMap?: Map<string, MessageDto>): Message {
+  const author = memberMap.get(d.authorId)
+  const reply = d.replyToId && idMap?.get(d.replyToId)
+  return {
+    id: d.id, channelId: d.channelId, authorId: d.authorId,
+    authorName: author?.username ?? d.authorId, authorRole: author?.role,
+    content: d.content, deleted: d.deleted, editedAt: d.editedAt, createdAt: d.createdAt, replyToId: d.replyToId,
+    replyPreview: reply ? { authorName: resolveName(reply.authorId), content: (reply.content ?? '').slice(0, 60) } : null,
+    attachments: (d.attachments ?? []).map((a) => ({ objectKey: a.id, url: a.url, contentType: a.contentType, size: a.size, width: a.width, height: a.height })),
+    reactions: (d.reactions ?? []).map((g) => ({ emoji: g.emoji, count: g.userIds.length, mine: g.userIds.includes(meId) })),
+  }
 }
 
-const MOCK_TOKEN: TokenResponse = {
-  accessToken: 'mock.access', refreshToken: 'mock.refresh', tokenType: 'Bearer', expiresIn: 900,
+function fmtDateTime(iso: string): string {
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? iso : d.toLocaleString('ru-RU', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })
+}
+function auditText(d: AuditDto): string {
+  const actor = resolveName(d.actorId)
+  const tgt = d.targetId ? resolveName(d.targetId) : ''
+  switch (d.action) {
+    case 'member.kick': return `**${actor}** исключил **${tgt}**`
+    case 'member.role-change': return `**${actor}** изменил роль **${tgt}**`
+    case 'invite.create': return `**${actor}** создал приглашение`
+    case 'invite.revoke': return `**${actor}** отозвал приглашение`
+    case 'user.reset-password': return `**${actor}** сбросил пароль **${tgt}**`
+    default: return `**${actor}** · ${d.action}`
+  }
 }
 
 export const api = {
-  // ---- auth (POST /auth/login, /auth/register) ----
-  async login(login: string, _password: string): Promise<AuthResult> {
-    if (MOCK) {
-      await delay(450)
-      if (!login.trim()) throw new Error('empty')
-      return { token: MOCK_TOKEN, user: MOCK_USER }
-    }
-    const token = await http<TokenResponse>('/auth/login', {
-      method: 'POST', body: JSON.stringify({ login, password: _password }),
-    })
-    return { token, user: await this.me() }
+  async login(login: string, password: string): Promise<AuthResult> {
+    if (MOCK) { await delay(450); if (!login.trim()) throw new Error('empty'); return { token: MOCK_TOKEN, user: MOCK_USER } }
+    const token = await http<TokenResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ login, password }) })
+    return { token, user: await this.me(token.accessToken) }
   },
 
   async register(p: { inviteCode: string; username: string; email: string; password: string }): Promise<AuthResult> {
-    if (MOCK) {
-      await delay(550)
-      return { token: MOCK_TOKEN, user: { ...MOCK_USER, username: p.username } }
-    }
+    if (MOCK) { await delay(550); return { token: MOCK_TOKEN, user: { ...MOCK_USER, username: p.username } } }
     const token = await http<TokenResponse>('/auth/register', { method: 'POST', body: JSON.stringify(p) })
-    return { token, user: await this.me() }
+    return { token, user: await this.me(token.accessToken) }
   },
 
-  me(): Promise<User> {
-    if (MOCK) return Promise.resolve(MOCK_USER)
-    return http<User>('/users/me')
+  async me(_pendingAccess?: string): Promise<User> {
+    if (MOCK) { meId = MOCK_USER.id; return MOCK_USER }
+    const u = await http<UserDto>('/users/me')
+    meId = u.id
+    return { id: u.id, username: u.username, avatarUrl: u.avatarUrl }
   },
 
-  // ---- server structure (GET /server/tree) ----
   async serverTree(): Promise<ServerTree> {
-    if (MOCK) {
-      await delay(150)
-      return { categories: MOCK_CATEGORIES, channels: MOCK_CHANNELS }
-    }
-    return http<ServerTree>('/server/tree')
+    if (MOCK) { await delay(150); return { categories: MOCK_CATEGORIES, channels: MOCK_CHANNELS } }
+    const t = await http<TreeDto>('/server/tree')
+    return { categories: t.categories, channels: t.channels.map(mapChannel) }
   },
 
-  // ---- messages (GET/POST /channels/{id}/messages) ----
+  async members(): Promise<Member[]> {
+    if (MOCK) { await delay(150); MOCK_MEMBERS.forEach((m) => memberMap.set(m.userId, m)); return MOCK_MEMBERS }
+    const list = await http<MemberDto[]>('/server/members')
+    const mapped = list.map(mapMember)
+    memberMap.clear()
+    mapped.forEach((m) => memberMap.set(m.userId, m))
+    return mapped
+  },
+
   async messages(channelId: string): Promise<Message[]> {
-    if (MOCK) {
-      await delay(200)
-      return MOCK_MESSAGES[channelId] ?? []
-    }
-    return http<Message[]>(`/channels/${channelId}/messages`)
+    if (MOCK) { await delay(200); return MOCK_MESSAGES[channelId] ?? [] }
+    if (memberMap.size === 0) await this.members()
+    const page = await http<Page<MessageDto>>(`/channels/${channelId}/messages?limit=50`)
+    const items = [...page.items].reverse() // бэк отдаёт newest-first → разворачиваем в хронологию
+    const idMap = new Map(items.map((m) => [m.id, m]))
+    return items.map((m) => mapMessage(m, idMap))
   },
 
   async sendMessage(channelId: string, content: string): Promise<Message> {
     const clientMessageId = crypto.randomUUID()
     if (MOCK) {
       await delay(120)
-      return {
-        id: 'tmp_' + clientMessageId, channelId, authorId: MOCK_USER.id, authorName: MOCK_USER.username,
-        content, attachments: [], reactions: [], createdAt: new Date().toISOString(), clientMessageId,
-      }
+      return { id: 'tmp_' + clientMessageId, channelId, authorId: MOCK_USER.id, authorName: MOCK_USER.username, content, attachments: [], reactions: [], createdAt: new Date().toISOString(), clientMessageId }
     }
-    return http<Message>(`/channels/${channelId}/messages`, {
-      method: 'POST', body: JSON.stringify({ content, clientMessageId }),
-    })
+    const dto = await http<MessageDto>(`/channels/${channelId}/messages`, { method: 'POST', body: JSON.stringify({ content, clientMessageId }) })
+    return mapMessage(dto)
   },
 
-  // ---- members / read-state / admin ----
-  members(): Promise<Member[]> {
-    if (MOCK) return delay(150).then(() => MOCK_MEMBERS)
-    return http<Member[]>('/server/members')
+  /** маппинг входящего WS-события (raw MessageDto) → UI Message */
+  mapIncoming(raw: unknown): Message {
+    return mapMessage(raw as MessageDto)
   },
+
   readStates(): Promise<ReadState[]> {
     if (MOCK) return Promise.resolve(MOCK_READ_STATES)
     return http<ReadState[]>('/read-states')
@@ -94,13 +137,22 @@ export const api = {
     if (MOCK) return Promise.resolve(MOCK_READ_STATES.map((r) => ({ ...r, mentionCount: 0 })))
     return http<ReadState[]>('/read-states/ack-all', { method: 'POST' })
   },
-  invites(): Promise<Invite[]> {
-    if (MOCK) return delay(150).then(() => MOCK_INVITES)
-    return http<Invite[]>('/invites')
+
+  async invites(): Promise<Invite[]> {
+    if (MOCK) { await delay(150); return MOCK_INVITES }
+    const list = await http<InviteDto[]>('/invites')
+    if (memberMap.size === 0) await this.members()
+    return list.map((i) => ({ id: i.id, maxUses: i.maxUses, uses: i.uses, expiresAt: i.expiresAt, revoked: i.revoked, createdBy: resolveName(i.createdBy), createdAt: i.createdAt }))
   },
-  audit(): Promise<AuditEntry[]> {
-    if (MOCK) return delay(150).then(() => MOCK_AUDIT)
-    // боевой ответ маппится в AuditEntry на месте; здесь — упрощённо
-    return http<AuditEntry[]>('/admin/audit')
+
+  async audit(): Promise<AuditEntry[]> {
+    if (MOCK) { await delay(150); return MOCK_AUDIT }
+    const list = await http<AuditDto[]>('/admin/audit')
+    if (memberMap.size === 0) await this.members()
+    return list.map((d) => ({
+      id: d.id, action: d.action, actorName: resolveName(d.actorId), text: auditText(d),
+      meta: `${d.action}${d.targetType ? ' · ' + d.targetType : ''}${d.targetId ? ':' + d.targetId : ''}`,
+      createdAt: fmtDateTime(d.createdAt),
+    }))
   },
 }

@@ -34,6 +34,7 @@ export interface Channel {
   topic: string | null
   position: number
   userLimit?: number | null
+  lastMessageId?: string | null
 }
 
 export interface Attachment {

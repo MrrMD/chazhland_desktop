@@ -8,6 +8,7 @@ import { MembersRail } from './MembersRail'
 import { ChannelSwitcher } from './ChannelSwitcher'
 import { BottomBar } from './BottomBar'
 import { AdminScreen } from '@/features/admin/AdminScreen'
+import { ws } from '@/lib/ws'
 
 const TYPE_ICON: Record<ChannelType, string> = { TEXT: '#', VOICE: '🔊', WATCH: '▶' }
 
@@ -36,6 +37,21 @@ export function MainWindow() {
     api.readStates().then(setReadStates)
   }, [])
   useEffect(() => { api.messages(currentId).then(setMessages) }, [currentId])
+
+  // live-сообщения по WS для текущего канала (no-op в mock-режиме)
+  useEffect(() => {
+    return ws.onChannel(currentId, (e) => {
+      if (!e.message) return
+      const m = api.mapIncoming(e.message)
+      if (m.channelId !== currentId) return
+      setMessages((ms) => {
+        const i = ms.findIndex((x) => x.id === m.id)
+        if (e.type === 'MESSAGE_CREATED') return i >= 0 ? ms : [...ms, m]
+        if (i >= 0) { const c = ms.slice(); c[i] = m; return c }
+        return ms
+      })
+    })
+  }, [currentId])
 
   const channel = useMemo(() => tree.channels.find((c) => c.id === currentId), [tree, currentId])
   const readState = readStates.find((r) => r.channelId === currentId)

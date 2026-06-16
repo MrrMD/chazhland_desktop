@@ -1,6 +1,7 @@
 import { Client, type IMessage } from '@stomp/stompjs'
 import { MOCK, WS_URL } from './config'
-import type { ChatEvent } from './types'
+
+export interface WsEvent { type: string; channelId?: string; message?: unknown; userId?: string }
 
 // STOMP-over-WebSocket клиент. В mock-режиме — no-op (приложение работает без бэка).
 class Ws {
@@ -9,6 +10,7 @@ class Ws {
 
   connect(token: string) {
     if (MOCK) return
+    this.disconnect()
     this.client = new Client({
       brokerURL: WS_URL,
       connectHeaders: { Authorization: `Bearer ${token}` },
@@ -19,19 +21,18 @@ class Ws {
     this.client.activate()
   }
 
-  /** Подписка на /topic/channel.{id} → ChatEvent. Возвращает отписку. */
-  onChannel(channelId: string, cb: (e: ChatEvent) => void): () => void {
+  /** Подписка на /topic/channel.{id}. Возвращает функцию отписки. */
+  onChannel(channelId: string, cb: (e: WsEvent) => void): () => void {
     if (MOCK || !this.client) return () => {}
     const dest = `/topic/channel.${channelId}`
     const sub = this.client.subscribe(dest, (m: IMessage) => {
-      try { cb(JSON.parse(m.body) as ChatEvent) } catch { /* ignore */ }
+      try { cb(JSON.parse(m.body) as WsEvent) } catch { /* ignore */ }
     })
     const off = () => sub.unsubscribe()
     this.subs.set(dest, off)
     return off
   }
 
-  /** «печатает…» → /app/channel.{id}.typing */
   typing(channelId: string) {
     if (MOCK || !this.client?.connected) return
     this.client.publish({ destination: `/app/channel.${channelId}.typing`, body: '{}' })
