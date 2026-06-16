@@ -1,0 +1,24 @@
+# dependencies
+node_modules/
+
+# build output
+dist/
+dist-electron/
+release/
+out/
+.vite/
+
+# secrets / local env
+.env
+.env.local
+*.local
+
+# logs
+*.log
+npm-debug.log*
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store

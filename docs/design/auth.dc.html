@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body{margin:0}*{box-sizing:border-box}
+    @keyframes mdIn{from{opacity:0;transform:translateY(16px) scale(.985)}to{opacity:1;transform:none}}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @keyframes float1{0%,100%{transform:translate(0,0)}50%{transform:translate(20px,-26px)}}
+    @keyframes float2{0%,100%{transform:translate(0,0)}50%{transform:translate(-24px,18px)}}
+    ::-webkit-scrollbar{width:10px}::-webkit-scrollbar-thumb{background:var(--scroll,#cfcabf);border-radius:10px;border:3px solid transparent;background-clip:padding-box}
+  </style>
+</helmet>
+
+<div ref="{{ rootRef }}" style="--accent:#e0457b;--accent-press:#c63468;--bg:#eceae4;--win:#f7f5f1;--surface:#ffffff;--surface-2:#f3f1ec;--surface-3:#eceae4;--border:#e5e1d8;--border-2:#d9d4c9;--text:#1d1b19;--text-2:#6c665e;--text-3:#9b958b;--green:#2faa6a;--danger:#e0392f;--danger-tint:rgba(224,57,47,.1);--scroll:#cfcabf;--shadow:rgba(40,36,30,.10);--accent-tint:rgba(224,69,123,.10);font-family:'Inter',system-ui,sans-serif;min-height:100vh;background:var(--bg);color:var(--text);transition:background .35s,color .35s;padding:24px 22px 40px;display:flex;flex-direction:column;align-items:center;gap:18px">
+
+  <!-- DEMO STRIP -->
+  <div style="width:100%;max-width:1080px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:11px">
+      <div style="width:34px;height:34px;border-radius:11px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;box-shadow:0 4px 12px var(--accent-tint)">ch</div>
+      <div style="line-height:1.15"><div style="font-weight:700;font-size:15px">chazhland</div><div style="font-size:12px;color:var(--text-3)">вход и регистрация · hi-fi</div></div>
+    </div>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div style="display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:3px">
+        <button onClick="{{ setLight }}" style="border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;padding:6px 13px;border-radius:8px;background:{{ lightBg }};color:{{ lightColor }};transition:all .2s">☀ Светлая</button>
+        <button onClick="{{ setDark }}" style="border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;padding:6px 13px;border-radius:8px;background:{{ darkBg }};color:{{ darkColor }};transition:all .2s">☾ Тёмная</button>
+      </div>
+      <div style="display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:3px">
+        <button onClick="{{ pickLogin }}" style="border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;padding:6px 13px;border-radius:8px;background:{{ loginTabBg }};color:{{ loginTabColor }};transition:all .2s">Вход</button>
+        <button onClick="{{ pickReg }}" style="border:none;cursor:pointer;font-family:inherit;font-size:13px;font-weight:600;padding:6px 13px;border-radius:8px;background:{{ regTabBg }};color:{{ regTabColor }};transition:all .2s">Регистрация</button>
+      </div>
+      <div style="display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:3px">
+        <button onClick="{{ setIdle }}" style="border:none;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:8px;background:{{ idleBg }};color:{{ idleColor }};transition:all .2s">обычное</button>
+        <button onClick="{{ setError }}" style="border:none;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:8px;background:{{ errBg }};color:{{ errColor }};transition:all .2s">ошибка</button>
+        <button onClick="{{ setLoading }}" style="border:none;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:600;padding:6px 11px;border-radius:8px;background:{{ loadBg }};color:{{ loadColor }};transition:all .2s">загрузка</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- WINDOW -->
+  <div style="width:100%;max-width:1080px;height:660px;background:var(--win);border:1px solid var(--border);border-radius:20px;overflow:hidden;box-shadow:0 30px 70px -28px var(--shadow);position:relative;transition:background .35s,border-color .35s">
+    <!-- titlebar -->
+    <div style="height:42px;display:flex;align-items:center;gap:10px;padding:0 16px;border-bottom:1px solid var(--border);background:var(--surface);transition:background .35s,border-color .35s">
+      <div style="width:20px;height:20px;border-radius:6px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:10px">ch</div>
+      <span style="font-size:12.5px;color:var(--text-3);font-weight:500">chazhland</span>
+      <div style="margin-left:auto;display:flex;gap:7px"><span style="width:12px;height:12px;border-radius:50%;background:var(--surface-3)"></span><span style="width:12px;height:12px;border-radius:50%;background:var(--surface-3)"></span><span style="width:12px;height:12px;border-radius:50%;background:var(--surface-3)"></span></div>
+    </div>
+
+    <!-- stage -->
+    <div style="height:calc(100% - 42px);display:flex;align-items:center;justify-content:center;padding:30px 20px;position:relative;overflow:auto">
+      <!-- ambient blobs -->
+      <div style="position:absolute;top:-60px;left:8%;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,var(--accent-tint),transparent 70%);animation:float1 11s ease-in-out infinite;pointer-events:none"></div>
+      <div style="position:absolute;bottom:-50px;right:10%;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(124,92,255,.12),transparent 70%);animation:float2 13s ease-in-out infinite;pointer-events:none"></div>
+
+      <!-- ===== LOGIN ===== -->
+      <sc-if value="{{ isLogin }}" hint-placeholder-val="{{ true }}">
+      <div style="width:420px;max-width:100%;position:relative;animation:mdIn .4s cubic-bezier(.22,.61,.36,1)">
+        <div style="text-align:center;margin-bottom:20px">
+          <div style="width:62px;height:62px;border-radius:19px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:28px;margin:0 auto 12px;box-shadow:0 10px 26px var(--accent-tint)">ch</div>
+          <div style="font-weight:800;font-size:26px;letter-spacing:-.02em">С возвращением</div>
+          <div style="font-size:13.5px;color:var(--text-3);margin-top:3px">Войдите, чтобы продолжить</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:26px;box-shadow:0 14px 40px -22px var(--shadow);transition:background .35s,border-color .35s">
+          <label style="font-size:12.5px;font-weight:600;color:var(--text-2)">Имя пользователя или e-mail</label>
+          <div style="display:flex;align-items:center;gap:10px;border:1.5px solid var(--border-2);border-radius:12px;background:var(--win);padding:12px 14px;margin:7px 0 15px;transition:border-color .2s" style-focus-within="border-color:var(--accent)"><span style="color:var(--text-3)">@</span><span style="flex:1;color:var(--text-3);font-size:14px">you@chazhland · или ник</span></div>
+          <label style="font-size:12.5px;font-weight:600;color:var(--text-2)">Пароль</label>
+          <div style="display:flex;align-items:center;gap:10px;border:1.5px solid var(--border-2);border-radius:12px;background:var(--win);padding:12px 14px;margin:7px 0 10px"><span style="flex:1;color:var(--text);font-size:15px;letter-spacing:.2em">••••••••</span><span style="color:var(--text-3);cursor:pointer;font-size:15px">{{ eye }}</span></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+            <label style="display:flex;align-items:center;gap:9px;font-size:13px;color:var(--text-2);cursor:pointer"><span style="width:19px;height:19px;border-radius:6px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px">✓</span>Запомнить меня</label>
+            <span style="font-size:13px;color:var(--accent);font-weight:600;cursor:pointer">Забыли пароль?</span>
+          </div>
+          <sc-if value="{{ showErr }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:flex-start;gap:10px;background:var(--danger-tint);border:1px solid rgba(224,57,47,.35);border-radius:12px;padding:11px 13px;margin-bottom:15px"><span style="color:var(--danger);font-size:15px">⚠</span><div style="font-size:13px;color:var(--danger);line-height:1.45"><b>Неверные данные.</b> Проверьте логин и пароль.<div style="font-size:11.5px;opacity:.8;margin-top:2px">429 — слишком много попыток, подождите.</div></div></div>
+          </sc-if>
+          <button style="width:100%;border:none;background:var(--accent);color:#fff;border-radius:13px;padding:14px;font-family:inherit;font-weight:700;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 8px 20px var(--accent-tint);transition:transform .15s" style-hover="transform:translateY(-1px)" style-active="transform:translateY(0)"><sc-if value="{{ showLoad }}" hint-placeholder-val="{{ false }}"><span style="width:16px;height:16px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite"></span></sc-if>{{ loginBtn }}</button>
+          <div style="text-align:center;margin-top:18px;font-size:13.5px;color:var(--text-2)">Есть инвайт-код? <span onClick="{{ pickReg }}" style="color:var(--accent);font-weight:600;cursor:pointer">Зарегистрироваться</span></div>
+        </div>
+      </div>
+      </sc-if>
+
+      <!-- ===== REGISTER ===== -->
+      <sc-if value="{{ isReg }}" hint-placeholder-val="{{ false }}">
+      <div style="width:440px;max-width:100%;position:relative;animation:mdIn .4s cubic-bezier(.22,.61,.36,1)">
+        <div style="text-align:center;margin-bottom:16px">
+          <div style="width:56px;height:56px;border-radius:17px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:25px;margin:0 auto 10px;box-shadow:0 10px 26px var(--accent-tint)">ch</div>
+          <div style="font-weight:800;font-size:24px;letter-spacing:-.02em">Создать аккаунт</div>
+          <div style="display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);border-radius:30px;padding:4px 13px;margin-top:9px">🔒 Регистрация только по приглашению</div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:24px;box-shadow:0 14px 40px -22px var(--shadow);transition:background .35s,border-color .35s">
+          <label style="font-size:12.5px;font-weight:600;color:var(--text-2)">Инвайт-код</label>
+          <div style="display:flex;align-items:center;border:1.5px solid {{ codeBorder }};border-radius:12px;background:var(--win);padding:12px 14px;margin:7px 0 4px;font-family:ui-monospace,Menlo,monospace;font-size:14px;color:var(--text-3);letter-spacing:.08em">CHZ-XXXX-XXXX</div>
+          <sc-if value="{{ showErr }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--danger);margin:0 0 11px 2px">⚠ Инвайт недействителен, отозван или исчерпан</div></sc-if>
+          <sc-if value="{{ noErr }}" hint-placeholder-val="{{ true }}"><div style="height:11px"></div></sc-if>
+
+          <label style="font-size:12.5px;font-weight:600;color:var(--text-2)">Имя пользователя</label>
+          <div style="display:flex;align-items:center;border:1.5px solid {{ nameBorder }};border-radius:12px;background:var(--win);padding:12px 14px;margin:7px 0 4px;font-size:14px;color:var(--text-3)">ваш ник</div>
+          <sc-if value="{{ showErr }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--danger);margin:0 0 11px 2px">⚠ Имя уже занято</div></sc-if>
+          <sc-if value="{{ noErr }}" hint-placeholder-val="{{ true }}"><div style="font-size:11.5px;color:var(--text-3);margin:0 0 11px 2px">3–32 символа</div></sc-if>
+
+          <label style="font-size:12.5px;font-weight:600;color:var(--text-2)">E-mail</label>
+          <div style="display:flex;align-items:center;border:1.5px solid {{ mailBorder }};border-radius:12px;background:var(--win);padding:12px 14px;margin:7px 0 4px;font-size:14px;color:var(--text-3)"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="c4bdabb184a1bca5a9b4a8a1eaa7aba9">[email&#160;protected]</a></div>
+          <sc-if value="{{ showErr }}" hint-placeholder-val="{{ false }}"><div style="font-size:12px;color:var(--danger);margin:0 0 11px 2px">⚠ E-mail уже зарегистрирован</div></sc-if>
+          <sc-if value="{{ noErr }}" hint-placeholder-val="{{ true }}"><div style="height:11px"></div></sc-if>
+
+          <label style="font-size:12.5px;font-weight:600;color:var(--text-2)">Пароль</label>
+          <div style="display:flex;align-items:center;gap:10px;border:1.5px solid var(--border-2);border-radius:12px;background:var(--win);padding:12px 14px;margin:7px 0 9px"><span style="flex:1;color:var(--text);font-size:15px;letter-spacing:.2em">••••••••••</span><span style="color:var(--text-3);cursor:pointer;font-size:15px">{{ eye }}</span></div>
+          <div style="display:flex;align-items:center;gap:9px;margin-bottom:18px"><div style="flex:1;display:flex;gap:5px"><div style="flex:1;height:5px;border-radius:3px;background:var(--green)"></div><div style="flex:1;height:5px;border-radius:3px;background:var(--green)"></div><div style="flex:1;height:5px;border-radius:3px;background:#e0b43a"></div><div style="flex:1;height:5px;border-radius:3px;background:var(--surface-3)"></div></div><span style="font-size:11.5px;color:var(--text-3)">8–100</span></div>
+
+          <button style="width:100%;border:none;background:var(--accent);color:#fff;border-radius:13px;padding:14px;font-family:inherit;font-weight:700;font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:9px;box-shadow:0 8px 20px var(--accent-tint);transition:transform .15s" style-hover="transform:translateY(-1px)"><sc-if value="{{ showLoad }}" hint-placeholder-val="{{ false }}"><span style="width:16px;height:16px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite"></span></sc-if>{{ regBtn }}</button>
+          <div style="text-align:center;margin-top:15px;font-size:13.5px;color:var(--text-2)">Уже есть аккаунт? <span onClick="{{ pickLogin }}" style="color:var(--accent);font-weight:600;cursor:pointer">Войти</span></div>
+        </div>
+      </div>
+      </sc-if>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1080,&quot;height&quot;:740},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#e0457b&quot;,&quot;options&quot;:[&quot;#e0457b&quot;,&quot;#5b6cff&quot;,&quot;#13b886&quot;,&quot;#ff6b4a&quot;,&quot;#7c5cff&quot;]},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;light&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;]}}">
+class Component extends DCLogic {
+  state = { theme: 'light', screen: 'login', mode: 'idle', pw: false };
+  THEMES = {
+    light: { '--bg':'#eceae4','--win':'#f7f5f1','--surface':'#ffffff','--surface-2':'#f3f1ec','--surface-3':'#eceae4','--border':'#e5e1d8','--border-2':'#d9d4c9','--text':'#1d1b19','--text-2':'#6c665e','--text-3':'#9b958b','--scroll':'#cfcabf','--shadow':'rgba(40,36,30,.10)' },
+    dark:  { '--bg':'#0c0b0a','--win':'#17150f','--surface':'#211e18','--surface-2':'#29251e','--surface-3':'#332e26','--border':'#332e26','--border-2':'#403a30','--text':'#f1ece2','--text-2':'#a8a194','--text-3':'#736d62','--scroll':'#3a352c','--shadow':'rgba(0,0,0,.5)' },
+  };
+  componentDidMount() {
+    const p = this.props || {}; const next = {};
+    if (p.theme && this.THEMES[p.theme]) next.theme = p.theme;
+    if (Object.keys(next).length) this.setState(next);
+    this.applyTheme();
+  }
+  componentDidUpdate() { this.applyTheme(); }
+  applyTheme() {
+    if (!this.rootEl) return;
+    const accent = (this.props && this.props.accentColor) || '#e0457b';
+    const t = this.THEMES[this.state.theme] || this.THEMES.light;
+    for (const k in t) this.rootEl.style.setProperty(k, t[k]);
+    this.rootEl.style.setProperty('--accent', accent);
+    this.rootEl.style.setProperty('--accent-tint', this.state.theme === 'dark' ? this.hexA(accent,.18) : this.hexA(accent,.10));
+  }
+  hexA(hex,a){const h=hex.replace('#','');const n=parseInt(h.length===3?h.split('').map(c=>c+c).join(''):h,16);return `rgba(${(n>>16)&255},${(n>>8)&255},${n&255},${a})`;}
+  renderVals() {
+    const { theme, screen, mode, pw } = this.state;
+    const err = mode === 'error', load = mode === 'loading';
+    const seg = (on) => ({ Bg: on ? 'var(--surface)' : 'transparent', Color: on ? 'var(--text)' : 'var(--text-3)' });
+    const lt=seg(theme==='light'), dk=seg(theme==='dark'), lg=seg(screen==='login'), rg=seg(screen==='register'), mi=seg(mode==='idle'), me=seg(mode==='error'), ml=seg(mode==='loading');
+    return {
+      rootRef: (el) => { this.rootEl = el; if (el) this.applyTheme(); },
+      setLight:()=>this.setState({theme:'light'}), setDark:()=>this.setState({theme:'dark'}),
+      lightBg:lt.Bg,lightColor:lt.Color,darkBg:dk.Bg,darkColor:dk.Color,
+      isLogin:screen==='login', isReg:screen==='register',
+      loginTabBg:lg.Bg,loginTabColor:lg.Color,regTabBg:rg.Bg,regTabColor:rg.Color,
+      pickLogin:()=>this.setState({screen:'login'}), pickReg:()=>this.setState({screen:'register'}),
+      showErr:err, showLoad:load, noErr:!err,
+      eye: pw?'🙈':'👁',
+      loginBtn: load?'Вход…':'Войти', regBtn: load?'Создаём…':'Создать аккаунт',
+      codeBorder: err?'rgba(224,57,47,.55)':'var(--border-2)', nameBorder: err?'rgba(224,57,47,.55)':'var(--border-2)', mailBorder: err?'rgba(224,57,47,.55)':'var(--border-2)',
+      idleBg:mi.Bg,idleColor:mi.Color,errBg:me.Bg,errColor:me.Color,loadBg:ml.Bg,loadColor:ml.Color,
+      setIdle:()=>this.setState({mode:'idle'}), setError:()=>this.setState({mode:'error'}), setLoading:()=>this.setState({mode:'loading'}),
+    };
+  }
+}
+</script>
+</body>
+</html>
