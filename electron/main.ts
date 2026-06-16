@@ -27,8 +27,11 @@ function showWindow() {
 
 function createTray() {
   if (tray) return
-  const icon = nativeImage.createFromPath(path.join(process.env.APP_ROOT!, 'build', 'tray.png'))
+  // macOS: монохромный template-значок (адаптируется к светлой/тёмной меню-панели); иначе — акцентный
+  const file = MAC ? 'tray-template.png' : 'tray.png'
+  const icon = nativeImage.createFromPath(path.join(process.env.APP_ROOT!, 'build', file))
   if (icon.isEmpty()) return // нет иконки — без трея (чтобы не падать)
+  if (MAC) icon.setTemplateImage(true)
   tray = new Tray(icon)
   tray.setToolTip('chazhland')
   tray.setContextMenu(Menu.buildFromTemplate([
