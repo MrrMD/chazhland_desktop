@@ -12,8 +12,25 @@ export function VoiceSettingsModal({ onClose }: { onClose: () => void }) {
   const [outputs, setOutputs] = useState<AudioDevice[]>([])
   const [s, setS] = useState({ ...voice.settings })
   const [capturing, setCapturing] = useState(false)
+  const [grantBusy, setGrantBusy] = useState(false)
 
-  useEffect(() => { voice.listDevices().then((d) => { setInputs(d.inputs); setOutputs(d.outputs) }) }, [])
+  useEffect(() => {
+    let alive = true
+    const load = async () => { const d = await voice.listDevices(); if (alive) { setInputs(d.inputs); setOutputs(d.outputs) } }
+    // запрашиваем доступ к микрофону сразу при открытии — иначе метки устройств пустые (не дожидаясь звонка)
+    ;(async () => { await voice.requestMicPermission(); await load() })()
+    const md = navigator.mediaDevices
+    md?.addEventListener('devicechange', load)
+    return () => { alive = false; md?.removeEventListener('devicechange', load) }
+  }, [])
+
+  async function grant() {
+    setGrantBusy(true)
+    await voice.requestMicPermission()
+    const d = await voice.listDevices()
+    setInputs(d.inputs); setOutputs(d.outputs)
+    setGrantBusy(false)
+  }
 
   useEffect(() => {
     if (!capturing) return
@@ -29,7 +46,12 @@ export function VoiceSettingsModal({ onClose }: { onClose: () => void }) {
       </Section>
       <Section label="Устройство вывода">
         <Select value={s.outputId} onChange={(v) => { voice.setOutputDevice(v); setS((p) => ({ ...p, outputId: v })) }} options={[{ id: '', label: 'По умолчанию' }, ...outputs]} />
-        {inputs.length === 0 && <Hint>Список устройств заполнится после первого входа в звонок (нужен доступ к микрофону).</Hint>}
+        {inputs.length === 0 && (
+          <div style={{ marginTop: 8 }}>
+            <Hint>Нет доступа к микрофону — разрешите, чтобы увидеть список устройств.</Hint>
+            <button className="pill no-drag" onClick={grant} disabled={grantBusy} style={{ marginTop: 8, padding: '7px 13px', fontWeight: 600, fontSize: 13 }}>{grantBusy ? 'Запрос…' : 'Запросить доступ'}</button>
+          </div>
+        )}
       </Section>
       <Section label="Обработка звука">
         <Toggle label="Шумоподавление" on={s.noiseSuppression} onClick={() => { const v = !s.noiseSuppression; voice.setProcessing({ noiseSuppression: v }); setS((p) => ({ ...p, noiseSuppression: v })) }} />

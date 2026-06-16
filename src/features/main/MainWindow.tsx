@@ -332,6 +332,7 @@ export function MainWindow() {
           dms={dms}
           readStates={readStates}
           currentId={currentId}
+          activeVoiceChannelId={vs.channelId}
           onPick={pickChannel}
           onClose={() => setChannelsOpen(false)}
           onCreateChannel={createChannel}

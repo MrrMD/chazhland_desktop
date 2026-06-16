@@ -210,6 +210,17 @@ class Voice {
     this.set({ micOn: down })
   }
 
+  // Разблокировка меток устройств: enumerateDevices даёт пустые label без granted-доступа к
+  // микрофону. Берём временный аудио-поток и сразу глушим — нужен только грант, не сам звук.
+  async requestMicPermission(): Promise<boolean> {
+    if (MOCK || typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return false
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      stream.getTracks().forEach((t) => t.stop())
+      return true
+    } catch { return false }
+  }
+
   async listDevices(): Promise<{ inputs: AudioDevice[]; outputs: AudioDevice[] }> {
     if (typeof navigator === 'undefined' || !navigator.mediaDevices) return { inputs: [], outputs: [] }
     try {

@@ -11,12 +11,13 @@ const TYPE_ICON: Record<string, React.ReactNode> = { TEXT: <Hash size={18} />, V
 const VOICE_LIVE: Record<string, number> = MOCK ? { ch_call: 3, ch_cs: 2 } : {}
 
 export function ChannelSwitcher({
-  channels, dms, readStates, currentId, onPick, onClose, onCreateChannel,
+  channels, dms, readStates, currentId, activeVoiceChannelId, onPick, onClose, onCreateChannel,
 }: {
   channels: Channel[]
   dms: Dm[]
   readStates: ReadState[]
   currentId: string
+  activeVoiceChannelId: string | null
   onPick: (id: string) => void
   onClose: () => void
   onCreateChannel: (p: { name: string; type: ChannelType }) => Promise<void>
@@ -45,7 +46,7 @@ export function ChannelSwitcher({
             {byType('TEXT').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} onPick={onPick} />)}
           </Section>
           <Section title="ГОЛОСОВЫЕ">
-            {byType('VOICE').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} onPick={onPick} />)}
+            {byType('VOICE').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} voiceActive={c.id === activeVoiceChannelId} onPick={onPick} />)}
           </Section>
           <Section title="КИНОТЕАТР" last={dms.length === 0}>
             {byType('WATCH').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} onPick={onPick} />)}
@@ -81,28 +82,30 @@ function Section({ title, accent, last, children }: { title: string; accent?: bo
   )
 }
 
-function Tile({ c, rs, current, onPick }: { c: Channel; rs?: ReadState; current: boolean; onPick: (id: string) => void }) {
+function Tile({ c, rs, current, voiceActive, onPick }: { c: Channel; rs?: ReadState; current: boolean; voiceActive?: boolean; onPick: (id: string) => void }) {
   const live = VOICE_LIVE[c.id]
   const mentions = rs?.mentionCount ?? 0
-  const sub = current ? 'открыт сейчас' : live ? `● ${live} в эфире` : mentions > 0 ? `${mentions} упоминаний` : c.type === 'TEXT' ? 'прочитано' : 'пусто'
+  // voiceActive (вы подключены к голосовому) — зелёная подсветка, отдельно от открытого текстового (акцент)
+  const sub = voiceActive ? 'вы тут · в эфире' : current ? 'открыт сейчас' : live ? `● ${live} в эфире` : mentions > 0 ? `${mentions} упоминаний` : c.type === 'TEXT' ? 'прочитано' : 'пусто'
   return (
     <div
       onClick={() => onPick(c.id)}
-      className={current ? undefined : 'tile'}
+      className={current || voiceActive ? undefined : 'tile'}
       style={{
-        position: 'relative', background: current ? 'var(--accent-tint)' : live ? 'rgba(47,170,106,.1)' : 'var(--surface)',
-        border: current ? '1.5px solid var(--accent)' : live ? '1px solid rgba(47,170,106,.4)' : '1px solid var(--border)',
+        position: 'relative',
+        background: voiceActive ? 'rgba(47,170,106,.14)' : current ? 'var(--accent-tint)' : live ? 'rgba(47,170,106,.1)' : 'var(--surface)',
+        border: voiceActive ? '1.5px solid var(--green)' : current ? '1.5px solid var(--accent)' : live ? '1px solid rgba(47,170,106,.4)' : '1px solid var(--border)',
         borderRadius: 16, padding: 15, cursor: 'pointer',
       }}
     >
-      {mentions > 0 && !current && (
+      {mentions > 0 && !current && !voiceActive && (
         <div style={{ position: 'absolute', top: 12, right: 12, background: 'var(--accent)', color: '#fff', borderRadius: 30, fontSize: 10.5, fontWeight: 700, padding: '1px 7px' }}>{mentions}</div>
       )}
-      <div style={{ width: 38, height: 38, borderRadius: 11, background: current ? 'var(--accent)' : live ? 'rgba(47,170,106,.18)' : 'var(--surface-3)', color: current ? '#fff' : live ? 'var(--green)' : 'var(--text-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: c.type === 'TEXT' ? 18 : 17 }}>
+      <div style={{ width: 38, height: 38, borderRadius: 11, background: voiceActive ? 'var(--green)' : current ? 'var(--accent)' : live ? 'rgba(47,170,106,.18)' : 'var(--surface-3)', color: voiceActive || current ? '#fff' : live ? 'var(--green)' : 'var(--text-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: c.type === 'TEXT' ? 18 : 17 }}>
         {TYPE_ICON[c.type]}
       </div>
-      <div style={{ fontWeight: 700, fontSize: 14.5, marginTop: 10, color: current ? 'var(--accent)' : 'var(--text)' }}>{c.name}</div>
-      <div style={{ fontSize: 11.5, color: live ? 'var(--green)' : current ? 'var(--accent)' : 'var(--text-3)', fontWeight: live ? 600 : 400 }}>{sub}</div>
+      <div style={{ fontWeight: 700, fontSize: 14.5, marginTop: 10, color: voiceActive ? 'var(--green)' : current ? 'var(--accent)' : 'var(--text)' }}>{c.name}</div>
+      <div style={{ fontSize: 11.5, color: voiceActive ? 'var(--green)' : current ? 'var(--accent)' : live ? 'var(--green)' : 'var(--text-3)', fontWeight: voiceActive || live ? 600 : 400 }}>{sub}</div>
     </div>
   )
 }

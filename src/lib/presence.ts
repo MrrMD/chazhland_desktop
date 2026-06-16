@@ -20,15 +20,20 @@ class PresenceStore {
   private emit() { this.cbs.forEach((c) => c()) }
   statusOf(userId: string): Presence { return this.statuses.get(userId) ?? 'offline' }
 
-  async start() {
-    if (MOCK || this.started) return
-    this.started = true
+  // снапшот онлайна (GET /presence); вызываем при старте И на каждом WS-коннекте —
+  // на старте чужие connect-heartbeat'ы могли ещё не попасть в Redis, поэтому одного раза мало
+  private async loadSnapshot() {
     try {
       const snap = await api.presenceSnapshot()
       this.statuses.clear()
       snap.online.forEach((u) => this.statuses.set(u.userId, (u.status as Presence) || 'online'))
       this.emit()
     } catch { /* снапшот не критичен — догоним по дельтам */ }
+  }
+
+  async start() {
+    if (MOCK || this.started) return
+    this.started = true
 
     this.offEvents = ws.onPresence((e: PEvent) => {
       if (e.type !== 'PRESENCE_UPDATE' || !e.userId) return
@@ -37,8 +42,9 @@ class PresenceStore {
       else this.statuses.set(e.userId, s)
       this.emit()
     })
-    // шлём свой статус сразу при появлении соединения (и на каждом реконнекте)
-    this.offStatus = ws.onStatus((st) => { if (st === 'online') ws.heartbeat(this.myStatus) })
+    // при появлении соединения (и на каждом реконнекте): свой heartbeat сразу + свежий снапшот,
+    // чтобы онлайн появлялся мгновенно, а не через ~20с по таймеру/дельтам
+    this.offStatus = ws.onStatus((st) => { if (st === 'online') { ws.heartbeat(this.myStatus); this.loadSnapshot() } })
     this.timer = window.setInterval(() => ws.heartbeat(this.myStatus), 20000)
   }
 
