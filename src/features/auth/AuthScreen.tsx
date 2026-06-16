@@ -4,7 +4,14 @@ import { api } from '@/lib/api'
 import { HttpError } from '@/lib/http'
 
 function serverMessage(e: HttpError): string | null {
-  try { const j = JSON.parse(e.body); return typeof j?.message === 'string' ? j.message : null } catch { return null }
+  try {
+    const j = JSON.parse(e.body)
+    if (j?.fieldErrors && typeof j.fieldErrors === 'object') {
+      const parts = Object.entries(j.fieldErrors).map(([f, m]) => `${f}: ${m}`)
+      if (parts.length) return parts.join('; ') // показываем, какое поле не прошло валидацию
+    }
+    return typeof j?.message === 'string' ? j.message : null
+  } catch { return null }
 }
 function errMsg(e: unknown, fallback: string): string {
   if (e instanceof HttpError) {
@@ -119,7 +126,7 @@ export function AuthScreen() {
             <Strength pw={pw} />
             {info && <InfoBox text={info} />}
             {error && <ErrorBox text={error} />}
-            <button type="submit" disabled={loading || !email || code.length !== 6 || !username || pw.length < 8} className="accent-btn" style={{ ...btn, opacity: (!email || code.length !== 6 || !username || pw.length < 8) ? 0.55 : 1 }}>{loading && <Spinner />}{loading ? 'Создаём…' : 'Создать аккаунт'}</button>
+            <button type="submit" disabled={loading || !email || code.length !== 6 || username.trim().length < 3 || pw.length < 8} className="accent-btn" style={{ ...btn, opacity: (!email || code.length !== 6 || username.trim().length < 3 || pw.length < 8) ? 0.55 : 1 }}>{loading && <Spinner />}{loading ? 'Создаём…' : 'Создать аккаунт'}</button>
             <Switch text="Уже есть аккаунт?" action="Войти" onClick={() => go('login')} />
           </Panel>
         </form>
