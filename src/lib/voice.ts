@@ -32,6 +32,8 @@ const INITIAL: VoiceState = {
 }
 const LS = 'chazh.voice'
 const DEFAULTS: VoiceSettings = { inputId: '', outputId: '', noiseSuppression: true, echoCancellation: true, autoGain: true, mode: 'voice', pttKey: 'Space' }
+// глобальный хоткей тумблера микрофона (работает вне фокуса окна; true hold-PTT недоступен через globalShortcut)
+const MIC_HOTKEY = 'CommandOrControl+Shift+M'
 
 class Voice {
   private room: Room | null = null
@@ -50,6 +52,7 @@ class Voice {
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', (e) => this.onKey(e, true))
       window.addEventListener('keyup', (e) => this.onKey(e, false))
+      window.chazh?.onToggleMic(() => { void this.toggleMic() }) // глобальный хоткей → тумблер микрофона
     }
   }
 
@@ -101,13 +104,14 @@ class Voice {
         .on(RoomEvent.ParticipantConnected, () => this.refresh())
         .on(RoomEvent.ParticipantDisconnected, () => this.refresh())
         .on(RoomEvent.LocalTrackPublished, () => this.refresh())
-        .on(RoomEvent.Disconnected, () => { if (this.room === room) { this.targetId = null; this.room = null; this.set({ ...INITIAL }) } })
+        .on(RoomEvent.Disconnected, () => { if (this.room === room) { this.targetId = null; this.room = null; window.chazh?.setMicHotkey(null); this.set({ ...INITIAL }) } })
       await room.connect(t.url, t.token)
       if (this.joinSeq !== seq) { room.removeAllListeners(); try { await room.disconnect() } catch { /* */ } return }
       if (this.settings.outputId) await room.switchActiveDevice('audiooutput', this.settings.outputId).catch(() => {})
       const micOn = this.settings.mode === 'voice' // в режиме PTT молчим до нажатия клавиши
       if (micOn) await room.localParticipant.setMicrophoneEnabled(true, this.captureOpts())
       this.set({ connecting: false, micOn })
+      window.chazh?.setMicHotkey(MIC_HOTKEY) // включаем глобальный тумблер на время звонка
       this.refresh()
     } catch {
       if (this.joinSeq === seq) { this.targetId = null; await this.teardownRoom(); this.set({ ...INITIAL }) }
@@ -235,6 +239,7 @@ class Voice {
   async leave() {
     this.targetId = null
     this.joinSeq++
+    window.chazh?.setMicHotkey(null)
     await this.teardownRoom()
     this.set({ ...INITIAL })
   }

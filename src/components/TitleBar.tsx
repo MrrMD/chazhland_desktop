@@ -5,12 +5,13 @@ const bridge = typeof window !== 'undefined' ? window.chazh : undefined
 
 export function TitleBar() {
   const { theme, toggleTheme } = useTheme()
+  const mac = bridge?.platform === 'darwin' // на macOS — нативные «светофоры» слева, свои кнопки прячем
   return (
     <div
       className="drag"
       style={{
         height: 36, flex: 'none', display: 'flex', alignItems: 'center', gap: 10,
-        padding: '0 12px', background: 'var(--surface)', borderBottom: '1px solid var(--border)',
+        padding: mac ? '0 12px 0 78px' : '0 12px', background: 'var(--surface)', borderBottom: '1px solid var(--border)',
         userSelect: 'none',
       }}
     >
@@ -24,16 +25,18 @@ export function TitleBar() {
         <button className="ib no-drag" onClick={toggleTheme} title="Сменить тему" style={{ width: 30, height: 26 }}>
           {theme === 'dark' ? <Moon size={15} /> : <Sun size={15} />}
         </button>
-        <button className="ib no-drag" onClick={() => bridge?.minimize()} title="Свернуть" style={{ width: 34, height: 26 }}><Minus size={16} /></button>
-        <button className="ib no-drag" onClick={() => bridge?.maximize()} title="Развернуть" style={{ width: 34, height: 26 }}><Square size={13} /></button>
-        <button
-          className="no-drag"
-          onClick={() => bridge?.close()}
-          title="Закрыть"
-          style={{ width: 34, height: 26, border: 'none', background: 'transparent', color: 'var(--text-2)', borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff' }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)' }}
-        ><X size={16} /></button>
+        {!mac && <>
+          <button className="ib no-drag" onClick={() => bridge?.minimize()} title="Свернуть" style={{ width: 34, height: 26 }}><Minus size={16} /></button>
+          <button className="ib no-drag" onClick={() => bridge?.maximize()} title="Развернуть" style={{ width: 34, height: 26 }}><Square size={13} /></button>
+          <button
+            className="no-drag"
+            onClick={() => bridge?.close()}
+            title="Закрыть"
+            style={{ width: 34, height: 26, border: 'none', background: 'transparent', color: 'var(--text-2)', borderRadius: 7, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--danger)'; e.currentTarget.style.color = '#fff' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--text-2)' }}
+          ><X size={16} /></button>
+        </>}
       </div>
     </div>
   )

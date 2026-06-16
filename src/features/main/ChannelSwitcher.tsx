@@ -11,13 +11,14 @@ const TYPE_ICON: Record<string, React.ReactNode> = { TEXT: <Hash size={18} />, V
 const VOICE_LIVE: Record<string, number> = MOCK ? { ch_call: 3, ch_cs: 2 } : {}
 
 export function ChannelSwitcher({
-  channels, dms, readStates, currentId, activeVoiceChannelId, onPick, onClose, onCreateChannel,
+  channels, dms, readStates, currentId, activeVoiceChannelId, unread, onPick, onClose, onCreateChannel,
 }: {
   channels: Channel[]
   dms: Dm[]
   readStates: ReadState[]
   currentId: string
   activeVoiceChannelId: string | null
+  unread: Set<string>
   onPick: (id: string) => void
   onClose: () => void
   onCreateChannel: (p: { name: string; type: ChannelType }) => Promise<void>
@@ -43,13 +44,13 @@ export function ChannelSwitcher({
 
         <div style={{ overflow: 'auto', padding: '20px 22px 24px' }}>
           <Section title="ТЕКСТОВЫЕ" accent>
-            {byType('TEXT').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} onPick={onPick} />)}
+            {byType('TEXT').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} unread={unread.has(c.id)} onPick={onPick} />)}
           </Section>
           <Section title="ГОЛОСОВЫЕ">
             {byType('VOICE').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} voiceActive={c.id === activeVoiceChannelId} onPick={onPick} />)}
           </Section>
           <Section title="КИНОТЕАТР" last={dms.length === 0}>
-            {byType('WATCH').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} onPick={onPick} />)}
+            {byType('WATCH').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} unread={unread.has(c.id)} onPick={onPick} />)}
             <div className="tile" onClick={() => setCreateOpen(true)} style={{ border: '1.5px dashed var(--border-2)', borderRadius: 16, padding: 15, cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', minHeight: 96 }}>
               <Plus size={22} />
               <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 5 }}>создать канал</div>
@@ -58,10 +59,11 @@ export function ChannelSwitcher({
           {dms.length > 0 && (
             <Section title="ЛИЧНЫЕ" last>
               {dms.filter((d) => d.name.toLowerCase().includes(q.toLowerCase())).map((d) => (
-                <div key={d.id} onClick={() => onPick(d.id)} className={d.id === currentId ? undefined : 'tile'} style={{ background: d.id === currentId ? 'var(--accent-tint)' : 'var(--surface)', border: d.id === currentId ? '1.5px solid var(--accent)' : '1px solid var(--border)', borderRadius: 16, padding: 15, cursor: 'pointer' }}>
+                <div key={d.id} onClick={() => onPick(d.id)} className={d.id === currentId ? undefined : 'tile'} style={{ position: 'relative', background: d.id === currentId ? 'var(--accent-tint)' : 'var(--surface)', border: d.id === currentId ? '1.5px solid var(--accent)' : '1px solid var(--border)', borderRadius: 16, padding: 15, cursor: 'pointer' }}>
+                  {unread.has(d.id) && d.id !== currentId && <div style={{ position: 'absolute', top: 14, right: 14, width: 9, height: 9, borderRadius: '50%', background: 'var(--accent)' }} />}
                   <Avatar name={d.name} src={d.avatarUrl} size={38} />
                   <div style={{ fontWeight: 700, fontSize: 14.5, marginTop: 10, color: d.id === currentId ? 'var(--accent)' : 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.name}</div>
-                  <div style={{ fontSize: 11.5, color: d.id === currentId ? 'var(--accent)' : 'var(--text-3)' }}>{d.id === currentId ? 'открыт сейчас' : 'личные'}</div>
+                  <div style={{ fontSize: 11.5, color: d.id === currentId ? 'var(--accent)' : 'var(--text-3)' }}>{d.id === currentId ? 'открыт сейчас' : unread.has(d.id) ? 'новые сообщения' : 'личные'}</div>
                 </div>
               ))}
             </Section>
@@ -82,11 +84,11 @@ function Section({ title, accent, last, children }: { title: string; accent?: bo
   )
 }
 
-function Tile({ c, rs, current, voiceActive, onPick }: { c: Channel; rs?: ReadState; current: boolean; voiceActive?: boolean; onPick: (id: string) => void }) {
+function Tile({ c, rs, current, voiceActive, unread, onPick }: { c: Channel; rs?: ReadState; current: boolean; voiceActive?: boolean; unread?: boolean; onPick: (id: string) => void }) {
   const live = VOICE_LIVE[c.id]
   const mentions = rs?.mentionCount ?? 0
   // voiceActive (вы подключены к голосовому) — зелёная подсветка, отдельно от открытого текстового (акцент)
-  const sub = voiceActive ? 'вы тут · в эфире' : current ? 'открыт сейчас' : live ? `● ${live} в эфире` : mentions > 0 ? `${mentions} упоминаний` : c.type === 'TEXT' ? 'прочитано' : 'пусто'
+  const sub = voiceActive ? 'вы тут · в эфире' : current ? 'открыт сейчас' : live ? `● ${live} в эфире` : mentions > 0 ? `${mentions} упоминаний` : unread ? 'новые сообщения' : c.type === 'TEXT' ? 'прочитано' : 'пусто'
   return (
     <div
       onClick={() => onPick(c.id)}
@@ -100,6 +102,9 @@ function Tile({ c, rs, current, voiceActive, onPick }: { c: Channel; rs?: ReadSt
     >
       {mentions > 0 && !current && !voiceActive && (
         <div style={{ position: 'absolute', top: 12, right: 12, background: 'var(--accent)', color: '#fff', borderRadius: 30, fontSize: 10.5, fontWeight: 700, padding: '1px 7px' }}>{mentions}</div>
+      )}
+      {unread && mentions === 0 && !current && !voiceActive && (
+        <div style={{ position: 'absolute', top: 14, right: 14, width: 9, height: 9, borderRadius: '50%', background: 'var(--accent)' }} />
       )}
       <div style={{ width: 38, height: 38, borderRadius: 11, background: voiceActive ? 'var(--green)' : current ? 'var(--accent)' : live ? 'rgba(47,170,106,.18)' : 'var(--surface-3)', color: voiceActive || current ? '#fff' : live ? 'var(--green)' : 'var(--text-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: c.type === 'TEXT' ? 18 : 17 }}>
         {TYPE_ICON[c.type]}

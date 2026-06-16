@@ -17,6 +17,7 @@ import { ChatPanel } from './ChatPanel'
 import { AdminScreen } from '@/features/admin/AdminScreen'
 import { ws } from '@/lib/ws'
 import { toast } from '@/lib/toast'
+import { mentionsUser } from '@/lib/mentions'
 import { Search, Pin, Bell, Users, Hash, Volume2, Play, AtSign } from 'lucide-react'
 
 const TYPE_ICON: Record<ChannelType, React.ReactNode> = { TEXT: <Hash size={18} />, VOICE: <Volume2 size={18} />, WATCH: <Play size={18} />, DM: <AtSign size={18} /> }
@@ -47,6 +48,7 @@ export function MainWindow() {
   const [pinsVersion, setPinsVersion] = useState(0)
   const [hasMore, setHasMore] = useState(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
+  const [unread, setUnread] = useState<Set<string>>(new Set()) // каналы с непрочитанными (кроме открытого)
 
   useEffect(() => voice.subscribe(setVs), [])
   useEffect(() => { presence.start(); return () => presence.stop() }, [])
@@ -55,6 +57,9 @@ export function MainWindow() {
   // актуальный канал для асинхронных колбэков (откат реакции и т.п.), чтобы не затирать чужую ленту
   const currentIdRef = useRef(currentId)
   useEffect(() => { currentIdRef.current = currentId }, [currentId])
+  // свежие tree/dms для фоновых обработчиков уведомлений (имена каналов/диалогов)
+  const treeRef = useRef(tree); useEffect(() => { treeRef.current = tree }, [tree])
+  const dmsRef = useRef(dms); useEffect(() => { dmsRef.current = dms }, [dms])
 
   useEffect(() => {
     api.serverTree().then((t) => {
@@ -71,6 +76,7 @@ export function MainWindow() {
     if (!currentId) return
     let alive = true
     setLoadingOlder(false)
+    setUnread((u) => { if (!u.has(currentId)) return u; const n = new Set(u); n.delete(currentId); return n }) // открыли — прочитано
     api.messages(currentId).then((ms) => {
       if (!alive) return // защита от гонки при быстром переключении каналов
       setMessages(ms)
@@ -151,6 +157,40 @@ export function MainWindow() {
     }
   }, [currentId])
 
+  // фоновая подписка на ВСЕ текстовые каналы + DM — непрочитанные и уведомления вне открытого канала.
+  // user-topic'а у бэка нет, поэтому слушаем каждый /topic/channel.{id} (см. backend-research).
+  const bgIds = useMemo(() => [...tree.channels.filter((c) => c.type !== 'VOICE').map((c) => c.id), ...dms.map((d) => d.id)], [tree, dms])
+  const bgKey = bgIds.join(',')
+  useEffect(() => {
+    if (bgIds.length === 0) return
+    const offs = bgIds.map((id) => ws.onChannel(id, (e) => {
+      if (e.type !== 'MESSAGE_CREATED' || e.channelId === currentIdRef.current) return // открытый канал ведёт основной хэндлер
+      const raw = e.message; if (!raw) return
+      const m = api.mapIncoming(raw)
+      if (m.authorId === user.id) return // своё
+      setUnread((u) => (u.has(id) ? u : new Set(u).add(id)))
+      const isDm = dmsRef.current.some((d) => d.id === id)
+      if (isDm || mentionsUser(m.content, user.username)) {
+        setReadStates((rs) => {
+          const i = rs.findIndex((r) => r.channelId === id)
+          if (i >= 0) return rs.map((r, j) => (j === i ? { ...r, mentionCount: r.mentionCount + 1 } : r))
+          return [...rs, { channelId: id, lastReadMessageId: null, mentionCount: 1 }]
+        })
+        const name = isDm ? (dmsRef.current.find((d) => d.id === id)?.name ?? m.authorName) : (treeRef.current.channels.find((c) => c.id === id)?.name ?? 'канал')
+        const body = m.content || (m.attachments.length ? 'вложение' : 'новое сообщение')
+        window.chazh?.notify({ title: isDm ? m.authorName : `${m.authorName} · #${name}`, body, channelId: id })
+      }
+    }))
+    return () => offs.forEach((off) => off())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bgKey])
+
+  // клик по нативному уведомлению — фокус окна обеспечивает main; здесь открываем нужный канал
+  useEffect(() => {
+    if (!window.chazh?.onNotificationClick) return
+    return window.chazh.onNotificationClick(({ channelId }) => { setCurrentId(channelId); setView('chat'); setPanel(null) })
+  }, [])
+
   const channel = useMemo<Channel | undefined>(() => {
     const c = tree.channels.find((x) => x.id === currentId)
     if (c) return c
@@ -162,6 +202,7 @@ export function MainWindow() {
   const canModerate = myRole === 'OWNER' || myRole === 'ADMIN'
   const unreadTotal = readStates.reduce((a, r) => a + r.mentionCount, 0)
   const isWatch = channel?.type === 'WATCH'
+  useEffect(() => { window.chazh?.setBadge(unreadTotal) }, [unreadTotal]) // бейдж в доке/таскбаре
 
   function send(text: string, attachments?: AttachmentInput[]) {
     if (!currentId) return // не отправляем без выбранного канала (иначе /channels//messages → 401)
@@ -333,6 +374,7 @@ export function MainWindow() {
           readStates={readStates}
           currentId={currentId}
           activeVoiceChannelId={vs.channelId}
+          unread={unread}
           onPick={pickChannel}
           onClose={() => setChannelsOpen(false)}
           onCreateChannel={createChannel}

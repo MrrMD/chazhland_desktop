@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, desktopCapturer } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, desktopCapturer, Tray, Menu, Notification, globalShortcut, nativeImage } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -9,8 +9,33 @@ const appDir = path.dirname(fileURLToPath(import.meta.url))
 process.env.APP_ROOT = path.join(appDir, '..')
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
+const MAC = process.platform === 'darwin'
 
 let win: BrowserWindow | null = null
+let tray: Tray | null = null
+let isQuitting = false
+let micAccel: string | null = null
+
+function showWindow() {
+  if (!win) { createWindow(); return }
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
+function createTray() {
+  if (tray) return
+  const icon = nativeImage.createFromPath(path.join(process.env.APP_ROOT!, 'build', 'tray.png'))
+  if (icon.isEmpty()) return // нет иконки — без трея (чтобы не падать)
+  tray = new Tray(icon)
+  tray.setToolTip('chazhland')
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: 'Открыть chazhland', click: showWindow },
+    { type: 'separator' },
+    { label: 'Выйти', click: () => { isQuitting = true; app.quit() } },
+  ]))
+  tray.on('click', showWindow)
+}
 
 function createWindow() {
   win = new BrowserWindow({
@@ -18,7 +43,9 @@ function createWindow() {
     height: 860,
     minWidth: 940,
     minHeight: 600,
-    frame: false, // кастомный titlebar (frameless) — Windows-стиль
+    // macOS — нативные «светофоры» (titleBarStyle hidden), сдвинутые под кастомный titlebar;
+    // Windows/Linux — полностью frameless со своими кнопками управления
+    ...(MAC ? { titleBarStyle: 'hidden' as const, trafficLightPosition: { x: 13, y: 12 } } : { frame: false }),
     backgroundColor: '#17150f',
     webPreferences: {
       preload: path.join(appDir, 'preload.mjs'),
@@ -37,6 +64,28 @@ function createWindow() {
   ipcMain.on('win:maximize', () => (win?.isMaximized() ? win?.unmaximize() : win?.maximize()))
   ipcMain.on('win:close', () => win?.close())
   ipcMain.handle('win:isMaximized', () => win?.isMaximized() ?? false)
+
+  // закрытие окна — в трей (приложение продолжает работать и получать уведомления); реальный выход — через трей
+  win.on('close', (e) => { if (!isQuitting) { e.preventDefault(); win?.hide() } })
+
+  // нативные desktop-уведомления; клик — фокус окна + переход в канал (через рендерер)
+  ipcMain.handle('notify:show', (_e, p: { title: string; body: string; channelId?: string }) => {
+    if (!Notification.isSupported()) return
+    const n = new Notification({ title: p.title, body: p.body })
+    n.on('click', () => { showWindow(); if (p.channelId) win?.webContents.send('notif:clicked', { channelId: p.channelId }) })
+    n.show()
+  })
+  // бейдж непрочитанного (dock на macOS / Unity на Linux; Windows — no-op)
+  ipcMain.on('app:badge', (_e, count: number) => { app.setBadgeCount(typeof count === 'number' && count > 0 ? count : 0) })
+
+  // глобальный хоткей тумблера микрофона (работает и когда окно не в фокусе)
+  ipcMain.handle('voice:setMicHotkey', (_e, accel: string | null) => {
+    if (micAccel && micAccel !== accel) { globalShortcut.unregister(micAccel); micAccel = null }
+    if (accel && !globalShortcut.isRegistered(accel)) {
+      try { globalShortcut.register(accel, () => win?.webContents.send('voice:toggle-mic')); micAccel = accel } catch { /* занят другим приложением */ }
+    }
+    return micAccel
+  })
 
   // внешние ссылки — в системный браузер; в ОС пробрасываем ТОЛЬКО http(s)
   // (file:/smb:/ms-msdt: и прочие протоколы — не отдаём шеллу)
@@ -94,15 +143,15 @@ function createWindow() {
   })
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => { createWindow(); createTray() })
 
+app.on('before-quit', () => { isQuitting = true })
+app.on('will-quit', () => globalShortcut.unregisterAll())
+
+// окно прячется в трей, а не закрывается → window-all-closed обычно не сработает;
+// сработает только при реальном выходе (isQuitting) — тогда и выходим (на macOS остаёмся в доке)
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-    win = null
-  }
+  if (process.platform !== 'darwin') { app.quit(); win = null }
 })
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow()
-})
+app.on('activate', () => { showWindow() })
