@@ -3,7 +3,7 @@ import { api, type ServerTree } from '@/lib/api'
 import { useAuth } from '@/store/auth'
 import { voice, type VoiceState } from '@/lib/voice'
 import { presence } from '@/lib/presence'
-import type { ChannelType, Member, Message, Presence, ReadState } from '@/lib/types'
+import type { AttachmentInput, ChannelType, Member, Message, Presence, ReadState } from '@/lib/types'
 import { ChatFeed } from './ChatFeed'
 import { Composer } from './Composer'
 import { MembersRail } from './MembersRail'
@@ -138,9 +138,10 @@ export function MainWindow() {
   const unreadTotal = readStates.reduce((a, r) => a + r.mentionCount, 0)
   const isWatch = channel?.type === 'WATCH'
 
-  function send(text: string) {
+  function send(text: string, attachments?: AttachmentInput[]) {
     if (!currentId) return // не отправляем без выбранного канала (иначе /channels//messages → 401)
-    api.sendMessage(currentId, text, replyTo?.id).then((m) => setMessages((ms) => [...ms, m]))
+    if (!text && !(attachments && attachments.length)) return
+    api.sendMessage(currentId, text, replyTo?.id, attachments).then((m) => setMessages((ms) => [...ms, m]))
     setReplyTo(null)
   }
   function editMsg(id: string, content: string) {

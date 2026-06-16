@@ -1,7 +1,7 @@
 import { MOCK } from './config'
 import { http, delay, setTokens } from './http'
 import type {
-  AuditEntry, Channel, ChannelType, Category, Member, Message, Presence, ReadState, Role, TokenResponse, User, WatchState,
+  AttachmentInput, AuditEntry, Channel, ChannelType, Category, Member, Message, Presence, ReadState, Role, TokenResponse, User, WatchState,
 } from './types'
 import {
   MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_MEMBERS,
@@ -47,9 +47,20 @@ function mapMessage(d: MessageDto, idMap?: Map<string, MessageDto>): Message {
     authorName: author?.username ?? d.authorId, authorRole: author?.role,
     content: d.content, deleted: d.deleted, editedAt: d.editedAt, createdAt: d.createdAt, replyToId: d.replyToId,
     replyPreview: reply ? { authorName: resolveName(reply.authorId), content: (reply.content ?? '').slice(0, 60) } : null,
-    attachments: (d.attachments ?? []).map((a) => ({ objectKey: a.id, url: a.url, contentType: a.contentType, size: a.size, width: a.width, height: a.height })),
+    attachments: (d.attachments ?? []).map((a) => ({ objectKey: a.id, url: a.url, contentType: a.contentType, filename: a.filename, size: a.size, width: a.width, height: a.height })),
     reactions: (d.reactions ?? []).map((g) => ({ emoji: g.emoji, count: g.userIds.length, mine: g.userIds.includes(meId) })),
   }
+}
+
+// размеры картинки (подсказка вёрстке) — читаем до загрузки
+function imageSize(file: File): Promise<{ w: number; h: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => { URL.revokeObjectURL(url); resolve({ w: img.naturalWidth, h: img.naturalHeight }) }
+    img.onerror = (e) => { URL.revokeObjectURL(url); reject(e) }
+    img.src = url
+  })
 }
 
 function fmtDateTime(iso: string): string {
@@ -142,14 +153,34 @@ export const api = {
     return items.map((m) => mapMessage(m, idMap))
   },
 
-  async sendMessage(channelId: string, content: string, replyToId?: string | null): Promise<Message> {
+  async sendMessage(channelId: string, content: string, replyToId?: string | null, attachments?: AttachmentInput[]): Promise<Message> {
     const clientMessageId = crypto.randomUUID()
+    const atts = attachments?.length ? attachments : undefined
     if (MOCK) {
       await delay(120)
-      return { id: 'tmp_' + clientMessageId, channelId, authorId: MOCK_USER.id, authorName: MOCK_USER.username, content, attachments: [], reactions: [], replyToId: replyToId ?? null, createdAt: new Date().toISOString(), clientMessageId }
+      return { id: 'tmp_' + clientMessageId, channelId, authorId: MOCK_USER.id, authorName: MOCK_USER.username, content,
+        attachments: (atts ?? []).map((a) => ({ objectKey: a.objectKey, url: '', contentType: 'image/*', filename: a.filename, width: a.width, height: a.height })),
+        reactions: [], replyToId: replyToId ?? null, createdAt: new Date().toISOString(), clientMessageId }
     }
-    const dto = await http<MessageDto>(`/channels/${channelId}/messages`, { method: 'POST', body: JSON.stringify({ content, clientMessageId, replyToId: replyToId ?? null }) })
+    const dto = await http<MessageDto>(`/channels/${channelId}/messages`, { method: 'POST', body: JSON.stringify({ content, clientMessageId, replyToId: replyToId ?? null, ...(atts ? { attachments: atts } : {}) }) })
     return mapMessage(dto)
+  },
+
+  // presign + прямой PUT в MinIO; возвращает ссылку для отправки сообщения
+  async presign(filename: string, contentType: string, size: number): Promise<{ uploadUrl: string; objectKey: string }> {
+    return http('/attachments/presign', { method: 'POST', body: JSON.stringify({ filename, contentType, size }) })
+  },
+  async uploadFile(file: File): Promise<AttachmentInput> {
+    let width: number | undefined, height: number | undefined
+    if (file.type.startsWith('image/')) {
+      try { const d = await imageSize(file); width = d.w; height = d.h } catch { /* не картинка/битый файл — без размеров */ }
+    }
+    if (MOCK) { await delay(400); return { objectKey: 'mock/' + file.name, filename: file.name, width, height } }
+    const ct = file.type || 'application/octet-stream'
+    const { uploadUrl, objectKey } = await this.presign(file.name, ct, file.size)
+    const put = await fetch(uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': ct } }) // прямой аплоад, без api-обёртки
+    if (!put.ok) throw new Error(`upload ${put.status}`)
+    return { objectKey, filename: file.name, width, height }
   },
 
   async editMessage(messageId: string, content: string): Promise<void> {

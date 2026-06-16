@@ -1,28 +1,81 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Plus, Smile, Send, X } from 'lucide-react'
+import { api } from '@/lib/api'
+import { toast } from '@/lib/toast'
+import type { AttachmentInput } from '@/lib/types'
+
+interface Pending { id: string; file: File; previewUrl: string; status: 'up' | 'done' | 'err'; out?: AttachmentInput }
+const MAX_ATTACH = 10 // лимит бэка
 
 export function Composer({ channelName, onSend, onType, replyToName, onCancelReply }: {
   channelName: string
-  onSend: (text: string) => void
+  onSend: (text: string, attachments?: AttachmentInput[]) => void
   onType?: () => void
   replyToName?: string | null
   onCancelReply?: () => void
 }) {
   const [text, setText] = useState('')
+  const [pending, setPending] = useState<Pending[]>([])
   const lastTyped = useRef(0)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const pendingRef = useRef<Pending[]>([])
+  pendingRef.current = pending
+
+  // освобождаем objectURL превью при размонтировании
+  useEffect(() => () => { pendingRef.current.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl)) }, [])
+
+  const uploading = pending.some((p) => p.status === 'up')
+
+  function patch(id: string, upd: Partial<Pending>) {
+    setPending((ps) => ps.map((p) => (p.id === id ? { ...p, ...upd } : p)))
+  }
+
+  function addFiles(files: FileList | null) {
+    if (!files || files.length === 0) return
+    const room = MAX_ATTACH - pending.length
+    const list = Array.from(files).slice(0, Math.max(0, room))
+    if (files.length > list.length) toast.info(`Можно прикрепить максимум ${MAX_ATTACH} файлов`)
+    for (const file of list) {
+      const id = crypto.randomUUID()
+      const previewUrl = file.type.startsWith('image/') ? URL.createObjectURL(file) : ''
+      setPending((ps) => [...ps, { id, file, previewUrl, status: 'up' }])
+      api.uploadFile(file)
+        .then((out) => patch(id, { status: 'done', out }))
+        .catch(() => { patch(id, { status: 'err' }); toast.error(`Не удалось загрузить ${file.name}`) })
+    }
+  }
+
+  function remove(id: string) {
+    setPending((ps) => {
+      const p = ps.find((x) => x.id === id)
+      if (p?.previewUrl) URL.revokeObjectURL(p.previewUrl)
+      return ps.filter((x) => x.id !== id)
+    })
+  }
+
+  function clearPending() {
+    pendingRef.current.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl))
+    setPending([])
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault()
+    if (uploading) return // ждём завершения аплоада
     const t = text.trim()
-    if (!t) return
-    onSend(t)
+    const atts = pending.filter((p) => p.status === 'done' && p.out).map((p) => p.out!)
+    if (!t && atts.length === 0) return
+    onSend(t, atts.length ? atts : undefined)
     setText('')
+    clearPending()
   }
+
   function onChange(e: React.ChangeEvent<HTMLInputElement>) {
     setText(e.target.value)
     // throttle: не чаще раза в 3 с (бэк шлёт ephemeral TYPING, без хранения)
     const now = Date.now()
     if (e.target.value && now - lastTyped.current > 3000) { lastTyped.current = now; onType?.() }
   }
+
   return (
     <form onSubmit={submit} style={{ padding: '8px 26px 18px', flex: 'none' }}>
       {replyToName && (
@@ -31,12 +84,33 @@ export function Composer({ channelName, onSend, onType, replyToName, onCancelRep
           <button type="button" className="ib no-drag" onClick={onCancelReply} title="Отменить ответ" style={{ marginLeft: 'auto', width: 22, height: 20 }}><X size={13} /></button>
         </div>
       )}
+
+      {pending.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '6px 2px 8px' }}>
+          {pending.map((p) => (
+            <div key={p.id} style={{ position: 'relative', width: 84, height: 84, borderRadius: 10, overflow: 'hidden', border: `1px solid ${p.status === 'err' ? 'var(--danger)' : 'var(--border)'}`, background: 'var(--surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {p.previewUrl
+                ? <img src={p.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                : <span style={{ fontSize: 10, color: 'var(--text-3)', padding: 6, textAlign: 'center', wordBreak: 'break-all', lineHeight: 1.3 }}>{p.file.name}</span>}
+              {p.status === 'up' && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spinner /></div>}
+              {p.status === 'err' && <div style={{ position: 'absolute', inset: 0, background: 'var(--danger-tint)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--danger)', fontSize: 10, fontWeight: 700 }}>ошибка</div>}
+              <button type="button" className="no-drag" onClick={() => remove(p.id)} title="Убрать" style={{ position: 'absolute', top: 3, right: 3, width: 20, height: 20, borderRadius: 6, border: 'none', background: 'rgba(0,0,0,.6)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={12} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <input ref={fileRef} type="file" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
       <div className="field" style={{ borderRadius: replyToName ? '0 0 16px 16px' : 16, border: '1px solid var(--border)', background: 'var(--surface)', padding: '11px 14px 11px 16px', gap: 12 }}>
-        <button type="button" className="ib no-drag" style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--surface-2)' }} title="Вложение"><Plus size={18} /></button>
+        <button type="button" className="ib no-drag" onClick={() => fileRef.current?.click()} style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--surface-2)' }} title="Вложение"><Plus size={18} /></button>
         <input value={text} onChange={onChange} placeholder={`Написать в #${channelName}…`} style={{ fontSize: 14.5 }} />
         <button type="button" className="ib no-drag" style={{ width: 32, height: 32 }} title="Эмодзи"><Smile size={18} /></button>
-        <button type="submit" className="accent-btn" style={{ width: 40, height: 40, borderRadius: 12, boxShadow: '0 4px 12px var(--accent-tint)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} title="Отправить"><Send size={17} /></button>
+        <button type="submit" disabled={uploading} className="accent-btn" style={{ width: 40, height: 40, borderRadius: 12, boxShadow: '0 4px 12px var(--accent-tint)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: uploading ? 0.6 : 1 }} title={uploading ? 'Загрузка вложений…' : 'Отправить'}>{uploading ? <Spinner /> : <Send size={17} />}</button>
       </div>
     </form>
   )
+}
+
+function Spinner() {
+  return <span style={{ width: 18, height: 18, border: '2.5px solid rgba(255,255,255,.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin .7s linear infinite' }} />
 }

@@ -1,7 +1,21 @@
 import { Fragment, useState } from 'react'
-import { Reply, SmilePlus, Pencil, Trash2, Ban, Download } from 'lucide-react'
+import { Reply, SmilePlus, Pencil, Trash2, Ban, Download, X, File as FileIcon } from 'lucide-react'
 import { Avatar } from '@/components/Avatar'
-import type { Message as Msg } from '@/lib/types'
+import { toast } from '@/lib/toast'
+import type { Attachment, Message as Msg } from '@/lib/types'
+
+// скачивание через blob: cross-origin download-атрибут Chromium игнорирует (навигация → блок navigation-guard)
+async function downloadAttachment(url: string, filename?: string | null) {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(String(res.status))
+    const obj = URL.createObjectURL(await res.blob())
+    const a = document.createElement('a')
+    a.href = obj; a.download = filename || 'file'
+    document.body.appendChild(a); a.click(); a.remove()
+    setTimeout(() => URL.revokeObjectURL(obj), 1500)
+  } catch { toast.error('Не удалось скачать файл') }
+}
 
 function hhmm(iso: string): string {
   const d = new Date(iso)
@@ -55,6 +69,7 @@ export function Message({ m, meId, meName, grouped, canModerate, onReact, onRepl
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
   const [picker, setPicker] = useState<null | 'top' | 'bottom'>(null)
+  const [lightbox, setLightbox] = useState<string | null>(null)
 
   const mention = !!m.content && isMentioningMe(m.content, meName)
   const isOwn = !!meId && m.authorId === meId
@@ -142,14 +157,13 @@ export function Message({ m, meId, meName, grouped, canModerate, onReact, onRepl
           )
         )}
 
-        {m.attachments.map((a, i) => (
-          <div key={i} style={{ marginTop: 9, width: 330, maxWidth: '100%', height: 184, borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border)', position: 'relative', background: 'linear-gradient(135deg,#fbe3ee,#e7ecff)' }}>
-            <button className="ib no-drag" style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, background: 'rgba(0,0,0,.5)', color: '#fff' }} title="Скачать"><Download size={15} /></button>
-            <div style={{ position: 'absolute', left: 14, bottom: 12, background: 'rgba(0,0,0,.55)', color: '#fff', fontSize: 11, fontWeight: 600, borderRadius: 7, padding: '3px 9px' }}>
-              {a.width && a.height ? `${a.width} × ${a.height}` : a.contentType}
-            </div>
+        {m.attachments.map((a, i) => <AttachmentView key={i} a={a} onOpen={() => setLightbox(a.url)} />)}
+        {lightbox && (
+          <div onClick={() => setLightbox(null)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, animation: 'ovIn .2s ease' }}>
+            <img src={lightbox} alt="" style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 10, objectFit: 'contain' }} />
+            <button className="no-drag" onClick={() => setLightbox(null)} title="Закрыть" style={{ position: 'absolute', top: 20, right: 24, width: 40, height: 40, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,.15)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={20} /></button>
           </div>
-        ))}
+        )}
 
         {m.reactions.length > 0 && (
           <div style={{ marginTop: 9, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
@@ -174,6 +188,38 @@ function EmojiPicker({ anchor, onPick, onClose }: { anchor: 'top' | 'bottom'; on
       ))}
       </div>
     </>
+  )
+}
+
+function fmtBytes(n?: number | null) {
+  if (!n) return ''
+  if (n < 1024) return `${n} Б`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} КБ`
+  return `${(n / 1024 / 1024).toFixed(1)} МБ`
+}
+
+function AttachmentView({ a, onOpen }: { a: Attachment; onOpen: () => void }) {
+  const isImage = a.contentType.startsWith('image/') && !!a.url
+  if (isImage) {
+    const maxW = 360, maxH = 300
+    let w: number | undefined, h: number | undefined
+    if (a.width && a.height) { const s = Math.min(1, maxW / a.width, maxH / a.height); w = Math.round(a.width * s); h = Math.round(a.height * s) }
+    return (
+      <div style={{ marginTop: 9, position: 'relative', width: w ?? 320, maxWidth: '100%', borderRadius: 14, overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--surface-2)' }}>
+        <img src={a.url} alt={a.filename ?? ''} onClick={onOpen} style={{ display: 'block', width: '100%', height: h, objectFit: 'cover', cursor: 'zoom-in' }} />
+        <button className="no-drag" onClick={(e) => { e.stopPropagation(); downloadAttachment(a.url, a.filename) }} title="Скачать" style={{ position: 'absolute', top: 8, right: 8, width: 30, height: 30, background: 'rgba(0,0,0,.5)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: 'none', cursor: 'pointer' }}><Download size={15} /></button>
+      </div>
+    )
+  }
+  return (
+    <div onClick={() => downloadAttachment(a.url, a.filename)} className="no-drag" title="Скачать" style={{ marginTop: 9, display: 'flex', alignItems: 'center', gap: 11, width: 320, maxWidth: '100%', cursor: 'pointer', color: 'var(--text)', border: '1px solid var(--border)', background: 'var(--surface-2)', borderRadius: 12, padding: '10px 13px' }}>
+      <span style={{ width: 38, height: 38, flex: 'none', borderRadius: 9, background: 'var(--surface-3)', color: 'var(--text-2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FileIcon size={18} /></span>
+      <span style={{ minWidth: 0, flex: 1 }}>
+        <span style={{ display: 'block', fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{a.filename ?? 'файл'}</span>
+        <span style={{ display: 'block', fontSize: 11.5, color: 'var(--text-3)' }}>{fmtBytes(a.size) || a.contentType}</span>
+      </span>
+      <Download size={16} style={{ color: 'var(--text-3)', flex: 'none' }} />
+    </div>
   )
 }
 

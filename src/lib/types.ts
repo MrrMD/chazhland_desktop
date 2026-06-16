@@ -41,10 +41,19 @@ export interface Attachment {
   objectKey: string
   url: string
   contentType: string
+  filename?: string | null
   width?: number | null
   height?: number | null
   size?: number | null
   // thumbnailUrl на бэке всегда null — превью строим по url + width/height (см. бриф)
+}
+
+// ссылка на уже загруженный объект при отправке (бэк: AttachmentInput)
+export interface AttachmentInput {
+  objectKey: string
+  filename: string
+  width?: number | null
+  height?: number | null
 }
 
 export interface Reaction {
