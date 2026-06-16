@@ -59,7 +59,7 @@ function Group({ label, show, color, icon }: { label: string; show: boolean; col
 function Row({ m, status, expanded, dim }: { m: Member; status: Presence; expanded: boolean; dim?: boolean }) {
   return (
     <div className="member-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 6 }}>
-      <Avatar name={m.username} size={38} presence={status} dim={dim} />
+      <Avatar name={m.username} src={m.avatarUrl} size={38} presence={status} dim={dim} />
       {expanded && (
         <>
           <div style={{ lineHeight: 1.2, minWidth: 0 }}>

@@ -56,7 +56,7 @@ function MembersTab() {
           return (
             <div key={m.userId} style={{ display: 'grid', gridTemplateColumns: cols, gap: 12, padding: '13px 20px', borderBottom: '1px solid var(--surface-2)', alignItems: 'center', opacity: m.status === 'offline' ? 0.6 : 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                <Avatar name={m.username} size={36} />
+                <Avatar name={m.username} src={m.avatarUrl} size={36} />
                 <span style={{ fontWeight: 600, fontSize: 14 }}>{m.username}</span>
                 {m.inVoice && <span style={{ color: 'var(--green)', display: 'flex' }}><Volume2 size={13} /></span>}
               </div>

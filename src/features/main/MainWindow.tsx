@@ -12,6 +12,7 @@ import { BottomBar } from './BottomBar'
 import { WatchView } from './WatchView'
 import { ScreenSharePane } from './ScreenSharePane'
 import { VoiceSettingsModal } from './VoiceSettingsModal'
+import { SettingsModal } from './SettingsModal'
 import { ChatPanel } from './ChatPanel'
 import { AdminScreen } from '@/features/admin/AdminScreen'
 import { ws } from '@/lib/ws'
@@ -38,6 +39,7 @@ export function MainWindow() {
   const [vs, setVs] = useState<VoiceState>(voice.state)
   const [screenFull, setScreenFull] = useState(false)
   const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [typing, setTyping] = useState<{ id: string; name: string }[]>([])
   const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const [panel, setPanel] = useState<null | 'search' | 'pins'>(null)
@@ -280,6 +282,7 @@ export function MainWindow() {
         unreadTotal={unreadTotal}
         onAckAll={ackAll}
         onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
         onOpenAdmin={() => setView('admin')}
         onLogout={logout}
         onLeaveVoice={() => voice.leave()}
@@ -297,6 +300,7 @@ export function MainWindow() {
       )}
 
       {voiceSettingsOpen && <VoiceSettingsModal onClose={() => setVoiceSettingsOpen(false)} />}
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
     </div>
   )
 }

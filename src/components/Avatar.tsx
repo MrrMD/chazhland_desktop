@@ -25,9 +25,10 @@ export function presenceColor(s: Presence): string {
 }
 
 export function Avatar({
-  name, size = 40, presence, dim = false, ringColor,
+  name, src, size = 40, presence, dim = false, ringColor,
 }: {
   name: string
+  src?: string | null
   size?: number
   presence?: Presence
   dim?: boolean
@@ -40,11 +41,13 @@ export function Avatar({
         style={{
           width: size, height: size, borderRadius: '50%', background: gradFor(name),
           color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontWeight: 700, fontSize: Math.round(size * 0.38),
+          fontWeight: 700, fontSize: Math.round(size * 0.38), overflow: 'hidden',
           boxShadow: ringColor ? `0 0 0 2px ${ringColor}` : undefined,
         }}
       >
-        {name.slice(0, 1).toUpperCase()}
+        {src
+          ? <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          : name.slice(0, 1).toUpperCase()}
       </div>
       {presence && presence !== 'offline' && (
         <div

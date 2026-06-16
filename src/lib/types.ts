@@ -7,6 +7,7 @@ export interface User {
   id: string
   username: string
   avatarUrl: string | null
+  statusMessage?: string | null
 }
 
 export interface Member {
@@ -67,6 +68,7 @@ export interface Message {
   channelId: string
   authorId: string
   authorName: string
+  authorAvatarUrl?: string | null
   authorRole?: Role
   content: string | null
   attachments: Attachment[]

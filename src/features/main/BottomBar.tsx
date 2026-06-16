@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { LayoutGrid, Settings, Check, Mic, MicOff, Shield, LogOut, Volume2, Headphones, MonitorUp, PhoneOff } from 'lucide-react'
+import { LayoutGrid, Settings, Check, Mic, MicOff, Shield, LogOut, Volume2, Headphones, MonitorUp, PhoneOff, UserRound } from 'lucide-react'
 import { Avatar, presenceColor } from '@/components/Avatar'
 import type { Presence, User } from '@/lib/types'
 
@@ -21,6 +21,7 @@ interface Props {
   unreadTotal: number
   onAckAll: () => void
   onOpenVoiceSettings: () => void
+  onOpenSettings: () => void
   onOpenAdmin: () => void
   onLogout: () => void
   onLeaveVoice: () => void
@@ -42,6 +43,7 @@ export function BottomBar(p: Props) {
         {menuOpen && (
           <Popover onClose={() => setMenuOpen(false)} style={{ left: 0 }}>
             <MenuItem label="Прочитать всё" icon={<Check size={15} />} onClick={() => { setMenuOpen(false); p.onAckAll() }} />
+            <MenuItem label="Профиль" icon={<UserRound size={15} />} onClick={() => { setMenuOpen(false); p.onOpenSettings() }} />
             <MenuItem label="Настройки голоса" icon={<Mic size={15} />} onClick={() => { setMenuOpen(false); p.onOpenVoiceSettings() }} />
             <MenuItem label="Админ-панель" icon={<Shield size={15} />} onClick={() => { setMenuOpen(false); p.onOpenAdmin() }} />
             <MenuItem label="Выйти" icon={<LogOut size={15} />} danger onClick={() => { setMenuOpen(false); p.onLogout() }} />
@@ -52,7 +54,7 @@ export function BottomBar(p: Props) {
       {/* center profile + status switcher */}
       <div style={{ justifySelf: 'center', position: 'relative' }}>
         <button onClick={() => setStatusOpen((v) => !v)} className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 11, background: 'var(--win)', border: '1px solid var(--border)', borderRadius: 15, padding: '7px 18px 7px 9px', cursor: 'pointer', color: 'var(--text)' }}>
-          <Avatar name={p.user.username} size={40} presence={p.status} />
+          <Avatar name={p.user.username} src={p.user.avatarUrl} size={40} presence={p.status} />
           <div style={{ lineHeight: 1.2, textAlign: 'left' }}>
             <div style={{ fontWeight: 700, fontSize: 14 }}>{p.user.username}</div>
             <div style={{ fontSize: 11.5, color: presenceColor(p.status), display: 'flex', alignItems: 'center', gap: 5 }}>

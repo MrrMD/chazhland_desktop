@@ -116,7 +116,7 @@ export function Message({ m, meId, meName, grouped, canModerate, onReact, onRepl
       {grouped ? (
         <span style={{ width: 42, flex: 'none', fontSize: 10, color: 'var(--text-3)', textAlign: 'right', paddingTop: 3, opacity: hover ? 1 : 0, transition: 'opacity .12s' }}>{hhmm(m.createdAt)}</span>
       ) : (
-        <Avatar name={m.authorName} size={42} />
+        <Avatar name={m.authorName} src={m.authorAvatarUrl} size={42} />
       )}
       <div style={{ minWidth: 0, flex: 1 }}>
         {!grouped && (

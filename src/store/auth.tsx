@@ -13,6 +13,7 @@ interface AuthCtx {
   loading: boolean
   login: (login: string, password: string) => Promise<void>
   register: (p: { email: string; code: string; username: string; password: string }) => Promise<void>
+  updateUser: (patch: Partial<User>) => void
   logout: () => void
 }
 
@@ -70,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { token, user } = await api.register(p)
       apply(token.accessToken, token.refreshToken, user)
     },
+    updateUser(patch) { setSession((s) => (s ? { ...s, user: { ...s.user, ...patch } } : s)) },
     logout: clear,
   }
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

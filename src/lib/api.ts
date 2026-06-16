@@ -13,7 +13,7 @@ export interface AuthResult { token: TokenResponse; user: User }
 
 // ---- сырые DTO бэка (com.chazhland.messenger.web.dto) ----
 interface Page<T> { items: T[]; nextCursor: string | null; hasMore: boolean }
-interface UserDto { id: string; username: string; avatarUrl: string | null; status?: string; role?: Role }
+interface UserDto { id: string; username: string; avatarUrl: string | null; status?: string; statusMessage?: string | null; role?: Role }
 interface MemberDto { userId: string; username: string; avatarUrl: string | null; role: Role; status: string; joinedAt: string }
 interface ChannelDto { id: string; categoryId: string | null; name: string; type: Channel['type']; topic: string | null; position: number; userLimit: number | null; lastMessageId: string | null }
 interface TreeDto { serverId: string; categories: Category[]; channels: ChannelDto[] }
@@ -44,7 +44,7 @@ function mapMessage(d: MessageDto, idMap?: Map<string, MessageDto>): Message {
   const reply = d.replyToId && idMap?.get(d.replyToId)
   return {
     id: d.id, channelId: d.channelId, authorId: d.authorId,
-    authorName: author?.username ?? d.authorId, authorRole: author?.role,
+    authorName: author?.username ?? d.authorId, authorAvatarUrl: author?.avatarUrl ?? null, authorRole: author?.role,
     content: d.content, deleted: d.deleted, editedAt: d.editedAt, pinnedAt: d.pinnedAt, createdAt: d.createdAt, replyToId: d.replyToId,
     replyPreview: reply ? { authorName: resolveName(reply.authorId), content: (reply.content ?? '').slice(0, 60) } : null,
     attachments: (d.attachments ?? []).map((a) => ({ objectKey: a.id, url: a.url, contentType: a.contentType, filename: a.filename, size: a.size, width: a.width, height: a.height })),
@@ -115,7 +115,27 @@ export const api = {
     if (MOCK) { meId = MOCK_USER.id; return MOCK_USER }
     const u = await http<UserDto>('/users/me')
     meId = u.id
-    return { id: u.id, username: u.username, avatarUrl: u.avatarUrl }
+    return { id: u.id, username: u.username, avatarUrl: u.avatarUrl, statusMessage: u.statusMessage ?? null }
+  },
+
+  // ---- профиль / настройки аккаунта ----
+  async updateProfile(p: { username?: string; statusMessage?: string }): Promise<User> {
+    if (MOCK) { await delay(250); return { ...MOCK_USER, ...p } }
+    const u = await http<UserDto>('/users/me', { method: 'PATCH', body: JSON.stringify(p) })
+    return { id: u.id, username: u.username, avatarUrl: u.avatarUrl, statusMessage: u.statusMessage ?? null }
+  },
+  async setAvatar(objectKey: string): Promise<User> {
+    if (MOCK) { await delay(250); return MOCK_USER }
+    const u = await http<UserDto>('/users/me/avatar', { method: 'PUT', body: JSON.stringify({ objectKey }) })
+    return { id: u.id, username: u.username, avatarUrl: u.avatarUrl, statusMessage: u.statusMessage ?? null }
+  },
+  async changePassword(p: { currentPassword: string; newPassword: string }): Promise<void> {
+    if (MOCK) { await delay(300); return }
+    await http('/users/me/password', { method: 'PUT', body: JSON.stringify(p) })
+  },
+  async logoutAll(): Promise<void> {
+    if (MOCK) return
+    await http('/users/me/logout-all', { method: 'POST' })
   },
 
   async serverTree(): Promise<ServerTree> {
