@@ -38,11 +38,20 @@ function createWindow() {
   ipcMain.on('win:close', () => win?.close())
   ipcMain.handle('win:isMaximized', () => win?.isMaximized() ?? false)
 
-  // внешние ссылки — в системный браузер, навигация внутри запрещена (TZ р.6)
+  // внешние ссылки — в системный браузер; в ОС пробрасываем ТОЛЬКО http(s)
+  // (file:/smb:/ms-msdt: и прочие протоколы — не отдаём шеллу)
+  const openExternalSafe = (url: string) => { if (/^https?:\/\//i.test(url)) shell.openExternal(url) }
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    openExternalSafe(url)
     return { action: 'deny' }
   })
+
+  // top-level навигация разрешена только внутри собственного контента (dev-сервер или file://dist).
+  // при webSecurity:false это единственная преграда уводу привилегированного окна на чужой HTML.
+  const isOwnContent = (url: string) =>
+    url.startsWith('file://') || (!!VITE_DEV_SERVER_URL && url.startsWith(VITE_DEV_SERVER_URL))
+  win.webContents.on('will-navigate', (e, url) => { if (!isOwnContent(url)) { e.preventDefault(); openExternalSafe(url) } })
+  win.webContents.on('will-redirect', (e, url) => { if (!isOwnContent(url)) { e.preventDefault(); openExternalSafe(url) } })
 
   // Демонстрация экрана (Go Live): getDisplayMedia в Electron требует обработчик (TZ р.6).
   // Базово выдаём первый экран; позже — нативный пикер источника.
@@ -54,8 +63,9 @@ function createWindow() {
 
   // Бэк проверяет Origin при WS-handshake (setAllowedOriginPatterns). В dev origin = http://localhost:5173,
   // которого нет в allowedOrigins → /ws отклоняется. Подменяем Origin на разрешённый frontend-домен.
+  // Только TLS (https/wss): cleartext-запрос не должен нести доверенный Origin (защита от downgrade/MITM).
   win.webContents.session.webRequest.onBeforeSendHeaders(
-    { urls: ['http://api.chazhland.ru/*', 'https://api.chazhland.ru/*', 'ws://api.chazhland.ru/*', 'wss://api.chazhland.ru/*'] },
+    { urls: ['https://api.chazhland.ru/*', 'wss://api.chazhland.ru/*'] },
     (details, callback) => {
       details.requestHeaders['Origin'] = 'https://chat.chazhland.ru'
       callback({ requestHeaders: details.requestHeaders })

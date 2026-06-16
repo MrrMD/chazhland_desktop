@@ -1,9 +1,12 @@
 import { useMemo, useState } from 'react'
 import type { Channel, ChannelType, ReadState } from '@/lib/types'
 import { CreateChannelModal } from './CreateChannelModal'
+import { MOCK } from '@/lib/config'
 
 const TYPE_ICON: Record<string, string> = { TEXT: '#', VOICE: '🔊', WATCH: '▶' }
-const VOICE_LIVE: Record<string, number> = { ch_call: 3, ch_cs: 2 }
+// Демо-индикатор «в эфире» — только в mock: у реальных каналов backend-id, а живых счётчиков
+// по каналам бэк сюда пока не отдаёт (показывать выдуманные числа в проде нельзя).
+const VOICE_LIVE: Record<string, number> = MOCK ? { ch_call: 3, ch_cs: 2 } : {}
 
 export function ChannelSwitcher({
   channels, readStates, currentId, onPick, onClose, onCreateChannel,

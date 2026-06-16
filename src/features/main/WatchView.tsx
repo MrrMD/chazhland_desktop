@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import { ws } from '@/lib/ws'
+import { toast } from '@/lib/toast'
 import type { WatchAction, WatchState } from '@/lib/types'
 
 export function WatchView({ channelId }: { channelId: string }) {
@@ -62,7 +63,7 @@ export function WatchView({ channelId }: { channelId: string }) {
     const url = urlInput.trim()
     if (!url) return
     setUrlInput('')
-    try { apply(await api.setWatchSource(channelId, url)) } catch { /* TODO toast */ }
+    try { apply(await api.setWatchSource(channelId, url)) } catch { toast.error('Не удалось загрузить источник видео') }
   }
   function stop() {
     api.stopWatch(channelId).catch(() => {})

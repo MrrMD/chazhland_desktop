@@ -86,7 +86,9 @@ class Voice {
       return
     }
 
-    this.set({ channelId, channelName, connecting: true, micOn: false, deafened: false, screenOn: false, participants: [] })
+    // screenTrack/screenBy сбрасываем явно: иначе чужая демонстрация из прошлого канала
+    // осталась бы висеть (teardownRoom лишь чистит карту треков, но не трогает state)
+    this.set({ channelId, channelName, connecting: true, micOn: false, deafened: false, screenOn: false, participants: [], screenTrack: null, screenBy: null })
     try {
       const t = await api.livekitToken(channelId)
       if (this.joinSeq !== seq) return

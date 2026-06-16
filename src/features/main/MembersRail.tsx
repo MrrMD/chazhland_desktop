@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react'
 import { Avatar, presenceColor } from '@/components/Avatar'
-import type { Member } from '@/lib/types'
+import { presence } from '@/lib/presence'
+import { MOCK } from '@/lib/config'
+import type { Member, Presence } from '@/lib/types'
 import type { VoiceParticipant } from '@/lib/voice'
 
 const SUB: Record<string, string> = { online: 'в сети', idle: 'отошёл', dnd: 'не беспокоить', offline: 'не в сети' }
@@ -11,9 +14,13 @@ export function MembersRail({ members, expanded, onToggle, voiceParticipants, vo
   voiceParticipants?: VoiceParticipant[]
   voiceChannelName?: string | null
 }) {
-  const speaking = members.filter((m) => m.inVoice && m.speaking)
-  const online = members.filter((m) => m.status !== 'offline' && !(m.inVoice && m.speaking))
-  const offline = members.filter((m) => m.status === 'offline')
+  const [, setTick] = useState(0)
+  useEffect(() => presence.subscribe(() => setTick((t) => t + 1)), [])
+
+  // живой статус: из presence-стора (дельты по WS); в mock — то, что пришло из /server/members
+  const stat = (m: Member): Presence => (MOCK ? m.status : presence.statusOf(m.userId))
+  const online = members.filter((m) => stat(m) !== 'offline')
+  const offline = members.filter((m) => stat(m) === 'offline')
 
   return (
     <div style={{ width: expanded ? 230 : 66, flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--surface)', borderLeft: '1px solid var(--border)', overflow: 'hidden', transition: 'width .32s cubic-bezier(.22,.61,.36,1)' }}>
@@ -34,12 +41,10 @@ export function MembersRail({ members, expanded, onToggle, voiceParticipants, vo
             ))}
           </>
         )}
-        {speaking.length > 0 && <Group label="🎙 ГОВОРЯТ" show={expanded} color="var(--green)" />}
-        {speaking.map((m) => <Row key={m.userId} m={m} expanded={expanded} speaking />)}
         {online.length > 0 && <Group label={`В СЕТИ · ${online.length}`} show={expanded} />}
-        {online.map((m) => <Row key={m.userId} m={m} expanded={expanded} />)}
+        {online.map((m) => <Row key={m.userId} m={m} status={stat(m)} expanded={expanded} />)}
         {offline.length > 0 && <Group label={`НЕ В СЕТИ · ${offline.length}`} show={expanded} />}
-        {offline.map((m) => <Row key={m.userId} m={m} expanded={expanded} dim />)}
+        {offline.map((m) => <Row key={m.userId} m={m} status="offline" expanded={expanded} dim />)}
       </div>
     </div>
   )
@@ -50,17 +55,15 @@ function Group({ label, show, color }: { label: string; show: boolean; color?: s
   return <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', color: color || 'var(--text-3)', padding: '11px 8px 7px' }}>{label}</div>
 }
 
-function Row({ m, expanded, speaking, dim }: { m: Member; expanded: boolean; speaking?: boolean; dim?: boolean }) {
+function Row({ m, status, expanded, dim }: { m: Member; status: Presence; expanded: boolean; dim?: boolean }) {
   return (
     <div className="member-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 6 }}>
-      <Avatar name={m.username} size={38} presence={speaking ? undefined : m.status} ringColor={speaking ? '#2faa6a' : undefined} dim={dim} />
+      <Avatar name={m.username} size={38} presence={status} dim={dim} />
       {expanded && (
         <>
           <div style={{ lineHeight: 1.2, minWidth: 0 }}>
             <div style={{ fontWeight: 600, fontSize: 13.5 }}>{m.username}</div>
-            <div style={{ fontSize: 11, color: speaking ? 'var(--green)' : presenceColor(m.status) }}>
-              {speaking ? (m.inVoice ? 'говорит' : '') : SUB[m.status]}{speaking && m.role === 'OWNER' ? ' · 🖥' : ''}
-            </div>
+            <div style={{ fontSize: 11, color: presenceColor(status) }}>{SUB[status]}</div>
           </div>
           {m.role === 'OWNER' && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--accent)' }}>♛</span>}
           {m.role === 'ADMIN' && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>admin</span>}

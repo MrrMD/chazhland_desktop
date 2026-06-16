@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Modal } from '@/components/Modal'
+import { toast } from '@/lib/toast'
 import type { ChannelType } from '@/lib/types'
 
 const TYPES: { type: ChannelType; icon: string; label: string; desc: string }[] = [
@@ -20,7 +21,7 @@ export function CreateChannelModal({ onCreate, onClose }: {
     const n = name.trim()
     if (!n) return
     setLoading(true)
-    try { await onCreate({ name: n, type }); onClose() } catch { /* TODO toast */ } finally { setLoading(false) }
+    try { await onCreate({ name: n, type }); toast.ok('Канал создан'); onClose() } catch { toast.error('Не удалось создать канал') } finally { setLoading(false) }
   }
 
   return (

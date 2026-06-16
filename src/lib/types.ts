@@ -115,11 +115,17 @@ export interface WatchState {
   lastActionBy: string
 }
 
-// Realtime-события из /topic/channel.{id}
-export type ChatEventType = 'MESSAGE_CREATED' | 'MESSAGE_EDITED' | 'MESSAGE_DELETED' | 'TYPING' | 'REACTION'
+// Realtime-события из /topic/channel.{id} (ChatEvent @JsonInclude(NON_NULL) — присутствуют только релевантные типу поля)
+export type ChatEventType =
+  | 'MESSAGE_CREATED' | 'MESSAGE_EDITED' | 'MESSAGE_DELETED'
+  | 'MESSAGE_PINNED' | 'MESSAGE_UNPINNED'
+  | 'TYPING' | 'REACTION_ADDED' | 'REACTION_REMOVED'
 export interface ChatEvent {
   type: ChatEventType
   channelId: string
-  message?: Message
+  message?: Message    // есть у MESSAGE_*/PINNED; у REACTION_*/TYPING = null
   userId?: string
+  username?: string
+  messageId?: string   // у REACTION_*/PINNED — id целевого сообщения
+  emoji?: string       // у REACTION_*
 }

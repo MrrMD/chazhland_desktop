@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { api } from '@/lib/api'
+import { MOCK } from '@/lib/config'
 import { setTokens, setOnAuthFail, setOnTokenRefresh, getAccessToken } from '@/lib/http'
 import { ws } from '@/lib/ws'
 import { voice } from '@/lib/voice'
@@ -39,9 +40,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTokens(null, saved) // нет access — первый /users/me словит 401 и обновится по refresh
     api.me()
       .then((user) => {
-        const token = getAccessToken() ?? saved
-        setSession({ user, token })
-        ws.connect(token)
+        const access = getAccessToken()
+        if (access) { setSession({ user, token: access }); ws.connect(access); return }
+        // нет access после /users/me: в mock бэка нет (токен номинальный); в реальном режиме
+        // refresh-токен НЕ годится ни как access, ни как WS-токен → без access работать нельзя.
+        if (MOCK) { setSession({ user, token: saved }); return }
+        clear()
       })
       .catch(() => clear())
       .finally(() => setLoading(false))

@@ -2,7 +2,7 @@ import { Client, type IMessage, type StompSubscription } from '@stomp/stompjs'
 import { MOCK, WS_URL } from './config'
 import type { WatchAction, WatchState } from './types'
 
-export interface WsEvent { type: string; channelId?: string; message?: unknown; userId?: string }
+export interface WsEvent { type: string; channelId?: string; message?: unknown; userId?: string; username?: string; messageId?: string; emoji?: string }
 export type WsStatus = 'online' | 'connecting'
 
 interface Spec { topic: string; cb: (body: any) => void; sub: StompSubscription | null }
@@ -13,6 +13,7 @@ class Ws {
   private specs = new Set<Spec>() // логические подписки — переживают реконнект
   private status: WsStatus = 'online'
   private statusCbs = new Set<(s: WsStatus) => void>()
+  private wantConnection = false // нужно ли соединение прямо сейчас (false после намеренного disconnect)
 
   getStatus() { return this.status }
   onStatus(cb: (s: WsStatus) => void): () => void {
@@ -28,6 +29,7 @@ class Ws {
 
   connect(token: string) {
     if (MOCK) { this.setStatus('online'); return }
+    this.wantConnection = true
     this.teardownClient()
     this.setStatus('connecting')
     this.client = new Client({
@@ -40,8 +42,10 @@ class Ws {
         this.setStatus('online')
         this.specs.forEach((s) => this.subscribeSpec(s))
       },
-      onWebSocketClose: () => this.setStatus('connecting'),
-      onStompError: () => this.setStatus('connecting'),
+      // статус 'connecting' — только пока соединение реально нужно; иначе после намеренного
+      // disconnect() (логаут) баннер «Переподключение…» залипал бы навсегда на экране логина
+      onWebSocketClose: () => { if (this.wantConnection) this.setStatus('connecting') },
+      onStompError: () => { if (this.wantConnection) this.setStatus('connecting') },
     })
     this.client.activate()
   }
@@ -80,6 +84,16 @@ class Ws {
     this.client.publish({ destination: `/app/watch.${channelId}.control`, body: JSON.stringify({ action, positionSeconds }) })
   }
 
+  /** Presence: подписка на /topic/presence (PRESENCE_UPDATE/VOICE_UPDATE). */
+  onPresence(cb: (e: any) => void): () => void {
+    return this.subscribeTopic('/topic/presence', cb)
+  }
+  /** Heartbeat присутствия. status (online|idle|dnd) опционален — без него только продление онлайна. */
+  heartbeat(status?: string) {
+    if (MOCK || !this.client?.connected) return
+    this.client.publish({ destination: '/app/presence.heartbeat', body: JSON.stringify(status ? { status } : {}) })
+  }
+
   private teardownClient() {
     this.specs.forEach((s) => { s.sub = null })
     this.client?.deactivate()
@@ -87,9 +101,11 @@ class Ws {
   }
 
   disconnect() {
+    this.wantConnection = false
     this.specs.clear()
     this.client?.deactivate()
     this.client = null
+    this.setStatus('online') // соединение больше не нужно — прячем баннер реконнекта
   }
 }
 

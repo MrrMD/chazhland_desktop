@@ -1,5 +1,6 @@
 import { TitleBar } from './components/TitleBar'
 import { ConnectionBanner } from './components/ConnectionBanner'
+import { Toaster } from './components/Toaster'
 import { useAuth } from './store/auth'
 import { AuthScreen } from './features/auth/AuthScreen'
 import { MainWindow } from './features/main/MainWindow'
@@ -13,6 +14,7 @@ export default function App() {
       <div style={{ flex: 1, minHeight: 0 }}>
         {session ? <MainWindow /> : <AuthScreen />}
       </div>
+      <Toaster />
     </div>
   )
 }

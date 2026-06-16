@@ -4,7 +4,11 @@ let accessToken: string | null = null
 let refreshToken: string | null = null
 let onAuthFail: (() => void) | null = null
 let onTokenRefresh: ((access: string) => void) | null = null
-let refreshing: Promise<boolean> | null = null
+let refreshing: Promise<RefreshResult> | null = null
+
+// Исход ротации: ok — обновили; auth-failed — сервер отверг refresh (надо разлогинить);
+// network-error — транзиентный сбой (сеть/не-JSON), сессию НЕ трогаем.
+type RefreshResult = 'ok' | 'auth-failed' | 'network-error'
 
 const LS_REFRESH = 'chazh.refresh'
 
@@ -19,23 +23,25 @@ export function setOnTokenRefresh(cb: (access: string) => void) { onTokenRefresh
 
 // Ротация refresh-токена. Single-flight: параллельные 401 не дёргают /auth/refresh повторно
 // (иначе reuse-detection погасит все сессии — см. бриф).
-async function doRefresh(): Promise<boolean> {
-  if (!refreshToken) return false
+async function doRefresh(): Promise<RefreshResult> {
+  if (!refreshToken) return 'auth-failed'
   if (!refreshing) {
     const rt = refreshToken
     refreshing = fetch(API_BASE + '/auth/refresh', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: rt }),
     })
-      .then(async (r) => {
-        if (!r.ok) return false
+      .then(async (r): Promise<RefreshResult> => {
+        if (!r.ok) return 'auth-failed' // сервер отверг refresh (401/403/…) — токен невалиден → разлогин
         const t = await r.json()
+        // тело без валидных токенов — не пишем 'undefined' в localStorage и не шлём «Bearer undefined»
+        if (typeof t?.accessToken !== 'string' || typeof t?.refreshToken !== 'string') return 'auth-failed'
         accessToken = t.accessToken
         refreshToken = t.refreshToken
         localStorage.setItem(LS_REFRESH, t.refreshToken) // refresh одноразовый — сразу заменяем
         onTokenRefresh?.(t.accessToken) // WS переподключается с новым токеном
-        return true
+        return 'ok'
       })
-      .catch(() => false)
+      .catch((): RefreshResult => 'network-error') // сеть упала / не-JSON — транзиентно, сессию не трогаем
       .finally(() => { refreshing = null })
   }
   return refreshing
@@ -51,10 +57,10 @@ export async function http<T>(path: string, opts: RequestInit = {}, _retried = f
     },
   })
   if (res.status === 401 && !_retried) {
-    const ok = await doRefresh()
-    if (ok) return http<T>(path, opts, true)
-    onAuthFail?.()
-    throw new HttpError(401, 'unauthorized')
+    const r = await doRefresh()
+    if (r === 'ok') return http<T>(path, opts, true)
+    if (r === 'auth-failed') { onAuthFail?.(); throw new HttpError(401, 'unauthorized') }
+    throw new HttpError(0, 'refresh failed (network)') // транзиентно: НЕ разлогиниваем, отдаём ошибку наверх
   }
   if (!res.ok) {
     const body = await res.text().catch(() => '')

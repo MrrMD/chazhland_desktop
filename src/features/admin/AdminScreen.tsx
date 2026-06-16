@@ -35,6 +35,8 @@ function MembersTab() {
   const [rows, setRows] = useState<Member[] | null>(null)
   const [kickT, setKickT] = useState<Member | null>(null)
   const [roleT, setRoleT] = useState<Member | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
   useEffect(() => { let a = true; api.members().then((r) => { if (a) setRows(r) }); return () => { a = false } }, [])
   if (!rows) return <Loading />
   const cols = '1.7fr 1.1fr .9fr 1fr auto'
@@ -75,8 +77,24 @@ function MembersTab() {
       <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', gap: 9, background: 'var(--danger-tint)', border: '1px solid rgba(224,57,47,.3)', color: 'var(--danger)', borderRadius: 12, padding: '11px 14px', fontSize: 13, fontWeight: 600, width: 'fit-content' }}>
         ⚠ Нельзя исключить владельца — действия для owner и себя заблокированы
       </div>
-      {kickT && <ConfirmModal title="Исключить участника" message={`Исключить ${kickT.username}? Все его сессии завершатся. Действие необратимо.`} confirmLabel="Исключить" danger onConfirm={() => { const id = kickT.userId; api.kick(id).then(() => setRows((rs) => (rs ? rs.filter((x) => x.userId !== id) : rs))).catch(() => {}); setKickT(null) }} onClose={() => setKickT(null)} />}
-      {roleT && <ChangeRoleModal member={roleT} onSelect={(role) => { const id = roleT.userId; api.changeRole(id, role).then(() => setRows((rs) => (rs ? rs.map((x) => (x.userId === id ? { ...x, role } : x)) : rs))).catch(() => {}); setRoleT(null) }} onClose={() => setRoleT(null)} />}
+      {kickT && <ConfirmModal title="Исключить участника" message={`Исключить ${kickT.username}? Все его сессии завершатся. Действие необратимо.`} confirmLabel="Исключить" danger busy={busy} error={err}
+        onConfirm={async () => {
+          const id = kickT.userId
+          setBusy(true); setErr('')
+          try { await api.kick(id); setRows((rs) => (rs ? rs.filter((x) => x.userId !== id) : rs)); setKickT(null) }
+          catch { setErr('Не удалось исключить участника. Попробуйте ещё раз.') }
+          finally { setBusy(false) }
+        }}
+        onClose={() => { setKickT(null); setErr('') }} />}
+      {roleT && <ChangeRoleModal member={roleT} busy={busy} error={err}
+        onSelect={async (role) => {
+          const id = roleT.userId
+          setBusy(true); setErr('')
+          try { await api.changeRole(id, role); setRows((rs) => (rs ? rs.map((x) => (x.userId === id ? { ...x, role } : x)) : rs)); setRoleT(null) }
+          catch { setErr('Не удалось изменить роль. Попробуйте ещё раз.') }
+          finally { setBusy(false) }
+        }}
+        onClose={() => { setRoleT(null); setErr('') }} />}
     </div>
   )
 }

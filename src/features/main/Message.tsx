@@ -7,8 +7,16 @@ function hhmm(iso: string): string {
   return isNaN(d.getTime()) ? iso : d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 }
 
-const MENTION_RE = /(@everyone|@here|@[A-Za-z0-9_]{3,32})/g
-const IS_MENTION = /^(?:@everyone|@here|@[A-Za-z0-9_]{3,32})$/ // без /g — .test() без stateful lastIndex
+const MENTION_RE = /(@everyone|@here|@[\p{L}\p{N}_]{2,32})/gu // \p{L} — и кириллические ники тоже
+const IS_MENTION = /^(?:@everyone|@here|@[\p{L}\p{N}_]{2,32})$/u // без /g — .test() без stateful lastIndex
+
+function escapeRegExp(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
+// упоминание текущего пользователя: @everyone/@here или @<его ник> как отдельный токен
+function isMentioningMe(content: string, meName?: string): boolean {
+  if (/@everyone|@here/u.test(content)) return true
+  if (!meName) return false
+  return new RegExp(`@${escapeRegExp(meName)}(?![\\p{L}\\p{N}_])`, 'u').test(content)
+}
 
 function renderContent(text: string) {
   const parts = text.split(MENTION_RE)
@@ -29,6 +37,7 @@ const roleBadge: Record<string, React.CSSProperties> = {
 interface Props {
   m: Msg
   meId?: string
+  meName?: string
   canModerate?: boolean
   onReact?: (emoji: string) => void
   onReply?: (m: Msg) => void
@@ -36,12 +45,12 @@ interface Props {
   onDelete?: (id: string) => void
 }
 
-export function Message({ m, meId, canModerate, onReact, onReply, onEdit, onDelete }: Props) {
+export function Message({ m, meId, meName, canModerate, onReact, onReply, onEdit, onDelete }: Props) {
   const [hover, setHover] = useState(false)
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
 
-  const mention = !!m.content && /(@everyone|@here|@я_дизайнер)/.test(m.content)
+  const mention = !!m.content && isMentioningMe(m.content, meName)
   const isOwn = !!meId && m.authorId === meId
   const canDelete = isOwn || !!canModerate
 

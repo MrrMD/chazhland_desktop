@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type ServerTree } from '@/lib/api'
 import { useAuth } from '@/store/auth'
 import { voice, type VoiceState } from '@/lib/voice'
+import { presence } from '@/lib/presence'
 import type { ChannelType, Member, Message, Presence, ReadState } from '@/lib/types'
 import { ChatFeed } from './ChatFeed'
 import { Composer } from './Composer'
@@ -36,7 +37,12 @@ export function MainWindow() {
   const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
 
   useEffect(() => voice.subscribe(setVs), [])
+  useEffect(() => { presence.start(); return () => presence.stop() }, [])
   useEffect(() => { if (!vs.screenTrack && screenFull) setScreenFull(false) }, [vs.screenTrack, screenFull])
+
+  // актуальный канал для асинхронных колбэков (откат реакции и т.п.), чтобы не затирать чужую ленту
+  const currentIdRef = useRef(currentId)
+  useEffect(() => { currentIdRef.current = currentId }, [currentId])
 
   useEffect(() => {
     api.serverTree().then((t) => {
@@ -67,6 +73,26 @@ export function MainWindow() {
   useEffect(() => {
     if (!currentId) return
     return ws.onChannel(currentId, (e) => {
+      // Реакции прилетают без message — обновляем агрегат по messageId+emoji (см. DESIGN_BRIEF).
+      if (e.type === 'REACTION_ADDED' || e.type === 'REACTION_REMOVED') {
+        const mid = e.messageId, emoji = e.emoji
+        if (!mid || !emoji || e.userId === user.id) return // своё уже учтено оптимистично (см. react())
+        const add = e.type === 'REACTION_ADDED'
+        setMessages((ms) => ms.map((m) => {
+          if (m.id !== mid) return m
+          const rs = m.reactions.slice()
+          const i = rs.findIndex((r) => r.emoji === emoji)
+          if (add) {
+            if (i >= 0) rs[i] = { ...rs[i], count: rs[i].count + 1 }
+            else rs.push({ emoji, count: 1, mine: false })
+          } else if (i >= 0) {
+            const c = rs[i].count - 1
+            if (c <= 0) rs.splice(i, 1); else rs[i] = { ...rs[i], count: c }
+          }
+          return { ...m, reactions: rs }
+        }))
+        return
+      }
       if (!e.message) return
       const m = api.mapIncoming(e.message)
       if (m.channelId !== currentId) return
@@ -120,7 +146,10 @@ export function MainWindow() {
     }))
     const ch = currentId
     ;(mine ? api.removeReaction(messageId, emoji) : api.addReaction(messageId, emoji))
-      .catch(() => { api.messages(ch).then(setMessages) })
+      .catch(() => {
+        // откат оптимистичного апдейта: перезагружаем ленту, но только если канал ещё открыт
+        api.messages(ch).then((ms) => { if (currentIdRef.current === ch) setMessages(ms) }).catch(() => {})
+      })
   }
   function ackAll() {
     api.ackAll().then(setReadStates).catch(() => {})
@@ -178,7 +207,7 @@ export function MainWindow() {
               <WatchView channelId={currentId} />
             ) : (
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
-                <ChatFeed messages={messages} readState={readState} onReact={react} meId={user.id} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} />
+                <ChatFeed messages={messages} readState={readState} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} />
                 <Composer channelName={channel?.name ?? ''} onSend={send} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>
             ))}
@@ -190,7 +219,7 @@ export function MainWindow() {
       <BottomBar
         user={user}
         status={status}
-        onStatus={setStatus}
+        onStatus={(st) => { setStatus(st); presence.setStatus(st) }}
         muted={!vs.micOn}
         onMute={() => voice.toggleMic()}
         deafened={vs.deafened}

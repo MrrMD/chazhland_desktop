@@ -128,6 +128,11 @@ export const api = {
     return mapped
   },
 
+  async presenceSnapshot(): Promise<{ online: { userId: string; status: string }[]; voice: Record<string, string[]> }> {
+    if (MOCK) return { online: [], voice: {} }
+    return http('/presence')
+  },
+
   async messages(channelId: string): Promise<Message[]> {
     if (MOCK) { await delay(200); return MOCK_MESSAGES[channelId] ?? [] }
     if (memberMap.size === 0) await this.members()
