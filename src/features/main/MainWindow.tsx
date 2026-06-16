@@ -9,6 +9,7 @@ import { MembersRail } from './MembersRail'
 import { ChannelSwitcher } from './ChannelSwitcher'
 import { BottomBar } from './BottomBar'
 import { WatchView } from './WatchView'
+import { ScreenSharePane } from './ScreenSharePane'
 import { AdminScreen } from '@/features/admin/AdminScreen'
 import { ws } from '@/lib/ws'
 
@@ -161,6 +162,7 @@ export function MainWindow() {
 
           {/* body */}
           <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+            {vs.screenTrack && <ScreenSharePane track={vs.screenTrack} by={vs.screenBy} />}
             {isWatch ? (
               <WatchView channelId={currentId} />
             ) : (

@@ -11,16 +11,20 @@ export interface VoiceState {
   deafened: boolean
   screenOn: boolean
   participants: VoiceParticipant[]
+  screenTrack: RemoteTrack | null // чужая демонстрация экрана для просмотра
+  screenBy: string | null
 }
 
 const INITIAL: VoiceState = {
   channelId: null, channelName: null, connecting: false,
   micOn: false, deafened: false, screenOn: false, participants: [],
+  screenTrack: null, screenBy: null,
 }
 
 class Voice {
   private room: Room | null = null
   private audioEls = new Map<RemoteTrack, HTMLAudioElement>() // ключ — сам трек (без optional sid)
+  private screenTracks = new Map<RemoteTrack, string>() // чужие screen-share треки → имя шарящего
   private speaking = new Set<string>()
   private targetId: string | null = null // синхронный «куда заходим» — против двойного клика
   private joinSeq = 0
@@ -75,20 +79,28 @@ class Voice {
     }
   }
 
-  private attach(track: RemoteTrack, _participant: RemoteParticipant) {
+  private attach(track: RemoteTrack, participant: RemoteParticipant) {
     if (track.kind === Track.Kind.Audio) {
       const el = track.attach() as HTMLAudioElement
       el.muted = this.state.deafened
       el.autoplay = true
       document.body.appendChild(el)
       this.audioEls.set(track, el)
+    } else if (track.kind === Track.Kind.Video && track.source === Track.Source.ScreenShare) {
+      this.screenTracks.set(track, participant.name || participant.identity)
+      this.syncScreen()
     }
     this.refresh()
   }
   private detach(track: RemoteTrack) {
     track.detach().forEach((el) => el.remove())
     this.audioEls.delete(track)
+    if (this.screenTracks.delete(track)) this.syncScreen()
     this.refresh()
+  }
+  private syncScreen() {
+    const first = this.screenTracks.entries().next().value as [RemoteTrack, string] | undefined
+    this.set({ screenTrack: first ? first[0] : null, screenBy: first ? first[1] : null })
   }
 
   private refresh() {
@@ -139,6 +151,7 @@ class Voice {
   private async teardownRoom() {
     this.audioEls.forEach((el) => el.remove())
     this.audioEls.clear()
+    this.screenTracks.clear()
     this.speaking.clear()
     const r = this.room
     this.room = null

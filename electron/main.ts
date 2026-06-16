@@ -26,6 +26,9 @@ function createWindow() {
       nodeIntegration: false,
       // sandbox оставлен выключенным до перевода preload в CJS — см. TZ р.6 (харднинг позже)
       sandbox: false,
+      // десктоп-приложение ходит в СВОЙ API (api.chazhland.ru) — CORS/SOP к нему неприменимы.
+      // Рендерер грузит только собственный бандл; навигация на чужие URL запрещена (ниже).
+      webSecurity: false,
     },
   })
 
