@@ -19,6 +19,7 @@ interface Props {
   onOpenChannels: () => void
   unreadTotal: number
   onAckAll: () => void
+  onOpenVoiceSettings: () => void
   onOpenAdmin: () => void
   onLogout: () => void
   onLeaveVoice: () => void
@@ -40,6 +41,7 @@ export function BottomBar(p: Props) {
         {menuOpen && (
           <Popover onClose={() => setMenuOpen(false)} style={{ left: 0 }}>
             <MenuItem label="Прочитать всё" icon="✔" onClick={() => { setMenuOpen(false); p.onAckAll() }} />
+            <MenuItem label="Настройки голоса" icon="🎙" onClick={() => { setMenuOpen(false); p.onOpenVoiceSettings() }} />
             <MenuItem label="Админ-панель" icon="🛡" onClick={() => { setMenuOpen(false); p.onOpenAdmin() }} />
             <MenuItem label="Выйти" icon="⎋" danger onClick={() => { setMenuOpen(false); p.onLogout() }} />
           </Popover>

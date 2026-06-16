@@ -1,9 +1,16 @@
 import { Avatar, presenceColor } from '@/components/Avatar'
 import type { Member } from '@/lib/types'
+import type { VoiceParticipant } from '@/lib/voice'
 
 const SUB: Record<string, string> = { online: 'в сети', idle: 'отошёл', dnd: 'не беспокоить', offline: 'не в сети' }
 
-export function MembersRail({ members, expanded, onToggle }: { members: Member[]; expanded: boolean; onToggle: () => void }) {
+export function MembersRail({ members, expanded, onToggle, voiceParticipants, voiceChannelName }: {
+  members: Member[]
+  expanded: boolean
+  onToggle: () => void
+  voiceParticipants?: VoiceParticipant[]
+  voiceChannelName?: string | null
+}) {
   const speaking = members.filter((m) => m.inVoice && m.speaking)
   const online = members.filter((m) => m.status !== 'offline' && !(m.inVoice && m.speaking))
   const offline = members.filter((m) => m.status === 'offline')
@@ -15,6 +22,18 @@ export function MembersRail({ members, expanded, onToggle }: { members: Member[]
         <button className="ib no-drag" onClick={onToggle} style={{ marginLeft: 'auto', background: 'var(--surface-2)', width: 28, height: 28, fontSize: 12 }}>{expanded ? '⟩' : '⟨'}</button>
       </div>
       <div style={{ overflow: 'auto', flex: 1, padding: '10px 9px', display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {voiceChannelName && (voiceParticipants?.length ?? 0) > 0 && (
+          <>
+            <Group label={`🔊 ${voiceChannelName} · ${voiceParticipants!.length}`} show={expanded} color="var(--green)" />
+            {voiceParticipants!.map((p) => (
+              <div key={p.id} className="member-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 6 }}>
+                <Avatar name={p.name} size={38} ringColor={p.speaking ? '#2faa6a' : undefined} />
+                {expanded && <div style={{ fontWeight: 600, fontSize: 13.5, color: p.speaking ? 'var(--green)' : 'var(--text)', minWidth: 0 }}>{p.name}</div>}
+                {expanded && !p.micOn && <span style={{ marginLeft: 'auto', color: 'var(--danger)', fontSize: 13 }}>🔇</span>}
+              </div>
+            ))}
+          </>
+        )}
         {speaking.length > 0 && <Group label="🎙 ГОВОРЯТ" show={expanded} color="var(--green)" />}
         {speaking.map((m) => <Row key={m.userId} m={m} expanded={expanded} speaking />)}
         {online.length > 0 && <Group label={`В СЕТИ · ${online.length}`} show={expanded} />}

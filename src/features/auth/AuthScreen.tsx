@@ -120,13 +120,13 @@ export function AuthScreen() {
             <div className="field" style={{ ...fieldS, fontFamily: 'ui-monospace,monospace' }}><input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" inputMode="numeric" style={{ letterSpacing: '.3em' }} /></div>
             <label style={lbl}>Имя пользователя</label>
             <div className="field" style={fieldS}><input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ваш ник" /></div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-3)', margin: '-4px 0 9px 2px' }}>3–32 символа</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-3)', margin: '-4px 0 9px 2px' }}>2–32 символа</div>
             <label style={lbl}>Пароль</label>
             <div className="field" style={fieldS}><input type={showPw ? 'text' : 'password'} value={pw} onChange={(e) => setPw(e.target.value)} placeholder="••••••••" /><span onClick={() => setShowPw((v) => !v)} style={eye}>{showPw ? '🙈' : '👁'}</span></div>
             <Strength pw={pw} />
             {info && <InfoBox text={info} />}
             {error && <ErrorBox text={error} />}
-            <button type="submit" disabled={loading || !email || code.length !== 6 || username.trim().length < 3 || pw.length < 8} className="accent-btn" style={{ ...btn, opacity: (!email || code.length !== 6 || username.trim().length < 3 || pw.length < 8) ? 0.55 : 1 }}>{loading && <Spinner />}{loading ? 'Создаём…' : 'Создать аккаунт'}</button>
+            <button type="submit" disabled={loading || !email || code.length !== 6 || username.trim().length < 2 || pw.length < 8} className="accent-btn" style={{ ...btn, opacity: (!email || code.length !== 6 || username.trim().length < 2 || pw.length < 8) ? 0.55 : 1 }}>{loading && <Spinner />}{loading ? 'Создаём…' : 'Создать аккаунт'}</button>
             <Switch text="Уже есть аккаунт?" action="Войти" onClick={() => go('login')} />
           </Panel>
         </form>

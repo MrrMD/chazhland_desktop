@@ -10,6 +10,7 @@ import { ChannelSwitcher } from './ChannelSwitcher'
 import { BottomBar } from './BottomBar'
 import { WatchView } from './WatchView'
 import { ScreenSharePane } from './ScreenSharePane'
+import { VoiceSettingsModal } from './VoiceSettingsModal'
 import { AdminScreen } from '@/features/admin/AdminScreen'
 import { ws } from '@/lib/ws'
 
@@ -31,8 +32,11 @@ export function MainWindow() {
   const [status, setStatus] = useState<Presence>('online')
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [vs, setVs] = useState<VoiceState>(voice.state)
+  const [screenFull, setScreenFull] = useState(false)
+  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
 
   useEffect(() => voice.subscribe(setVs), [])
+  useEffect(() => { if (!vs.screenTrack && screenFull) setScreenFull(false) }, [vs.screenTrack, screenFull])
 
   useEffect(() => {
     api.serverTree().then((t) => {
@@ -169,16 +173,16 @@ export function MainWindow() {
 
           {/* body */}
           <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
-            {vs.screenTrack && <ScreenSharePane track={vs.screenTrack} by={vs.screenBy} />}
-            {isWatch ? (
+            {vs.screenTrack && <ScreenSharePane track={vs.screenTrack} by={vs.screenBy} full={screenFull} onToggleFull={() => setScreenFull((f) => !f)} />}
+            {!screenFull && (isWatch ? (
               <WatchView channelId={currentId} />
             ) : (
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
                 <ChatFeed messages={messages} readState={readState} onReact={react} meId={user.id} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} />
                 <Composer channelName={channel?.name ?? ''} onSend={send} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>
-            )}
-            <MembersRail members={members} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} />
+            ))}
+            {!screenFull && <MembersRail members={members} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} voiceParticipants={vs.participants} voiceChannelName={vs.channelName} />}
           </div>
         </div>
       )}
@@ -197,6 +201,7 @@ export function MainWindow() {
         onOpenChannels={() => setChannelsOpen(true)}
         unreadTotal={unreadTotal}
         onAckAll={ackAll}
+        onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
         onOpenAdmin={() => setView('admin')}
         onLogout={logout}
         onLeaveVoice={() => voice.leave()}
@@ -212,6 +217,8 @@ export function MainWindow() {
           onCreateChannel={createChannel}
         />
       )}
+
+      {voiceSettingsOpen && <VoiceSettingsModal onClose={() => setVoiceSettingsOpen(false)} />}
     </div>
   )
 }
