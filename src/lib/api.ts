@@ -1,5 +1,5 @@
 import { MOCK } from './config'
-import { http, delay } from './http'
+import { http, delay, setTokens } from './http'
 import type {
   AuditEntry, Channel, Category, Invite, Member, Message, Presence, ReadState, Role, TokenResponse, User, WatchState,
 } from './types'
@@ -74,12 +74,14 @@ export const api = {
   async login(login: string, password: string): Promise<AuthResult> {
     if (MOCK) { await delay(450); if (!login.trim()) throw new Error('empty'); return { token: MOCK_TOKEN, user: MOCK_USER } }
     const token = await http<TokenResponse>('/auth/login', { method: 'POST', body: JSON.stringify({ login, password }) })
+    setTokens(token.accessToken, token.refreshToken) // иначе следующий /users/me уйдёт без Authorization → 401
     return { token, user: await this.me(token.accessToken) }
   },
 
   async register(p: { inviteCode: string; username: string; email: string; password: string }): Promise<AuthResult> {
     if (MOCK) { await delay(550); return { token: MOCK_TOKEN, user: { ...MOCK_USER, username: p.username } } }
     const token = await http<TokenResponse>('/auth/register', { method: 'POST', body: JSON.stringify(p) })
+    setTokens(token.accessToken, token.refreshToken) // иначе следующий /users/me уйдёт без Authorization → 401
     return { token, user: await this.me(token.accessToken) }
   },
 
