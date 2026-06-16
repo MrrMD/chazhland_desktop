@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react'
-import { Reply, SmilePlus, Pencil, Trash2, Ban, Download, X, File as FileIcon } from 'lucide-react'
+import { Reply, SmilePlus, Pencil, Trash2, Ban, Download, X, Pin, File as FileIcon } from 'lucide-react'
 import { Avatar } from '@/components/Avatar'
 import { toast } from '@/lib/toast'
 import type { Attachment, Message as Msg } from '@/lib/types'
@@ -62,9 +62,10 @@ interface Props {
   onReply?: (m: Msg) => void
   onEdit?: (id: string, content: string) => void
   onDelete?: (id: string) => void
+  onPin?: (id: string, pinned: boolean) => void
 }
 
-export function Message({ m, meId, meName, grouped, canModerate, onReact, onReply, onEdit, onDelete }: Props) {
+export function Message({ m, meId, meName, grouped, canModerate, onReact, onReply, onEdit, onDelete, onPin }: Props) {
   const [hover, setHover] = useState(false)
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
@@ -104,6 +105,7 @@ export function Message({ m, meId, meName, grouped, canModerate, onReact, onRepl
         <div style={{ position: 'absolute', top: -12, right: 10, display: 'flex', gap: 2, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 9, padding: 3, boxShadow: '0 6px 18px -8px var(--shadow)', zIndex: 2 }}>
           <ToolBtn title="Ответить" onClick={() => onReply?.(m)}><Reply size={15} /></ToolBtn>
           <ToolBtn title="Реакция" onClick={() => setPicker((p) => (p === 'top' ? null : 'top'))}><SmilePlus size={15} /></ToolBtn>
+          <ToolBtn title={m.pinnedAt ? 'Открепить' : 'Закрепить'} onClick={() => onPin?.(m.id, !m.pinnedAt)}><Pin size={14} style={m.pinnedAt ? { color: 'var(--accent)' } : undefined} /></ToolBtn>
           {isOwn && <ToolBtn title="Изменить" onClick={startEdit}><Pencil size={14} /></ToolBtn>}
           {canDelete && <ToolBtn title="Удалить" danger onClick={() => onDelete?.(m.id)}><Trash2 size={14} /></ToolBtn>}
         </div>
@@ -124,6 +126,7 @@ export function Message({ m, meId, meName, grouped, canModerate, onReact, onRepl
               <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>
             )}
             <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{hhmm(m.createdAt)}</span>
+            {m.pinnedAt && <Pin size={11} style={{ color: 'var(--accent)' }} />}
           </div>
         )}
         {m.replyPreview && (

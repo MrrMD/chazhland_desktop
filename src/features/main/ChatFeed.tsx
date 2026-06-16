@@ -19,7 +19,7 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })
 }
 
-export function ChatFeed({ messages, readState, onReact, meId, meName, canModerate, onReply, onEdit, onDelete }: {
+export function ChatFeed({ messages, readState, onReact, meId, meName, canModerate, onReply, onEdit, onDelete, onPin }: {
   messages: Msg[]
   readState?: ReadState
   onReact?: (messageId: string, emoji: string) => void
@@ -29,6 +29,7 @@ export function ChatFeed({ messages, readState, onReact, meId, meName, canModera
   onReply?: (m: Msg) => void
   onEdit?: (id: string, content: string) => void
   onDelete?: (id: string) => void
+  onPin?: (id: string, pinned: boolean) => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastId = messages[messages.length - 1]?.id
@@ -62,7 +63,7 @@ export function ChatFeed({ messages, readState, onReact, meId, meName, canModera
           <Fragment key={m.id}>
             {newDay && <Divider label={dayLabel(m.createdAt)} />}
             {isUnread && <UnreadDivider />}
-            <Message m={m} grouped={grouped} meId={meId} meName={meName} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} />
+            <Message m={m} grouped={grouped} meId={meId} meName={meName} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} onPin={onPin} />
           </Fragment>
         )
       })}

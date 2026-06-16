@@ -21,7 +21,7 @@ interface AttachmentDto { id: string; url: string; contentType: string; size: nu
 interface ReactionGroupDto { emoji: string; userIds: string[] }
 interface MessageDto {
   id: string; channelId: string; authorId: string; content: string | null; replyToId: string | null
-  createdAt: string; editedAt: string | null; deleted: boolean
+  createdAt: string; editedAt: string | null; deleted: boolean; pinnedAt: string | null
   attachments: AttachmentDto[]; reactions: ReactionGroupDto[]
 }
 interface AuditDto { id: string; actorId: string; action: string; targetType: string | null; targetId: string | null; metadata: unknown; createdAt: string }
@@ -45,7 +45,7 @@ function mapMessage(d: MessageDto, idMap?: Map<string, MessageDto>): Message {
   return {
     id: d.id, channelId: d.channelId, authorId: d.authorId,
     authorName: author?.username ?? d.authorId, authorRole: author?.role,
-    content: d.content, deleted: d.deleted, editedAt: d.editedAt, createdAt: d.createdAt, replyToId: d.replyToId,
+    content: d.content, deleted: d.deleted, editedAt: d.editedAt, pinnedAt: d.pinnedAt, createdAt: d.createdAt, replyToId: d.replyToId,
     replyPreview: reply ? { authorName: resolveName(reply.authorId), content: (reply.content ?? '').slice(0, 60) } : null,
     attachments: (d.attachments ?? []).map((a) => ({ objectKey: a.id, url: a.url, contentType: a.contentType, filename: a.filename, size: a.size, width: a.width, height: a.height })),
     reactions: (d.reactions ?? []).map((g) => ({ emoji: g.emoji, count: g.userIds.length, mine: g.userIds.includes(meId) })),
@@ -186,6 +186,29 @@ export const api = {
   async editMessage(messageId: string, content: string): Promise<void> {
     if (MOCK) return
     await http(`/messages/${messageId}`, { method: 'PATCH', body: JSON.stringify({ content }) })
+  },
+
+  // поиск по тексту в канале
+  async searchMessages(channelId: string, q: string): Promise<Message[]> {
+    if (MOCK) { await delay(150); const s = q.toLowerCase(); return (MOCK_MESSAGES[channelId] ?? []).filter((m) => (m.content ?? '').toLowerCase().includes(s)) }
+    if (memberMap.size === 0) await this.members()
+    const page = await http<Page<MessageDto>>(`/channels/${channelId}/messages/search?q=${encodeURIComponent(q)}&limit=30`)
+    return page.items.map((m) => mapMessage(m))
+  },
+  // закреплённые сообщения канала
+  async pins(channelId: string): Promise<Message[]> {
+    if (MOCK) return []
+    if (memberMap.size === 0) await this.members()
+    const list = await http<MessageDto[]>(`/channels/${channelId}/pins`)
+    return list.map((m) => mapMessage(m))
+  },
+  async pin(messageId: string): Promise<void> {
+    if (MOCK) return
+    await http(`/messages/${messageId}/pin`, { method: 'PUT' })
+  },
+  async unpin(messageId: string): Promise<void> {
+    if (MOCK) return
+    await http(`/messages/${messageId}/pin`, { method: 'DELETE' })
   },
   async deleteMessage(messageId: string): Promise<void> {
     if (MOCK) return

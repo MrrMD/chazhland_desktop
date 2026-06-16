@@ -75,6 +75,7 @@ export interface Message {
   replyPreview?: { authorName: string; content: string } | null
   editedAt?: string | null
   deleted?: boolean
+  pinnedAt?: string | null
   createdAt: string
   clientMessageId?: string
 }
