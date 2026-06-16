@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef } from 'react'
 import { Message } from './Message'
 import type { Message as Msg, ReadState } from '@/lib/types'
 
@@ -19,7 +19,7 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })
 }
 
-export function ChatFeed({ messages, readState, onReact, meId, meName, canModerate, onReply, onEdit, onDelete, onPin }: {
+export function ChatFeed({ messages, readState, onReact, meId, meName, canModerate, onReply, onEdit, onDelete, onPin, onLoadOlder, hasMore, loadingOlder }: {
   messages: Msg[]
   readState?: ReadState
   onReact?: (messageId: string, emoji: string) => void
@@ -30,14 +30,32 @@ export function ChatFeed({ messages, readState, onReact, meId, meName, canModera
   onEdit?: (id: string, content: string) => void
   onDelete?: (id: string) => void
   onPin?: (id: string, pinned: boolean) => void
+  onLoadOlder?: () => void
+  hasMore?: boolean
+  loadingOlder?: boolean
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const anchorRef = useRef<{ h: number; t: number } | null>(null)
   const lastId = messages[messages.length - 1]?.id
-  // держим ленту прижатой к низу при загрузке/новых сообщениях
+  // авто-низ только при новом последнем сообщении/смене канала (не при подгрузке старых сверху)
   useEffect(() => {
+    if (anchorRef.current) return
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [lastId, messages.length])
+  }, [lastId])
+  // при добавлении старых сообщений сверху — сохраняем видимую позицию
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (el && anchorRef.current) {
+      el.scrollTop = el.scrollHeight - anchorRef.current.h + anchorRef.current.t
+      anchorRef.current = null
+    }
+  }, [messages])
+  function onScroll() {
+    const el = scrollRef.current
+    if (!el || !hasMore || loadingOlder) return
+    if (el.scrollTop < 80) { anchorRef.current = { h: el.scrollHeight, t: el.scrollTop }; onLoadOlder?.() }
+  }
 
   // индекс первого непрочитанного (после lastReadMessageId)
   let firstUnread = -1
@@ -47,7 +65,9 @@ export function ChatFeed({ messages, readState, onReact, meId, meName, canModera
   }
 
   return (
-    <div ref={scrollRef} style={{ flex: 1, overflow: 'auto', padding: '20px 26px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+    <div ref={scrollRef} onScroll={onScroll} style={{ flex: 1, overflow: 'auto', padding: '20px 26px 8px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {loadingOlder && <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 12, padding: '6px 0' }}>Загрузка…</div>}
+      {!hasMore && messages.length > 0 && <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 11.5, padding: '8px 0 6px' }}>Начало канала</div>}
       {messages.length === 0 && (
         <div style={{ textAlign: 'center', color: 'var(--text-3)', fontSize: 13, padding: '40px 0' }}>
           В канале пока нет сообщений — напишите первым.

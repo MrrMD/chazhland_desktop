@@ -45,6 +45,8 @@ export function MainWindow() {
   const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const [panel, setPanel] = useState<null | 'search' | 'pins'>(null)
   const [pinsVersion, setPinsVersion] = useState(0)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
 
   useEffect(() => voice.subscribe(setVs), [])
   useEffect(() => { presence.start(); return () => presence.stop() }, [])
@@ -68,9 +70,11 @@ export function MainWindow() {
   useEffect(() => {
     if (!currentId) return
     let alive = true
+    setLoadingOlder(false)
     api.messages(currentId).then((ms) => {
       if (!alive) return // защита от гонки при быстром переключении каналов
       setMessages(ms)
+      setHasMore(ms.length >= 50) // полная страница → возможно есть более старые
       const last = ms[ms.length - 1]
       if (last) {
         api.markRead(currentId, last.id).catch(() => {})
@@ -198,6 +202,21 @@ export function MainWindow() {
   function ackAll() {
     api.ackAll().then(setReadStates).catch(() => {})
   }
+  function loadOlder() {
+    const first = messages[0]
+    if (!first || loadingOlder || !hasMore) return
+    const ch = currentId
+    setLoadingOlder(true)
+    api.olderMessages(ch, first.id).then((older) => {
+      if (currentIdRef.current !== ch) return
+      if (older.length === 0) { setHasMore(false); return }
+      setMessages((ms) => {
+        const seen = new Set(ms.map((m) => m.id))
+        return [...older.filter((m) => !seen.has(m.id)), ...ms] // дедуп на стыке страниц
+      })
+      if (older.length < 50) setHasMore(false)
+    }).catch(() => {}).finally(() => { if (currentIdRef.current === ch) setLoadingOlder(false) })
+  }
   function pinMsg(id: string, pinned: boolean) {
     const ch = currentId
     setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, pinnedAt: pinned ? new Date().toISOString() : null } : m)))
@@ -273,7 +292,7 @@ export function MainWindow() {
               <WatchView channelId={currentId} />
             ) : (
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
-                <ChatFeed messages={messages} readState={readState} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} />
+                <ChatFeed messages={messages} readState={readState} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} />
                 <TypingIndicator names={typing.map((t) => t.name)} />
                 <Composer channelName={channel?.name ?? ''} onSend={send} onType={() => ws.typing(currentId)} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>

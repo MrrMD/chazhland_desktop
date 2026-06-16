@@ -186,6 +186,16 @@ export const api = {
     return items.map((m) => mapMessage(m, idMap))
   },
 
+  // подгрузка более старых сообщений (курсор before = id самого старого загруженного)
+  async olderMessages(channelId: string, beforeId: string): Promise<Message[]> {
+    if (MOCK) { await delay(200); return [] }
+    if (memberMap.size === 0) await this.members()
+    const page = await http<Page<MessageDto>>(`/channels/${channelId}/messages?before=${encodeURIComponent(beforeId)}&limit=50`)
+    const items = [...page.items].reverse() // newest-first → хронология
+    const idMap = new Map(items.map((m) => [m.id, m]))
+    return items.map((m) => mapMessage(m, idMap))
+  },
+
   async sendMessage(channelId: string, content: string, replyToId?: string | null, attachments?: AttachmentInput[]): Promise<Message> {
     const clientMessageId = crypto.randomUUID()
     const atts = attachments?.length ? attachments : undefined
