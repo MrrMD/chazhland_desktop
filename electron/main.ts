@@ -54,9 +54,17 @@ function createWindow() {
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL)
+    win.webContents.openDevTools({ mode: 'detach' }) // в dev — DevTools (Console/Network) отдельным окном
   } else {
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
+
+  // хоткей-тоггл DevTools (на случай, если закрыл): Cmd/Ctrl+Shift+I
+  win.webContents.on('before-input-event', (_e, input) => {
+    if (input.key.toLowerCase() === 'i' && (input.meta || input.control) && input.shift) {
+      win?.webContents.toggleDevTools()
+    }
+  })
 }
 
 app.whenReady().then(createWindow)
