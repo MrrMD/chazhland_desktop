@@ -23,3 +23,6 @@ contextBridge.exposeInMainWorld('chazh', {
     return () => ipcRenderer.removeListener('voice:toggle-mic', h)
   },
 })
+
+// выгрузка/перезагрузка рендерера — снимаем глобальный хоткей, чтобы он не остался в ОС
+window.addEventListener('beforeunload', () => { ipcRenderer.invoke('voice:setMicHotkey', null).catch(() => {}) })

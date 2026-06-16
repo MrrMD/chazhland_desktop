@@ -111,7 +111,8 @@ class Voice {
       const micOn = this.settings.mode === 'voice' // в режиме PTT молчим до нажатия клавиши
       if (micOn) await room.localParticipant.setMicrophoneEnabled(true, this.captureOpts())
       this.set({ connecting: false, micOn })
-      window.chazh?.setMicHotkey(MIC_HOTKEY) // включаем глобальный тумблер на время звонка
+      // только если это всё ещё актуальное соединение — иначе Disconnected уже снял хоткей, не возвращаем его
+      if (this.joinSeq === seq && this.room === room) window.chazh?.setMicHotkey(MIC_HOTKEY)
       this.refresh()
     } catch {
       if (this.joinSeq === seq) { this.targetId = null; await this.teardownRoom(); this.set({ ...INITIAL }) }

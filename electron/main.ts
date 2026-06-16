@@ -15,6 +15,8 @@ let win: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
 let micAccel: string | null = null
+let rendererReady = false
+let pendingNotifChannel: string | null = null
 
 function showWindow() {
   if (!win) { createWindow(); return }
@@ -65,14 +67,22 @@ function createWindow() {
   ipcMain.on('win:close', () => win?.close())
   ipcMain.handle('win:isMaximized', () => win?.isMaximized() ?? false)
 
-  // закрытие окна — в трей (приложение продолжает работать и получать уведомления); реальный выход — через трей
-  win.on('close', (e) => { if (!isQuitting) { e.preventDefault(); win?.hide() } })
+  // закрытие окна — в трей (приложение работает и получает уведомления); реальный выход — через трей.
+  // если трея НЕТ (иконка не загрузилась) — close не перехватываем, иначе на Win/Linux приложение не закрыть.
+  win.on('close', (e) => { if (!isQuitting && tray) { e.preventDefault(); win?.hide() } })
+  // краш рендерера — снимаем глобальный хоткей, иначе он останется висеть в ОС
+  win.webContents.on('render-process-gone', () => { if (micAccel) { try { globalShortcut.unregister(micAccel) } catch { /* */ } micAccel = null } })
 
   // нативные desktop-уведомления; клик — фокус окна + переход в канал (через рендерер)
   ipcMain.handle('notify:show', (_e, p: { title: string; body: string; channelId?: string }) => {
     if (!Notification.isSupported()) return
     const n = new Notification({ title: p.title, body: p.body })
-    n.on('click', () => { showWindow(); if (p.channelId) win?.webContents.send('notif:clicked', { channelId: p.channelId }) })
+    n.on('click', () => {
+      showWindow()
+      if (!p.channelId) return
+      if (rendererReady) win?.webContents.send('notif:clicked', { channelId: p.channelId })
+      else pendingNotifChannel = p.channelId // окно ещё грузится — отправим после did-finish-load
+    })
     n.show()
   })
   // бейдж непрочитанного (dock на macOS / Unity на Linux; Windows — no-op)
@@ -80,9 +90,10 @@ function createWindow() {
 
   // глобальный хоткей тумблера микрофона (работает и когда окно не в фокусе)
   ipcMain.handle('voice:setMicHotkey', (_e, accel: string | null) => {
-    if (micAccel && micAccel !== accel) { globalShortcut.unregister(micAccel); micAccel = null }
+    if (micAccel && micAccel !== accel) { try { globalShortcut.unregister(micAccel) } catch { /* */ } micAccel = null }
     if (accel && !globalShortcut.isRegistered(accel)) {
-      try { globalShortcut.register(accel, () => win?.webContents.send('voice:toggle-mic')); micAccel = accel } catch { /* занят другим приложением */ }
+      try { globalShortcut.register(accel, () => win?.webContents.send('voice:toggle-mic')); micAccel = accel }
+      catch { micAccel = null /* занят другим приложением — не оставляем «висячее» состояние */ }
     }
     return micAccel
   })
@@ -133,6 +144,12 @@ function createWindow() {
     if (validatedURL.startsWith('http://localhost')) {
       win?.loadFile(path.join(RENDERER_DIST, 'index.html'))
     }
+  })
+
+  // рендерер готов принимать IPC — отдаём отложенный клик по уведомлению (если был до загрузки)
+  win.webContents.on('did-finish-load', () => {
+    rendererReady = true
+    if (pendingNotifChannel) { win?.webContents.send('notif:clicked', { channelId: pendingNotifChannel }); pendingNotifChannel = null }
   })
 
   // хоткей-тоггл DevTools (на случай, если закрыл): Cmd/Ctrl+Shift+I

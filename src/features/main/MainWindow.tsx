@@ -49,6 +49,7 @@ export function MainWindow() {
   const [hasMore, setHasMore] = useState(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [membersLoaded, setMembersLoaded] = useState(false)
   const [unread, setUnread] = useState<Set<string>>(new Set()) // каналы с непрочитанными (кроме открытого)
 
   useEffect(() => voice.subscribe(setVs), [])
@@ -58,9 +59,10 @@ export function MainWindow() {
   // актуальный канал для асинхронных колбэков (откат реакции и т.п.), чтобы не затирать чужую ленту
   const currentIdRef = useRef(currentId)
   useEffect(() => { currentIdRef.current = currentId }, [currentId])
-  // свежие tree/dms для фоновых обработчиков уведомлений (имена каналов/диалогов)
+  // свежие tree/dms/user для фоновых обработчиков уведомлений (имена каналов/диалогов, ник)
   const treeRef = useRef(tree); useEffect(() => { treeRef.current = tree }, [tree])
   const dmsRef = useRef(dms); useEffect(() => { dmsRef.current = dms }, [dms])
+  const userRef = useRef(user); useEffect(() => { userRef.current = user }, [user])
 
   useEffect(() => {
     api.serverTree().then((t) => {
@@ -68,7 +70,7 @@ export function MainWindow() {
       // первый открытый канал — первый текстовый (или любой), а не захардкоженный id
       setCurrentId((cur) => (cur && t.channels.some((c) => c.id === cur) ? cur : (t.channels.find((c) => c.type === 'TEXT')?.id ?? t.channels[0]?.id ?? '')))
     }).catch(() => {})
-    api.members().then(setMembers).catch(() => {})
+    api.members().then(setMembers).catch(() => {}).finally(() => setMembersLoaded(true))
     api.readStates().then(setReadStates).catch(() => {})
     api.listDms().then(setDms).catch(() => {})
   }, [])
@@ -79,7 +81,11 @@ export function MainWindow() {
     setLoadingOlder(false)
     setLoadingMessages(true)
     setMessages([]) // чистим прошлый канал, чтобы показать скелетоны, а не чужую ленту
+    setHasMore(false) // сброс пагинации прошлого канала (иначе мог залипнуть стейт hasMore/«Загрузка»)
     setUnread((u) => { if (!u.has(currentId)) return u; const n = new Set(u); n.delete(currentId); return n }) // открыли — прочитано
+    // mentionCount гасим СРАЗУ (синхронно), а не после загрузки — иначе фоновое упоминание,
+    // прилетевшее между открытием канала и ответом API, было бы затёрто и потеряно
+    setReadStates((rs) => rs.map((r) => (r.channelId === currentId ? { ...r, mentionCount: 0 } : r)))
     api.messages(currentId).then((ms) => {
       if (!alive) return // защита от гонки при быстром переключении каналов
       setMessages(ms)
@@ -87,7 +93,7 @@ export function MainWindow() {
       const last = ms[ms.length - 1]
       if (last) {
         api.markRead(currentId, last.id).catch(() => {})
-        setReadStates((rs) => rs.map((r) => (r.channelId === currentId ? { ...r, lastReadMessageId: last.id, mentionCount: 0 } : r)))
+        setReadStates((rs) => rs.map((r) => (r.channelId === currentId ? { ...r, lastReadMessageId: last.id } : r)))
       }
     }).catch(() => {}).finally(() => { if (alive) setLoadingMessages(false) })
     return () => { alive = false }
@@ -170,10 +176,10 @@ export function MainWindow() {
       if (e.type !== 'MESSAGE_CREATED' || e.channelId === currentIdRef.current) return // открытый канал ведёт основной хэндлер
       const raw = e.message; if (!raw) return
       const m = api.mapIncoming(raw)
-      if (m.authorId === user.id) return // своё
+      if (m.authorId === userRef.current.id) return // своё
       setUnread((u) => (u.has(id) ? u : new Set(u).add(id)))
       const isDm = dmsRef.current.some((d) => d.id === id)
-      if (isDm || mentionsUser(m.content, user.username)) {
+      if (isDm || mentionsUser(m.content, userRef.current.username)) {
         setReadStates((rs) => {
           const i = rs.findIndex((r) => r.channelId === id)
           if (i >= 0) return rs.map((r, j) => (j === i ? { ...r, mentionCount: r.mentionCount + 1 } : r))
@@ -210,7 +216,10 @@ export function MainWindow() {
   function send(text: string, attachments?: AttachmentInput[]) {
     if (!currentId) return // не отправляем без выбранного канала (иначе /channels//messages → 401)
     if (!text && !(attachments && attachments.length)) return
-    api.sendMessage(currentId, text, replyTo?.id, attachments).then((m) => setMessages((ms) => [...ms, m]))
+    // дедуп по id: WS-эхо MESSAGE_CREATED могло прийти раньше ответа POST и уже добавить сообщение
+    api.sendMessage(currentId, text, replyTo?.id, attachments)
+      .then((m) => setMessages((ms) => (ms.some((x) => x.id === m.id) ? ms : [...ms, m])))
+      .catch(() => toast.error('Не удалось отправить сообщение'))
     setReplyTo(null)
   }
   function editMsg(id: string, content: string) {
@@ -341,7 +350,7 @@ export function MainWindow() {
                 <Composer channelName={channel?.name ?? ''} onSend={send} onType={() => ws.typing(currentId)} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>
             ))}
-            {!screenFull && <MembersRail members={members} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} voiceParticipants={vs.participants} voiceChannelName={vs.channelName} meId={user.id} onOpenDm={openDm} />}
+            {!screenFull && <MembersRail members={members} loading={!membersLoaded} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} voiceParticipants={vs.participants} voiceChannelName={vs.channelName} meId={user.id} onOpenDm={openDm} />}
             {panel && currentId && (
               <ChatPanel mode={panel} channelId={currentId} channelName={channel?.name ?? ''} pinsVersion={pinsVersion} onClose={() => setPanel(null)} onUnpin={(id) => pinMsg(id, false)} />
             )}

@@ -13,6 +13,8 @@ class PresenceStore {
   private offStatus: (() => void) | null = null
   private timer: number | null = null
   private started = false
+  private loadingSnap = false
+  private pending: PEvent[] = [] // дельты, пришедшие во время запроса снапшота
   myStatus: Presence = 'online'
   private cbs = new Set<() => void>()
 
@@ -23,12 +25,21 @@ class PresenceStore {
   // снапшот онлайна (GET /presence); вызываем при старте И на каждом WS-коннекте —
   // на старте чужие connect-heartbeat'ы могли ещё не попасть в Redis, поэтому одного раза мало
   private async loadSnapshot() {
+    this.loadingSnap = true
+    this.pending = []
     try {
       const snap = await api.presenceSnapshot()
-      this.statuses.clear()
-      snap.online.forEach((u) => this.statuses.set(u.userId, (u.status as Presence) || 'online'))
+      const next = new Map<string, Presence>()
+      snap.online.forEach((u) => next.set(u.userId, (u.status as Presence) || 'online'))
+      // дельты, прилетевшие во время запроса, новее снапшота — накатываем поверх (иначе clear их терял)
+      for (const e of this.pending) {
+        const s = (e.status as Presence) || 'offline'
+        if (s === 'offline') next.delete(e.userId); else next.set(e.userId, s)
+      }
+      this.statuses = next
       this.emit()
     } catch { /* снапшот не критичен — догоним по дельтам */ }
+    finally { this.loadingSnap = false; this.pending = [] }
   }
 
   async start() {
@@ -37,6 +48,7 @@ class PresenceStore {
 
     this.offEvents = ws.onPresence((e: PEvent) => {
       if (e.type !== 'PRESENCE_UPDATE' || !e.userId) return
+      if (this.loadingSnap) this.pending.push(e) // переиграем после применения снапшота
       const s = (e.status as Presence) || 'offline'
       if (s === 'offline') this.statuses.delete(e.userId)
       else this.statuses.set(e.userId, s)
