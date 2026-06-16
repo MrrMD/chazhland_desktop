@@ -87,6 +87,7 @@ export function MainWindow() {
   const isWatch = channel?.type === 'WATCH'
 
   function send(text: string) {
+    if (!currentId) return // не отправляем без выбранного канала (иначе /channels//messages → 401)
     api.sendMessage(currentId, text, replyTo?.id).then((m) => setMessages((ms) => [...ms, m]))
     setReplyTo(null)
   }
@@ -133,8 +134,9 @@ export function MainWindow() {
   }
 
   async function createChannel(p: { name: string; type: ChannelType }) {
-    await api.createChannel(p)
+    const ch = await api.createChannel(p)
     setTree(await api.serverTree())
+    if (ch.type !== 'VOICE') { setCurrentId(ch.id); setView('chat') } // сразу открыть новый канал
   }
 
   return (

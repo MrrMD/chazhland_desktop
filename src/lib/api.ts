@@ -98,9 +98,10 @@ export const api = {
     return { categories: t.categories, channels: t.channels.map(mapChannel) }
   },
 
-  async createChannel(p: { name: string; type: ChannelType; categoryId?: string | null; topic?: string | null }): Promise<void> {
-    if (MOCK) return
-    await http('/channels', { method: 'POST', body: JSON.stringify({ name: p.name, type: p.type, categoryId: p.categoryId ?? null, topic: p.topic ?? null }) })
+  async createChannel(p: { name: string; type: ChannelType; categoryId?: string | null; topic?: string | null }): Promise<Channel> {
+    if (MOCK) return { id: 'ch_' + crypto.randomUUID().slice(0, 8), name: p.name, type: p.type, categoryId: p.categoryId ?? null, topic: p.topic ?? null, position: 0, lastMessageId: null }
+    const dto = await http<ChannelDto>('/channels', { method: 'POST', body: JSON.stringify({ name: p.name, type: p.type, categoryId: p.categoryId ?? null, topic: p.topic ?? null }) })
+    return mapChannel(dto)
   },
 
   async members(): Promise<Member[]> {
