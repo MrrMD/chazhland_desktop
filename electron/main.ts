@@ -69,6 +69,13 @@ function createWindow() {
     win.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
 
+  // запуск без `npm run dev` (нет Vite-сервера) → грузим собранную сборку из dist вместо localhost:5173
+  win.webContents.on('did-fail-load', (_e, _code, _desc, validatedURL) => {
+    if (validatedURL.startsWith('http://localhost')) {
+      win?.loadFile(path.join(RENDERER_DIST, 'index.html'))
+    }
+  })
+
   // хоткей-тоггл DevTools (на случай, если закрыл): Cmd/Ctrl+Shift+I
   win.webContents.on('before-input-event', (_e, input) => {
     if (input.key.toLowerCase() === 'i' && (input.meta || input.control) && input.shift) {
