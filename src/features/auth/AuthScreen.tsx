@@ -3,12 +3,16 @@ import { useAuth } from '@/store/auth'
 import { api } from '@/lib/api'
 import { HttpError } from '@/lib/http'
 
+function serverMessage(e: HttpError): string | null {
+  try { const j = JSON.parse(e.body); return typeof j?.message === 'string' ? j.message : null } catch { return null }
+}
 function errMsg(e: unknown, fallback: string): string {
   if (e instanceof HttpError) {
     if (e.status === 429) return 'Слишком много попыток — подождите ~минуту'
-    if (e.status === 409) return 'Имя пользователя или e-mail уже заняты'
-    if (e.status === 400 || e.status === 401) return fallback
-    return `Ошибка сервера (${e.status})`
+    const sm = serverMessage(e) // реальное сообщение бэка вместо догадок
+    if (e.status === 409) return sm || 'Имя пользователя или e-mail уже заняты'
+    if (e.status === 400 || e.status === 401) return sm || fallback
+    return sm || `Ошибка сервера (${e.status})`
   }
   return 'Не удалось связаться с сервером — проверьте сеть/консоль (DevTools)'
 }
