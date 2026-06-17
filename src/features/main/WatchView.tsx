@@ -5,24 +5,26 @@ import { ws } from '@/lib/ws'
 import { toast } from '@/lib/toast'
 import type { WatchAction, WatchState, WatchSourceKind } from '@/lib/types'
 
+// почему источник не играет (для понятного сообщения вместо одного общего «не поддерживается»)
+type Issue = { kind: 'codec' | 'failed' | 'link' | 'nobridge'; msg?: string }
+
 export function WatchView({ channelId }: { channelId: string }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const remote = useRef<WatchState | null>(null) // последнее авторитетное состояние (синхронно)
   const loadedKey = useRef<string | null>(null) // ключ источника, реально загруженного в <video>
   const resolved = useRef<{ key: string; url: string | null } | null>(null) // кэш резолва (url null = не играем)
+  const issueRef = useRef<Issue | null>(null)
   const torrentToken = useRef<string | null>(null) // токен активного торрента (для остановки)
   const applyGen = useRef(0) // монотонный токен для async apply (анти-гонка при смене источника во время await)
-  const unsupportedRef = useRef(false)
   const [state, setState] = useState<WatchState | null>(null)
   const [urlInput, setUrlInput] = useState('')
-  const [unsupported, setUnsupported] = useState(false) // источник задан, но эта версия его не играет
+  const [issue, setIssue] = useState<Issue | null>(null) // источник задан, но не играет — с причиной
   const [buffering, setBuffering] = useState(false)
   const [dl, setDl] = useState<{ pct: number; peers: number } | null>(null) // прогресс торрента
 
   function effectivePos(s: WatchState) {
     return s.paused ? s.positionSeconds : s.positionSeconds + Math.max(0, (Date.now() - s.updatedAt) / 1000)
   }
-  // composite-ключ источника: разные kind с одинаковым ref не должны схлопываться
   function sourceKey(s: WatchState): string {
     const kind = s.source?.kind ?? 'DIRECT'
     return `${kind}:${s.source?.infoHash ?? s.source?.url ?? s.url ?? ''}`
@@ -35,36 +37,43 @@ export function WatchView({ channelId }: { channelId: string }) {
     if (tok) { try { await window.chazh?.torrentStop(tok) } catch { /* */ } }
   }
 
-  // Резолвит источник в URL для <video> (null = эта версия не играет). Для TORRENT запускает движок в main.
-  // Кэш по ключу: НЕ перезапускаем торрент на каждое play/pause/seek (они приходят с тем же источником).
+  // Резолвит источник в URL для <video> (null = не играем) + причину в issueRef. Для TORRENT запускает движок.
   async function resolve(s: WatchState): Promise<void> {
     const key = sourceKey(s)
     if (resolved.current?.key === key) return
     const kind: WatchSourceKind = s.source?.kind ?? 'DIRECT'
     if (kind === 'DIRECT') {
       await stopTorrentIfAny()
+      issueRef.current = null
       resolved.current = { key, url: s.source?.url ?? s.url }
       return
     }
-    if (kind === 'TORRENT' && window.chazh?.torrentStart) {
+    if (kind === 'TORRENT') {
+      if (!window.chazh?.torrentStart) { // мост не загружен (старый билд main/preload → нужен перезапуск)
+        await stopTorrentIfAny()
+        issueRef.current = { kind: 'nobridge' }
+        resolved.current = { key, url: null }
+        return
+      }
       await stopTorrentIfAny()
       setBuffering(true)
       const res = await window.chazh
         .torrentStart({ magnet: s.source?.url ?? undefined, infoHash: s.source?.infoHash ?? undefined })
-        .catch(() => ({ ok: false } as TorrentStartResult))
+        .catch((e) => ({ ok: false, error: String(e?.message ?? e) } as TorrentStartResult))
       setBuffering(false)
       if (res.ok && res.token) {
         torrentToken.current = res.token
-        // webPlayable=false → экзотический кодек (MKV/HEVC): <video> не сыграет, нужен mpv (следующий инкремент)
-        resolved.current = { key, url: res.webPlayable ? (res.streamUrl ?? null) : null }
+        if (res.webPlayable && res.streamUrl) { issueRef.current = null; resolved.current = { key, url: res.streamUrl } }
+        else { issueRef.current = { kind: 'codec' }; resolved.current = { key, url: null } } // MKV/HEVC → нужен mpv
       } else {
+        issueRef.current = { kind: 'failed', msg: res.error }
         resolved.current = { key, url: null }
-        if (res.error) toast.error(res.error)
       }
       return
     }
-    // LINK или нет моста (браузер/мок) — пока не поддерживается
+    // LINK — пока не поддерживается (yt-dlp/mpv позже)
     await stopTorrentIfAny()
+    issueRef.current = { kind: 'link' }
     resolved.current = { key, url: null }
   }
 
@@ -75,8 +84,8 @@ export function WatchView({ channelId }: { channelId: string }) {
     if (!s.url) { // стоп / нет источника
       await stopTorrentIfAny()
       resolved.current = null
-      unsupportedRef.current = false
-      setUnsupported(false)
+      issueRef.current = null
+      setIssue(null)
       const v0 = videoRef.current
       if (v0 && loadedKey.current) { v0.pause(); v0.removeAttribute('src'); v0.load() }
       loadedKey.current = null
@@ -87,14 +96,12 @@ export function WatchView({ channelId }: { channelId: string }) {
     const v = videoRef.current
     const r = resolved.current
     if (!v || !r) return
-    if (r.url == null) { // источник есть, но эта версия его не воспроизводит
-      unsupportedRef.current = true
-      setUnsupported(true)
+    if (r.url == null) { // не воспроизводим — показываем причину
+      setIssue(issueRef.current)
       if (loadedKey.current) { v.pause(); v.removeAttribute('src'); v.load(); loadedKey.current = null }
       return
     }
-    unsupportedRef.current = false
-    setUnsupported(false)
+    setIssue(null)
     if (r.key !== loadedKey.current) { v.src = r.url; loadedKey.current = r.key }
     const target = effectivePos(s)
     if (Math.abs(v.currentTime - target) > 1.5) { try { v.currentTime = target } catch { /* not ready */ } }
@@ -116,8 +123,8 @@ export function WatchView({ channelId }: { channelId: string }) {
     loadedKey.current = null
     resolved.current = null
     remote.current = null
-    unsupportedRef.current = false
-    setUnsupported(false)
+    issueRef.current = null
+    setIssue(null)
     setBuffering(false)
     setState(null)
     api.watchState(channelId).then((s) => { if (alive && s) apply(s) }).catch(() => {})
@@ -126,10 +133,9 @@ export function WatchView({ channelId }: { channelId: string }) {
       if (!alive || !torrentToken.current || p.token !== torrentToken.current) return
       setDl({ pct: Math.round((p.progress ?? 0) * 100), peers: p.numPeers ?? 0 })
     })
-    // мягкая реконсиляция дрейфа (сервер шлёт состояние только на действия)
     const iv = window.setInterval(() => {
       const r = remote.current; const v = videoRef.current
-      if (!r || r.paused || !v || unsupportedRef.current || resolved.current?.url == null) return
+      if (!r || r.paused || !v || issueRef.current || resolved.current?.url == null) return
       const target = effectivePos(r)
       if (Math.abs(v.currentTime - target) > 2.5) { try { v.currentTime = target } catch { /* */ } }
     }, 4000)
@@ -138,7 +144,7 @@ export function WatchView({ channelId }: { channelId: string }) {
       off()
       offProg?.()
       window.clearInterval(iv)
-      videoRef.current?.pause() // остановить воспроизведение при уходе с канала
+      videoRef.current?.pause()
       stopTorrentIfAny()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -148,7 +154,6 @@ export function WatchView({ channelId }: { channelId: string }) {
     const text = urlInput.trim()
     if (!text) return
     setUrlInput('')
-    // распознаём magnet/infohash → TORRENT, иначе прямую ссылку → DIRECT
     let req: { kind: WatchSourceKind; url?: string; infoHash?: string }
     if (/^magnet:\?/i.test(text)) req = { kind: 'TORRENT', url: text }
     else if (/^[0-9a-fA-F]{40}$/.test(text) || /^[A-Za-z2-7]{32}$/.test(text)) req = { kind: 'TORRENT', infoHash: text }
@@ -157,20 +162,26 @@ export function WatchView({ channelId }: { channelId: string }) {
   }
   function stop() {
     api.stopWatch(channelId).catch(() => {})
-    applyGen.current++ // отменяем возможный незавершённый apply
+    applyGen.current++
     stopTorrentIfAny()
     remote.current = null
     resolved.current = null
     loadedKey.current = null
-    unsupportedRef.current = false
-    setUnsupported(false)
+    issueRef.current = null
+    setIssue(null)
     setBuffering(false)
     setState(null)
     const v = videoRef.current
     if (v) { v.pause(); v.removeAttribute('src'); v.load() }
   }
 
-  const showVideo = !!state?.url && !unsupported && !buffering
+  const issueText: Record<Issue['kind'], { title: string; sub: string }> = {
+    codec: { title: 'Формат пока не поддерживается', sub: 'mp4-раздачи играются уже сейчас. MKV/HEVC — в следующей версии (встроенный плеер mpv).' },
+    failed: { title: 'Не удалось загрузить раздачу', sub: (issue?.msg ?? 'Возможно, нет раздающих. Попробуй другую раздачу или подожди.') },
+    link: { title: 'Ссылки на страницы пока не поддерживаются', sub: 'Появятся в следующей версии (yt-dlp + mpv).' },
+    nobridge: { title: 'Торрент-движок не загружен', sub: 'Полностью закрой приложение и запусти заново (npm run dev) — нужна свежая сборка с движком.' },
+  }
+  const showVideo = !!state?.url && !issue && !buffering
   return (
     <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0e0d0c', minHeight: 0, padding: 16, position: 'relative' }}>
@@ -192,7 +203,7 @@ export function WatchView({ channelId }: { channelId: string }) {
             <div style={{ fontSize: 13, marginTop: 4 }}>Вставьте ссылку или magnet ниже — все увидят синхронно</div>
           </div>
         )}
-        {buffering && state?.url && !unsupported && (
+        {buffering && state?.url && !issue && (
           <div style={{ textAlign: 'center', color: '#c7c0b5' }}>
             <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center' }}>
               <Loader2 size={34} style={{ animation: 'spin 1s linear infinite' }} />
@@ -201,11 +212,11 @@ export function WatchView({ channelId }: { channelId: string }) {
             {dl && <div style={{ fontSize: 13, marginTop: 4 }}>загружено {dl.pct}% · пиров: {dl.peers}</div>}
           </div>
         )}
-        {unsupported && (
-          <div style={{ textAlign: 'center', color: '#8a847a', maxWidth: 360 }}>
+        {issue && (
+          <div style={{ textAlign: 'center', color: '#8a847a', maxWidth: 380 }}>
             <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center' }}><Film size={40} /></div>
-            <div style={{ fontWeight: 700, fontSize: 17, color: '#e9e3d8' }}>Формат пока не поддерживается</div>
-            <div style={{ fontSize: 13, marginTop: 4 }}>mp4-раздачи и прямые ссылки играются уже сейчас. MKV/HEVC и ссылки на страницы — в следующей версии (встроенный плеер).</div>
+            <div style={{ fontWeight: 700, fontSize: 17, color: '#e9e3d8' }}>{issueText[issue.kind].title}</div>
+            <div style={{ fontSize: 13, marginTop: 4 }}>{issueText[issue.kind].sub}</div>
           </div>
         )}
         {showVideo && (

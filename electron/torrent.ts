@@ -15,6 +15,18 @@ import os from 'node:os'
 type WT = any // webtorrent — динамический ESM-import; типы не тянем (declare module в global.d.ts)
 
 const CACHE_DIR = path.join(os.tmpdir(), 'chazh-wt-cache')
+// Доверенные ПУБЛИЧНЫЕ трекеры (наш фиксированный список, НЕ из магнета). Магнет санитизируется
+// (его собственные tr= выкинуты — нельзя подсунуть свой), а пиров ищем через эти + DHT. Так находим
+// раздающих и для нишевых раздач, не давая злоумышленнику указать трекер для сбора IP зрителей.
+const PUBLIC_TRACKERS = [
+  'udp://tracker.opentrackr.org:1337/announce',
+  'udp://open.tracker.cl:1337/announce',
+  'udp://tracker.openbittorrent.com:6969/announce',
+  'udp://exodus.desync.com:6969/announce',
+  'udp://tracker.torrent.eu.org:451/announce',
+  'udp://open.stealth.si:80/announce',
+  'udp://tracker.dler.org:6969/announce',
+]
 const VIDEO_EXT = new Set(['.mp4', '.m4v', '.webm', '.mkv', '.avi', '.mov', '.ts', '.wmv', '.flv', '.mpg', '.mpeg', '.ogv'])
 const WEB_PLAYABLE_EXT = new Set(['.mp4', '.m4v', '.webm', '.ogv']) // что реально играет <video> (без mpv)
 const MAX_TOTAL_BYTES = 60 * 1024 ** 3
@@ -190,7 +202,7 @@ async function start(magnet?: string | null, infoHash?: string | null): Promise<
 
     const torrent: WT = await new Promise((resolve, reject) => {
       let settled = false
-      const t = c.add(clean, { path: CACHE_DIR }, (tt: WT) => { if (!settled) { settled = true; resolve(tt) } })
+      const t = c.add(clean, { path: CACHE_DIR, announce: PUBLIC_TRACKERS }, (tt: WT) => { if (!settled) { settled = true; resolve(tt) } })
       t.on('error', (e: any) => { if (!settled) { settled = true; reject(new Error(e?.message ?? 'torrent error')) } })
       setTimeout(() => {
         if (!settled) { settled = true; try { t.destroy() } catch { /* */ } reject(new Error('Не удалось получить метаданные раздачи')) }
