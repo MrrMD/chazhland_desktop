@@ -2,13 +2,23 @@ import { Moon, Sun, Minus, Square, X } from 'lucide-react'
 import { useTheme } from '@/theme/ThemeProvider'
 
 const bridge = typeof window !== 'undefined' ? window.chazh : undefined
-// macOS: нативные «светофоры» слева — прячем свои кнопки и сдвигаем контент.
-// Детект устойчивый: bridge.platform, а если его нет — navigator (на случай, если preload не отдал platform).
-const isMacUA = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform || navigator.userAgent || '')
-const mac = !!bridge && (bridge.platform === 'darwin' || isMacUA)
+
+// macOS в Electron: слева — нативные «светофоры». Прячем свои кнопки и сдвигаем контент вправо.
+// Детект НЕ завязан на наличие preload-моста (раньше при недоступном/незагруженном мосте отступ не
+// применялся и логотип налезал на «светофоры»): Electron всегда добавляет в userAgent маркеры
+// "Macintosh" и "Electron/<ver>". Считаем при каждом рендере, а не один раз на импорт модуля.
+function isMacElectron(): boolean {
+  if (bridge?.platform === 'darwin') return true // самый надёжный сигнал, когда preload отдал platform
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  const isMac = /Mac/i.test(navigator.platform || ua)
+  const inElectron = /Electron/i.test(ua) || !!bridge // не обычный браузер (там не прячем свои кнопки)
+  return isMac && inElectron
+}
 
 export function TitleBar() {
   const { theme, toggleTheme } = useTheme()
+  const mac = isMacElectron()
   return (
     <div
       className="drag"
