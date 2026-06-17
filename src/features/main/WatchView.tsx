@@ -8,20 +8,41 @@ import type { WatchAction, WatchState } from '@/lib/types'
 export function WatchView({ channelId }: { channelId: string }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const remote = useRef<WatchState | null>(null) // последнее авторитетное состояние (синхронно)
-  const loadedUrl = useRef<string | null>(null)
+  const loadedKey = useRef<string | null>(null) // composite-ключ загруженного источника (kind:ref)
   const [state, setState] = useState<WatchState | null>(null)
   const [urlInput, setUrlInput] = useState('')
+  const [unsupported, setUnsupported] = useState(false) // источник задан, но эта версия его не играет
 
   function effectivePos(s: WatchState) {
     return s.paused ? s.positionSeconds : s.positionSeconds + Math.max(0, (Date.now() - s.updatedAt) / 1000)
+  }
+
+  // URL для <video> в ЭТОЙ версии клиента; null — источник пока не поддерживается (TORRENT/LINK появятся
+  // с libmpv+WebTorrent/yt-dlp в следующих инкрементах).
+  function playableUrl(s: WatchState): string | null {
+    const kind = s.source?.kind ?? 'DIRECT'
+    return kind === 'DIRECT' ? (s.source?.url ?? s.url) : null
+  }
+  // composite-ключ источника: разные kind с одинаковым url не должны схлопываться (готовность к TORRENT/LINK)
+  function sourceKey(s: WatchState): string {
+    const kind = s.source?.kind ?? 'DIRECT'
+    return `${kind}:${s.source?.infoHash ?? s.source?.url ?? s.url ?? ''}`
   }
 
   function apply(s: WatchState) {
     remote.current = s // синхронно ДО видео-операций — чтобы self-induced события подавились в send()
     setState(s)
     const v = videoRef.current
-    if (!v || !s.url) return
-    if (s.url !== loadedUrl.current) { v.src = s.url; loadedUrl.current = s.url }
+    if (!v || !s.url) { setUnsupported(false); return }
+    const url = playableUrl(s)
+    if (url == null) { // источник есть, но эта версия его не воспроизводит
+      setUnsupported(true)
+      if (loadedKey.current !== null) { v.pause(); v.removeAttribute('src'); v.load(); loadedKey.current = null }
+      return
+    }
+    setUnsupported(false)
+    const key = sourceKey(s)
+    if (key !== loadedKey.current) { v.src = url; loadedKey.current = key }
     const target = effectivePos(s)
     if (Math.abs(v.currentTime - target) > 1.5) { try { v.currentTime = target } catch { /* not ready */ } }
     if (s.paused) { if (!v.paused) v.pause() } else { v.play().catch(() => {}) }
@@ -39,15 +60,16 @@ export function WatchView({ channelId }: { channelId: string }) {
 
   useEffect(() => {
     let alive = true
-    loadedUrl.current = null
+    loadedKey.current = null
     remote.current = null
+    setUnsupported(false)
     setState(null)
     api.watchState(channelId).then((s) => { if (alive && s) apply(s) }).catch(() => {})
     const off = ws.onWatch(channelId, (s) => { if (alive) apply(s) })
     // мягкая реконсиляция дрейфа (сервер шлёт состояние только на действия)
     const iv = window.setInterval(() => {
       const r = remote.current; const v = videoRef.current
-      if (!r || r.paused || !v || !r.url) return
+      if (!r || r.paused || !v || playableUrl(r) == null) return
       const target = effectivePos(r)
       if (Math.abs(v.currentTime - target) > 2.5) { try { v.currentTime = target } catch { /* */ } }
     }, 4000)
@@ -64,12 +86,13 @@ export function WatchView({ channelId }: { channelId: string }) {
     const url = urlInput.trim()
     if (!url) return
     setUrlInput('')
-    try { apply(await api.setWatchSource(channelId, url)) } catch { toast.error('Не удалось загрузить источник видео') }
+    try { apply(await api.setWatchSource(channelId, { kind: 'DIRECT', url })) } catch { toast.error('Не удалось загрузить источник видео') }
   }
   function stop() {
     api.stopWatch(channelId).catch(() => {})
     remote.current = null
-    loadedUrl.current = null
+    loadedKey.current = null
+    setUnsupported(false)
     setState(null)
     const v = videoRef.current
     if (v) { v.pause(); v.removeAttribute('src'); v.load() }
@@ -81,7 +104,7 @@ export function WatchView({ channelId }: { channelId: string }) {
         <video
           ref={videoRef}
           controls
-          style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 12, background: '#000', display: state?.url ? 'block' : 'none' }}
+          style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 12, background: '#000', display: state?.url && !unsupported ? 'block' : 'none' }}
           onPlay={() => send('PLAY')}
           onPause={() => send('PAUSE')}
           onSeeked={() => send('SEEK')}
@@ -93,7 +116,14 @@ export function WatchView({ channelId }: { channelId: string }) {
             <div style={{ fontSize: 13, marginTop: 4 }}>Вставьте ссылку на видео ниже — все увидят синхронно</div>
           </div>
         )}
-        {state?.url && (
+        {unsupported && (
+          <div style={{ textAlign: 'center', color: '#8a847a', maxWidth: 340 }}>
+            <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center' }}><Film size={40} /></div>
+            <div style={{ fontWeight: 700, fontSize: 17, color: '#e9e3d8' }}>Источник пока не поддерживается</div>
+            <div style={{ fontSize: 13, marginTop: 4 }}>Торренты и ссылки на страницы появятся в следующей версии клиента — обновитесь, когда выйдет.</div>
+          </div>
+        )}
+        {state?.url && !unsupported && (
           <div style={{ position: 'absolute', left: 22, top: 22, display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,0,0,.5)', borderRadius: 30, padding: '6px 13px' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: state.paused ? '#e0b43a' : '#2faa6a' }} />
             <span style={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>{state.paused ? 'на паузе' : 'идёт'} · синхрон</span>

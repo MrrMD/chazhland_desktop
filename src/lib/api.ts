@@ -1,7 +1,7 @@
 import { MOCK } from './config'
 import { http, delay, setTokens } from './http'
 import type {
-  AttachmentInput, AuditEntry, Channel, ChannelType, Category, Dm, Member, Message, Presence, ReadState, Role, TokenResponse, User, WatchState,
+  AttachmentInput, AuditEntry, Channel, ChannelType, Category, Dm, Member, Message, Presence, ReadState, Role, TokenResponse, User, WatchState, WatchSourceRequest,
 } from './types'
 import {
   MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_MEMBERS,
@@ -351,9 +351,10 @@ export const api = {
     const s = await http<WatchState | undefined>(`/channels/${channelId}/watch`).catch(() => null)
     return s ?? null // 204 (нет источника) → null
   },
-  async setWatchSource(channelId: string, url: string): Promise<WatchState> {
-    if (MOCK) return { url, paused: true, positionSeconds: 0, updatedAt: Date.now(), hostId: '', lastActionBy: '' }
-    return http(`/channels/${channelId}/watch/source`, { method: 'POST', body: JSON.stringify({ url }) })
+  async setWatchSource(channelId: string, req: WatchSourceRequest): Promise<WatchState> {
+    const kind = req.kind ?? 'DIRECT'
+    if (MOCK) return { url: req.url ?? null, paused: true, positionSeconds: 0, updatedAt: Date.now(), hostId: '', lastActionBy: '', source: { kind, url: req.url ?? null, infoHash: req.infoHash ?? null } }
+    return http(`/channels/${channelId}/watch/source`, { method: 'POST', body: JSON.stringify(req) })
   },
   async stopWatch(channelId: string): Promise<void> {
     if (MOCK) return

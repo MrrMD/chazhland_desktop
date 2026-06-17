@@ -114,6 +114,19 @@ export interface TokenResponse {
 
 // Watch-party (синхронный просмотр) — /topic/watch.{id} + /app/watch.{id}.control
 export type WatchAction = 'PLAY' | 'PAUSE' | 'SEEK'
+export type WatchSourceKind = 'DIRECT' | 'TORRENT' | 'LINK'
+// типизированный источник (бэк WatchSource, @JsonInclude(NON_NULL)); url non-null, когда source задан
+export interface WatchSource {
+  kind: WatchSourceKind
+  url: string | null // DIRECT — прямая ссылка; TORRENT — magnet; LINK — страничный URL
+  infoHash?: string | null // только TORRENT
+}
+// тело POST /watch/source; kind отсутствует ⇒ бэк трактует как DIRECT (legacy-совместимость)
+export interface WatchSourceRequest {
+  kind?: WatchSourceKind
+  url?: string | null
+  infoHash?: string | null
+}
 export interface WatchState {
   url: string | null
   paused: boolean
@@ -121,6 +134,7 @@ export interface WatchState {
   updatedAt: number // epoch ms серверного времени
   hostId: string
   lastActionBy: string
+  source?: WatchSource | null // типизированный источник (может отсутствовать у legacy-записей/стопа)
 }
 
 // Realtime-события из /topic/channel.{id} (ChatEvent @JsonInclude(NON_NULL) — присутствуют только релевантные типу поля)
