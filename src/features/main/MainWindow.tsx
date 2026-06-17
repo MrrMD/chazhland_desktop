@@ -235,6 +235,8 @@ export function MainWindow() {
   const unreadTotal = readStates.reduce((a, r) => a + r.mentionCount, 0)
   const isWatch = channel?.type === 'WATCH'
   useEffect(() => { window.chazh?.setBadge(unreadTotal) }, [unreadTotal]) // бейдж в доке/таскбаре
+  // если права модератора пропали (понизили роль), пока открыта админ-панель — выкидываем в чат
+  useEffect(() => { if (view === 'admin' && !canModerate) setView('chat') }, [view, canModerate])
 
   function send(text: string, attachments?: AttachmentInput[]) {
     if (!currentId) return // не отправляем без выбранного канала (иначе /channels//messages → 401)
@@ -377,7 +379,7 @@ export function MainWindow() {
 
   return (
     <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {view === 'admin' ? (
+      {view === 'admin' && canModerate ? (
         <AdminScreen onClose={() => setView('chat')} />
       ) : (
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
@@ -439,7 +441,8 @@ export function MainWindow() {
         onAckAll={ackAll}
         onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
-        onOpenAdmin={() => setView('admin')}
+        onOpenAdmin={() => { if (canModerate) setView('admin') }}
+        canModerate={canModerate}
         onLogout={logout}
         onLeaveVoice={() => voice.leave()}
       />

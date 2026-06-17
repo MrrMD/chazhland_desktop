@@ -24,6 +24,7 @@ interface Props {
   onOpenVoiceSettings: () => void
   onOpenSettings: () => void
   onOpenAdmin: () => void
+  canModerate: boolean // админ-панель видна только OWNER/ADMIN
   onLogout: () => void
   onLeaveVoice: () => void
 }
@@ -46,7 +47,7 @@ export function BottomBar(p: Props) {
             <MenuItem label="Прочитать всё" icon={<Check size={15} />} onClick={() => { setMenuOpen(false); p.onAckAll() }} />
             <MenuItem label="Профиль" icon={<UserRound size={15} />} onClick={() => { setMenuOpen(false); p.onOpenSettings() }} />
             <MenuItem label="Настройки голоса" icon={<Mic size={15} />} onClick={() => { setMenuOpen(false); p.onOpenVoiceSettings() }} />
-            <MenuItem label="Админ-панель" icon={<Shield size={15} />} onClick={() => { setMenuOpen(false); p.onOpenAdmin() }} />
+            {p.canModerate && <MenuItem label="Админ-панель" icon={<Shield size={15} />} onClick={() => { setMenuOpen(false); p.onOpenAdmin() }} />}
             <MenuItem label="Выйти" icon={<LogOut size={15} />} danger onClick={() => { setMenuOpen(false); p.onLogout() }} />
           </Popover>
         )}
