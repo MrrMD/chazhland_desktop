@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell, desktopCapturer, Tray, Menu, Notification, globalShortcut, nativeImage } from 'electron'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { registerTorrentIpc, sweepTorrentCacheOnStartup, teardownTorrent } from './torrent'
 
 // ESM-сборка (package.json "type":"module") — __dirname недоступен, вычисляем сами
 const appDir = path.dirname(fileURLToPath(import.meta.url))
@@ -74,8 +75,11 @@ function createWindow() {
   // закрытие окна — в трей (приложение работает и получает уведомления); реальный выход — через трей.
   // если трея НЕТ (иконка не загрузилась) — close не перехватываем, иначе на Win/Linux приложение не закрыть.
   win.on('close', (e) => { if (!isQuitting && tray) { e.preventDefault(); win?.hide() } })
-  // краш рендерера — снимаем глобальный хоткей, иначе он останется висеть в ОС
-  win.webContents.on('render-process-gone', () => { if (micAccel) { try { globalShortcut.unregister(micAccel) } catch { /* */ } micAccel = null } })
+  // краш рендерера — снимаем глобальный хоткей (иначе останется висеть в ОС) и гасим торрент
+  win.webContents.on('render-process-gone', () => {
+    if (micAccel) { try { globalShortcut.unregister(micAccel) } catch { /* */ } micAccel = null }
+    teardownTorrent().catch(() => {})
+  })
 
   // нативные desktop-уведомления; клик — фокус окна + переход в канал (через рендерер)
   ipcMain.handle('notify:show', (_e, p: { title: string; body: string; channelId?: string }) => {
@@ -172,9 +176,14 @@ function createWindow() {
   })
 }
 
-app.whenReady().then(() => { createWindow(); createTray() })
+app.whenReady().then(() => {
+  sweepTorrentCacheOnStartup()
+  registerTorrentIpc(() => win) // ОДИН раз (не в createWindow — иначе двойные ipcMain.handle)
+  createWindow()
+  createTray()
+})
 
-app.on('before-quit', () => { isQuitting = true })
+app.on('before-quit', () => { isQuitting = true; teardownTorrent().catch(() => {}) })
 app.on('will-quit', () => globalShortcut.unregisterAll())
 
 // окно прячется в трей, а не закрывается → window-all-closed обычно не сработает;

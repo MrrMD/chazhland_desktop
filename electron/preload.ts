@@ -24,6 +24,15 @@ contextBridge.exposeInMainWorld('chazh', {
   },
   // трансляция системного звука при демонстрации экрана (loopback берётся в main)
   setShareAudio: (on: boolean): Promise<void> => ipcRenderer.invoke('screen:setAudio', on),
+  // совместный просмотр торрентов: движок в main, отдаёт локальный stream-URL для <video>
+  torrentStart: (p: { magnet?: string; infoHash?: string }) => ipcRenderer.invoke('torrent:start', p),
+  torrentStop: (token?: string) => ipcRenderer.invoke('torrent:stop', token),
+  torrentSelftest: () => ipcRenderer.invoke('torrent:selftest'),
+  onTorrentProgress: (cb: (p: unknown) => void) => {
+    const h = (_e: IpcRendererEvent, p: unknown) => cb(p)
+    ipcRenderer.on('torrent:progress', h)
+    return () => ipcRenderer.removeListener('torrent:progress', h)
+  },
 })
 
 // выгрузка/перезагрузка рендерера — снимаем глобальный хоткей, чтобы он не остался в ОС
