@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Plus, Smile, Send, X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { toast } from '@/lib/toast'
+import { useEscape } from '@/lib/useEscape'
+import { EMOJIS } from '@/lib/emojis'
 import type { AttachmentInput } from '@/lib/types'
 
 interface Pending { id: string; file: File; previewUrl: string; status: 'up' | 'done' | 'err'; out?: AttachmentInput }
@@ -16,10 +18,23 @@ export function Composer({ channelName, onSend, onType, replyToName, onCancelRep
 }) {
   const [text, setText] = useState('')
   const [pending, setPending] = useState<Pending[]>([])
+  const [emojiOpen, setEmojiOpen] = useState(false)
   const lastTyped = useRef(0)
   const fileRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const pendingRef = useRef<Pending[]>([])
   pendingRef.current = pending
+  useEscape(() => setEmojiOpen(false), emojiOpen)
+
+  // вставка эмодзи в позицию каретки (или в конец, если фокус потерян)
+  function insertEmoji(em: string) {
+    const el = inputRef.current
+    const s = el?.selectionStart ?? text.length
+    const e = el?.selectionEnd ?? text.length
+    setText((t) => t.slice(0, s) + em + t.slice(e))
+    setEmojiOpen(false)
+    requestAnimationFrame(() => { const node = inputRef.current; if (node) { node.focus(); const pos = s + em.length; node.setSelectionRange(pos, pos) } })
+  }
 
   // освобождаем objectURL превью при размонтировании
   useEffect(() => () => { pendingRef.current.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl)) }, [])
@@ -103,8 +118,20 @@ export function Composer({ channelName, onSend, onType, replyToName, onCancelRep
       <input ref={fileRef} type="file" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
       <div className="field" style={{ borderRadius: replyToName ? '0 0 16px 16px' : 16, border: '1px solid var(--border)', background: 'var(--surface)', padding: '11px 14px 11px 16px', gap: 12 }}>
         <button type="button" className="ib no-drag" onClick={() => fileRef.current?.click()} style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--surface-2)' }} title="Вложение"><Plus size={18} /></button>
-        <input value={text} onChange={onChange} placeholder={`Написать в #${channelName}…`} style={{ fontSize: 14.5 }} />
-        <button type="button" className="ib no-drag" style={{ width: 32, height: 32 }} title="Эмодзи"><Smile size={18} /></button>
+        <input ref={inputRef} value={text} onChange={onChange} placeholder={`Написать в #${channelName}…`} style={{ fontSize: 14.5 }} />
+        <span style={{ position: 'relative', display: 'flex' }}>
+          <button type="button" className="ib no-drag" onClick={() => setEmojiOpen((v) => !v)} style={{ width: 32, height: 32, color: emojiOpen ? 'var(--accent)' : undefined }} title="Эмодзи"><Smile size={18} /></button>
+          {emojiOpen && (
+            <>
+              <div onClick={() => setEmojiOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+              <div style={{ position: 'absolute', bottom: 'calc(100% + 10px)', right: 0, zIndex: 41, width: 280, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 14px 34px -12px var(--shadow)', padding: 7, display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 1 }}>
+                {EMOJIS.map((em) => (
+                  <button key={em} type="button" className="ib no-drag" onClick={() => insertEmoji(em)} style={{ width: 32, height: 32, fontSize: 17, borderRadius: 8 }}>{em}</button>
+                ))}
+              </div>
+            </>
+          )}
+        </span>
         <button type="submit" disabled={uploading} className="accent-btn" style={{ width: 40, height: 40, borderRadius: 12, boxShadow: '0 4px 12px var(--accent-tint)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: uploading ? 0.6 : 1 }} title={uploading ? 'Загрузка вложений…' : 'Отправить'}>{uploading ? <Spinner /> : <Send size={17} />}</button>
       </div>
     </form>

@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useLayoutEffect, useRef } from 'react'
+import { ArrowDown } from 'lucide-react'
 import { Message } from './Message'
 import { Skeleton } from '@/components/Skeleton'
 import type { Message as Msg, ReadState } from '@/lib/types'
@@ -20,7 +21,7 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })
 }
 
-export function ChatFeed({ messages, readState, onReact, meId, meName, canModerate, onReply, onEdit, onDelete, onPin, onLoadOlder, hasMore, loadingOlder, loading }: {
+export function ChatFeed({ messages, readState, onReact, meId, meName, canModerate, onReply, onEdit, onDelete, onPin, onLoadOlder, hasMore, loadingOlder, loading, targetId, onTargetConsumed, detached, onJumpToPresent }: {
   messages: Msg[]
   readState?: ReadState
   onReact?: (messageId: string, emoji: string) => void
@@ -35,16 +36,43 @@ export function ChatFeed({ messages, readState, onReact, meId, meName, canModera
   hasMore?: boolean
   loadingOlder?: boolean
   loading?: boolean
+  targetId?: string | null // сообщение, к которому надо проскроллить (переход из поиска/пинов)
+  onTargetConsumed?: () => void
+  detached?: boolean // лента показывает историческое окно — показываем кнопку «к последним»
+  onJumpToPresent?: () => void
 }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const anchorRef = useRef<{ h: number; t: number } | null>(null)
+  const targetRef = useRef<string | null>(null)
+  targetRef.current = targetId ?? null
+  const scrolledFor = useRef<string | null>(null)
+  const onConsumeRef = useRef(onTargetConsumed)
+  onConsumeRef.current = onTargetConsumed
   const lastId = messages[messages.length - 1]?.id
-  // авто-низ только при новом последнем сообщении/смене канала (не при подгрузке старых сверху)
+  // авто-низ только при новом последнем сообщении/смене канала (не при подгрузке старых сверху
+  // и не во время перехода к найденному сообщению — иначе прыжок вниз перебьёт скролл к цели)
   useEffect(() => {
-    if (anchorRef.current) return
+    if (anchorRef.current || targetRef.current) return
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [lastId])
+  // переход к сообщению: ждём, пока узел появится в DOM (окно контекста уже загружено), скроллим к центру.
+  // Зависит от messages (узел может отрендериться на следующий тик), но скроллим один раз на цель.
+  useEffect(() => {
+    if (!targetId) { scrolledFor.current = null; return }
+    if (scrolledFor.current === targetId) return
+    const el = scrollRef.current?.querySelector(`[data-mid="${CSS.escape(targetId)}"]`) as HTMLElement | null
+    if (!el) return // ещё не отрендерен — повторим, когда messages обновятся
+    scrolledFor.current = targetId
+    el.scrollIntoView({ block: 'center' })
+  }, [targetId, messages])
+  // снятие подсветки — ОТДЕЛЬНЫЙ таймер, завязанный только на targetId, чтобы перерисовки
+  // (новые messages / новый onTargetConsumed) не отменяли и не теряли его
+  useEffect(() => {
+    if (!targetId) return
+    const t = setTimeout(() => onConsumeRef.current?.(), 1800)
+    return () => clearTimeout(t)
+  }, [targetId])
   // при добавлении старых сообщений сверху — сохраняем видимую позицию
   useLayoutEffect(() => {
     const el = scrollRef.current
@@ -98,10 +126,15 @@ export function ChatFeed({ messages, readState, onReact, meId, meName, canModera
           <Fragment key={m.id}>
             {newDay && <Divider label={dayLabel(m.createdAt)} />}
             {isUnread && <UnreadDivider />}
-            <Message m={m} grouped={grouped} meId={meId} meName={meName} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} onPin={onPin} />
+            <Message m={m} grouped={grouped} highlight={m.id === targetId} meId={meId} meName={meName} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} onPin={onPin} />
           </Fragment>
         )
       })}
+      {detached && (
+        <button onClick={onJumpToPresent} className="no-drag" style={{ position: 'sticky', bottom: 8, alignSelf: 'center', marginTop: 6, display: 'flex', alignItems: 'center', gap: 7, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 30, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 8px 22px -6px var(--accent)' }}>
+          К последним сообщениям <ArrowDown size={15} />
+        </button>
+      )}
     </div>
   )
 }

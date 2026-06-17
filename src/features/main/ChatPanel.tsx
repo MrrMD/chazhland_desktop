@@ -12,13 +12,14 @@ function when(iso: string) {
 }
 
 // Боковая панель поиска и закреплённых сообщений (оверлей справа над лентой).
-export function ChatPanel({ mode, channelId, channelName, pinsVersion, onClose, onUnpin }: {
+export function ChatPanel({ mode, channelId, channelName, pinsVersion, onClose, onUnpin, onJump }: {
   mode: 'search' | 'pins'
   channelId: string
   channelName: string
   pinsVersion: number // bump → перезагрузить список пинов
   onClose: () => void
   onUnpin: (id: string) => void
+  onJump: (m: Message) => void // переход к сообщению в ленте
 }) {
   const [q, setQ] = useState('')
   const [rows, setRows] = useState<Message[] | null>(null)
@@ -78,7 +79,7 @@ export function ChatPanel({ mode, channelId, channelName, pinsVersion, onClose, 
         {!loading && mode === 'search' && !q.trim() && <Hint text="Введите запрос для поиска по каналу" />}
         {!loading && rows && rows.length === 0 && <Hint text={mode === 'pins' ? 'Нет закреплённых сообщений' : 'Ничего не найдено'} />}
         {!loading && rows?.map((m) => (
-          <div key={m.id} className="msg-row" style={{ display: 'flex', gap: 10, padding: '9px 8px', borderRadius: 10 }}>
+          <div key={m.id} className="msg-row no-drag" onClick={() => onJump(m)} title="Перейти к сообщению" style={{ display: 'flex', gap: 10, padding: '9px 8px', borderRadius: 10, cursor: 'pointer' }}>
             <Avatar name={m.authorName} size={32} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: 7 }}>
@@ -88,7 +89,7 @@ export function ChatPanel({ mode, channelId, channelName, pinsVersion, onClose, 
               <div style={{ fontSize: 13, color: 'var(--text-2)', lineHeight: 1.45, wordBreak: 'break-word' }}>{m.content || (m.attachments.length ? 'вложение' : '—')}</div>
             </div>
             {mode === 'pins' && (
-              <button className="ib no-drag" onClick={() => onUnpin(m.id)} title="Открепить" style={{ width: 28, height: 28, flex: 'none', color: 'var(--accent)' }}><Pin size={14} /></button>
+              <button className="ib no-drag" onClick={(e) => { e.stopPropagation(); onUnpin(m.id) }} title="Открепить" style={{ width: 28, height: 28, flex: 'none', color: 'var(--accent)' }}><Pin size={14} /></button>
             )}
           </div>
         ))}

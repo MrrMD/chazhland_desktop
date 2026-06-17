@@ -22,6 +22,14 @@ import { Search, Pin, Bell, Users, Hash, Volume2, Play, AtSign } from 'lucide-re
 
 const TYPE_ICON: Record<ChannelType, React.ReactNode> = { TEXT: <Hash size={18} />, VOICE: <Volume2 size={18} />, WATCH: <Play size={18} />, DM: <AtSign size={18} /> }
 
+// Превью ответа для live-сообщения: бэк шлёт только replyToId, поэтому автора/текст родителя
+// берём из уже загруженных сообщений канала (на полной перезагрузке его строит api.mapMessage).
+function resolveReplyPreview(m: Message, loaded: Message[]): Message {
+  if (!m.replyToId || m.replyPreview) return m
+  const parent = loaded.find((x) => x.id === m.replyToId)
+  return parent ? { ...m, replyPreview: { authorName: parent.authorName, content: (parent.content ?? '').slice(0, 60) } } : m
+}
+
 export function MainWindow() {
   const { session, logout } = useAuth()
   const user = session!.user
@@ -46,6 +54,8 @@ export function MainWindow() {
   const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const [panel, setPanel] = useState<null | 'search' | 'pins'>(null)
   const [pinsVersion, setPinsVersion] = useState(0)
+  const [jumpTargetId, setJumpTargetId] = useState<string | null>(null) // переход к сообщению из поиска/пинов
+  const [detached, setDetached] = useState(false) // лента показывает историческое окно (не «хвост») — live-сообщения не дописываем
   const [hasMore, setHasMore] = useState(false)
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
@@ -59,6 +69,8 @@ export function MainWindow() {
   // актуальный канал для асинхронных колбэков (откат реакции и т.п.), чтобы не затирать чужую ленту
   const currentIdRef = useRef(currentId)
   useEffect(() => { currentIdRef.current = currentId }, [currentId])
+  const detachedRef = useRef(detached) // для WS-обработчика: в отсоединённом окне не дописываем live
+  useEffect(() => { detachedRef.current = detached }, [detached])
   // свежие tree/dms/user для фоновых обработчиков уведомлений (имена каналов/диалогов, ник)
   const treeRef = useRef(tree); useEffect(() => { treeRef.current = tree }, [tree])
   const dmsRef = useRef(dms); useEffect(() => { dmsRef.current = dms }, [dms])
@@ -82,6 +94,7 @@ export function MainWindow() {
     setLoadingMessages(true)
     setMessages([]) // чистим прошлый канал, чтобы показать скелетоны, а не чужую ленту
     setHasMore(false) // сброс пагинации прошлого канала (иначе мог залипнуть стейт hasMore/«Загрузка»)
+    setDetached(false) // новый канал грузится с «хвоста» — окно снова живое
     setUnread((u) => { if (!u.has(currentId)) return u; const n = new Set(u); n.delete(currentId); return n }) // открыли — прочитано
     // mentionCount гасим СРАЗУ (синхронно), а не после загрузки — иначе фоновое упоминание,
     // прилетевшее между открытием канала и ответом API, было бы затёрто и потеряно
@@ -144,10 +157,20 @@ export function MainWindow() {
       if (!e.message) return
       const m = api.mapIncoming(e.message)
       if (m.channelId !== currentId) return
+      // в отсоединённом окне (после перехода к старому сообщению) новые сообщения НЕ дописываем —
+      // иначе они «приклеятся» к окну через скрытый разрыв истории; правки/удаления существующих — можно.
+      // Но упоминание учитываем (бейдж), чтобы не потерять его: сбросится, когда вернёмся к «хвосту».
+      if (e.type === 'MESSAGE_CREATED' && detachedRef.current) {
+        if (m.authorId !== userRef.current.id && mentionsUser(m.content, userRef.current.username)) {
+          setReadStates((rs) => rs.map((r) => (r.channelId === currentId ? { ...r, mentionCount: r.mentionCount + 1 } : r)))
+        }
+        return
+      }
       setMessages((ms) => {
         const i = ms.findIndex((x) => x.id === m.id)
-        if (e.type === 'MESSAGE_CREATED') return i >= 0 ? ms : [...ms, m]
-        if (i >= 0) { const c = ms.slice(); c[i] = m; return c }
+        const mm = resolveReplyPreview(m, ms) // живое превью ответа из уже загруженных сообщений
+        if (e.type === 'MESSAGE_CREATED') return i >= 0 ? ms : [...ms, mm]
+        if (i >= 0) { const c = ms.slice(); c[i] = mm; return c }
         return ms
       })
       if (e.type === 'MESSAGE_CREATED') {
@@ -217,8 +240,15 @@ export function MainWindow() {
     if (!currentId) return // не отправляем без выбранного канала (иначе /channels//messages → 401)
     if (!text && !(attachments && attachments.length)) return
     // дедуп по id: WS-эхо MESSAGE_CREATED могло прийти раньше ответа POST и уже добавить сообщение
-    api.sendMessage(currentId, text, replyTo?.id, attachments)
-      .then((m) => setMessages((ms) => (ms.some((x) => x.id === m.id) ? ms : [...ms, m])))
+    const ch = currentId
+    api.sendMessage(ch, text, replyTo?.id, attachments)
+      .then((m) => {
+        if (currentIdRef.current !== ch) return // канал сменился, пока шёл POST — не дописываем в чужую ленту
+        // если читали историю (detached) — не дописываем в окно через скрытый разрыв, а возвращаемся
+        // к «хвосту»: jumpToPresent перезагрузит ленту, где наше уже сохранённое сообщение будет внизу
+        if (detachedRef.current) { jumpToPresent(); return }
+        setMessages((ms) => (ms.some((x) => x.id === m.id) ? ms : [...ms, resolveReplyPreview(m, ms)]))
+      })
       .catch(() => toast.error('Не удалось отправить сообщение'))
     setReplyTo(null)
   }
@@ -249,7 +279,7 @@ export function MainWindow() {
     ;(mine ? api.removeReaction(messageId, emoji) : api.addReaction(messageId, emoji))
       .catch(() => {
         // откат оптимистичного апдейта: перезагружаем ленту, но только если канал ещё открыт
-        api.messages(ch).then((ms) => { if (currentIdRef.current === ch) setMessages(ms) }).catch(() => {})
+        api.messages(ch).then((ms) => { if (currentIdRef.current === ch) { setMessages(ms); setDetached(false) } }).catch(() => {})
       })
   }
   function ackAll() {
@@ -277,8 +307,43 @@ export function MainWindow() {
       .then(() => setPinsVersion((v) => v + 1))
       .catch(() => {
         toast.error(pinned ? 'Не удалось закрепить' : 'Не удалось открепить')
-        api.messages(ch).then((ms) => { if (currentIdRef.current === ch) setMessages(ms) }).catch(() => {})
+        api.messages(ch).then((ms) => { if (currentIdRef.current === ch) { setMessages(ms); setDetached(false) } }).catch(() => {})
       })
+  }
+
+  // переход к сообщению из поиска/пинов: грузим окно контекста вокруг него и подсвечиваем.
+  // Поиск/пины всегда в текущем канале, поэтому канал не переключаем.
+  async function jumpTo(m: Message) {
+    const ch = m.channelId
+    setPanel(null)
+    if (ch !== currentIdRef.current) return // подстраховка: панель открыта только для текущего канала
+    if (messages.some((x) => x.id === m.id)) { setJumpTargetId(m.id); return } // уже в ленте — просто скроллим
+    try {
+      const ctx = await api.contextMessages(ch, m)
+      if (currentIdRef.current !== ch) return
+      setLoadingMessages(false)
+      setMessages(ctx.messages)
+      setHasMore(ctx.hasOlder) // есть ли что грузить вверх (точный флаг, а не «всегда true»)
+      setDetached(true)        // окно историческое — live-сообщения копятся, покажем кнопку «к последним»
+      setJumpTargetId(m.id)
+    } catch { toast.error('Не удалось перейти к сообщению') }
+  }
+
+  // вернуться к «хвосту» канала после исторического перехода: грузим последние сообщения
+  function jumpToPresent() {
+    const ch = currentIdRef.current
+    setLoadingMessages(true)
+    api.messages(ch).then((ms) => {
+      if (currentIdRef.current !== ch) return
+      setMessages(ms)
+      setHasMore(ms.length >= 50)
+      setDetached(false)
+      const last = ms[ms.length - 1]
+      if (last) {
+        api.markRead(ch, last.id).catch(() => {})
+        setReadStates((rs) => rs.map((r) => (r.channelId === ch ? { ...r, lastReadMessageId: last.id, mentionCount: 0 } : r)))
+      }
+    }).catch(() => {}).finally(() => { if (currentIdRef.current === ch) setLoadingMessages(false) })
   }
 
   function pickChannel(id: string) {
@@ -345,14 +410,14 @@ export function MainWindow() {
               <WatchView channelId={currentId} />
             ) : (
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
-                <ChatFeed messages={messages} readState={readState} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} />
+                <ChatFeed messages={messages} readState={readState} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
                 <TypingIndicator names={typing.map((t) => t.name)} />
                 <Composer channelName={channel?.name ?? ''} onSend={send} onType={() => ws.typing(currentId)} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>
             ))}
             {!screenFull && <MembersRail members={members} loading={!membersLoaded} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} voiceParticipants={vs.participants} voiceChannelName={vs.channelName} meId={user.id} onOpenDm={openDm} />}
             {panel && currentId && (
-              <ChatPanel mode={panel} channelId={currentId} channelName={channel?.name ?? ''} pinsVersion={pinsVersion} onClose={() => setPanel(null)} onUnpin={(id) => pinMsg(id, false)} />
+              <ChatPanel mode={panel} channelId={currentId} channelName={channel?.name ?? ''} pinsVersion={pinsVersion} onClose={() => setPanel(null)} onUnpin={(id) => pinMsg(id, false)} onJump={jumpTo} />
             )}
           </div>
         </div>
@@ -383,6 +448,7 @@ export function MainWindow() {
         <ChannelSwitcher
           channels={tree.channels}
           dms={dms}
+          members={members}
           readStates={readStates}
           currentId={currentId}
           activeVoiceChannelId={vs.channelId}

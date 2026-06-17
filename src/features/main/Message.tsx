@@ -1,8 +1,10 @@
-import { Fragment, useState } from 'react'
+import { useState } from 'react'
 import { Reply, SmilePlus, Pencil, Trash2, Ban, Download, X, Pin, File as FileIcon } from 'lucide-react'
 import { Avatar } from '@/components/Avatar'
 import { toast } from '@/lib/toast'
 import { useEscape } from '@/lib/useEscape'
+import { renderRichText } from '@/lib/markdown'
+import { EMOJIS } from '@/lib/emojis'
 import type { Attachment, Message as Msg } from '@/lib/types'
 
 // скачивание через blob: cross-origin download-атрибут Chromium игнорирует (навигация → блок navigation-guard)
@@ -23,29 +25,12 @@ function hhmm(iso: string): string {
   return isNaN(d.getTime()) ? iso : d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
 }
 
-const MENTION_RE = /(@everyone|@here|@[\p{L}\p{N}_]{2,32})/gu // \p{L} — и кириллические ники тоже
-const IS_MENTION = /^(?:@everyone|@here|@[\p{L}\p{N}_]{2,32})$/u // без /g — .test() без stateful lastIndex
-
-// набор реакций для пикера (это контент-эмодзи, а не иконки UI)
-const EMOJIS = ['👍', '❤️', '😂', '🔥', '🎉', '😮', '😢', '👏', '🙏', '💯', '✅', '👀', '🚀', '🤔', '😍', '😅']
-
 function escapeRegExp(s: string) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') }
 // упоминание текущего пользователя: @everyone/@here или @<его ник> как отдельный токен
 function isMentioningMe(content: string, meName?: string): boolean {
   if (/@everyone|@here/u.test(content)) return true
   if (!meName) return false
   return new RegExp(`@${escapeRegExp(meName)}(?![\\p{L}\\p{N}_])`, 'u').test(content)
-}
-
-function renderContent(text: string) {
-  const parts = text.split(MENTION_RE)
-  return parts.map((p, i) =>
-    IS_MENTION.test(p) ? (
-      <span key={i} style={{ background: 'var(--accent)', color: '#fff', borderRadius: 6, padding: '1px 7px', fontWeight: 600 }}>{p}</span>
-    ) : (
-      <Fragment key={i}>{p}</Fragment>
-    ),
-  )
 }
 
 const roleBadge: Record<string, React.CSSProperties> = {
@@ -58,6 +43,7 @@ interface Props {
   meId?: string
   meName?: string
   grouped?: boolean // часть серии того же автора — без аватара/шапки
+  highlight?: boolean // подсветка при переходе из поиска/пинов
   canModerate?: boolean
   onReact?: (emoji: string) => void
   onReply?: (m: Msg) => void
@@ -66,7 +52,7 @@ interface Props {
   onPin?: (id: string, pinned: boolean) => void
 }
 
-export function Message({ m, meId, meName, grouped, canModerate, onReact, onReply, onEdit, onDelete, onPin }: Props) {
+export function Message({ m, meId, meName, grouped, highlight, canModerate, onReact, onReply, onEdit, onDelete, onPin }: Props) {
   const [hover, setHover] = useState(false)
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
@@ -81,7 +67,7 @@ export function Message({ m, meId, meName, grouped, canModerate, onReact, onRepl
 
   if (m.deleted) {
     return (
-      <div style={{ display: 'flex', gap: 13, padding: '7px 8px', alignItems: 'center', color: 'var(--text-3)', fontStyle: 'italic', fontSize: 13 }}>
+      <div data-mid={m.id} style={{ display: 'flex', gap: 13, padding: '7px 8px', alignItems: 'center', color: 'var(--text-3)', fontStyle: 'italic', fontSize: 13 }}>
         <span style={{ width: 42, display: 'flex', justifyContent: 'center' }}><Ban size={15} /></span>Сообщение удалено
       </div>
     )
@@ -97,10 +83,11 @@ export function Message({ m, meId, meName, grouped, canModerate, onReact, onRepl
 
   return (
     <div
-      className={mention ? undefined : 'msg-row'}
+      data-mid={m.id}
+      className={mention || highlight ? undefined : 'msg-row'}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      style={{ display: 'flex', gap: 13, padding: mention ? '9px 8px' : grouped ? '1px 8px' : '7px 8px', borderRadius: 12, position: 'relative', background: mention ? 'var(--accent-tint)' : undefined }}
+      style={{ display: 'flex', gap: 13, padding: mention ? '9px 8px' : grouped ? '1px 8px' : '7px 8px', borderRadius: 12, position: 'relative', background: highlight ? 'var(--accent-tint)' : mention ? 'var(--accent-tint)' : undefined, boxShadow: highlight ? 'inset 0 0 0 2px var(--accent)' : undefined, transition: 'background .35s, box-shadow .35s' }}
     >
       {mention && <div style={{ position: 'absolute', left: 0, top: 9, bottom: 9, width: 3, borderRadius: 3, background: 'var(--accent)' }} />}
 
@@ -156,8 +143,8 @@ export function Message({ m, meId, meName, grouped, canModerate, onReact, onRepl
           </div>
         ) : (
           m.content && (
-            <div style={{ fontSize: 14.5, lineHeight: 1.55, color: 'var(--text)' }}>
-              {renderContent(m.content)}
+            <div style={{ fontSize: 14.5, lineHeight: 1.55, color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+              {renderRichText(m.content)}
               {m.editedAt && <span style={{ color: 'var(--text-3)', fontSize: 11, marginLeft: 6 }}>(изменено)</span>}
             </div>
           )

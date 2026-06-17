@@ -196,6 +196,40 @@ export const api = {
     return items.map((m) => mapMessage(m, idMap))
   },
 
+  // окно сообщений вокруг цели (для перехода из поиска/пинов): before(старее) + after(новее).
+  // Оба курсора ИСКЛЮЧАЮТ саму цель — её вставляем из готового результата поиска. ULID-id монотонны
+  // (лексикографически = хронологически).
+  async contextMessages(channelId: string, target: Message): Promise<{ messages: Message[]; hasOlder: boolean }> {
+    if (MOCK) return { messages: [target], hasOlder: false }
+    if (memberMap.size === 0) await this.members()
+    const [olderPage, newerPage] = await Promise.all([
+      http<Page<MessageDto>>(`/channels/${channelId}/messages?before=${encodeURIComponent(target.id)}&limit=25`),
+      http<Page<MessageDto>>(`/channels/${channelId}/messages?after=${encodeURIComponent(target.id)}&limit=25`),
+    ])
+    // Не полагаемся на порядок, в котором бэк отдаёт before/after: оставляем строго старее/новее цели,
+    // отбрасываем дубли (пересечение страниц) и пересортировываем по id — одной сортировки достаточно
+    // для верной хронологии, какой бы порядок ни вернул бэк.
+    const older = olderPage.items.filter((m) => m.id < target.id)
+    const newer = newerPage.items.filter((m) => m.id > target.id)
+    const idMap = new Map([...older, ...newer].map((m) => [m.id, m]))
+    const seen = new Set<string>([target.id])
+    const windowed: Message[] = [target]
+    for (const dto of [...older, ...newer]) {
+      if (seen.has(dto.id)) continue
+      seen.add(dto.id)
+      windowed.push(mapMessage(dto, idMap))
+    }
+    windowed.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    // достроить превью ответов на сообщения внутри окна, включая саму цель (её нет в DTO-idMap)
+    const byId = new Map(windowed.map((m) => [m.id, m]))
+    const messages = windowed.map((m) => {
+      if (!m.replyToId || m.replyPreview) return m
+      const p = byId.get(m.replyToId)
+      return p ? { ...m, replyPreview: { authorName: p.authorName, content: (p.content ?? '').slice(0, 60) } } : m
+    })
+    return { messages, hasOlder: olderPage.hasMore }
+  },
+
   async sendMessage(channelId: string, content: string, replyToId?: string | null, attachments?: AttachmentInput[]): Promise<Message> {
     const clientMessageId = crypto.randomUUID()
     const atts = attachments?.length ? attachments : undefined
