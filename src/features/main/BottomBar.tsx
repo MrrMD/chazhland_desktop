@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { LayoutGrid, Settings, Check, Mic, MicOff, Shield, LogOut, Volume2, Headphones, MonitorUp, PhoneOff, UserRound } from 'lucide-react'
+import { LayoutGrid, Settings, Check, Mic, MicOff, Shield, LogOut, Volume2, VolumeX, Headphones, HeadphoneOff, MonitorUp, ChevronUp, PhoneOff, UserRound } from 'lucide-react'
 import { Avatar, presenceColor } from '@/components/Avatar'
+import { voice, SCREEN_QUALITY_LABELS, SCREEN_QUALITY_ORDER, type ScreenQuality } from '@/lib/voice'
 import type { Presence, User } from '@/lib/types'
 
 const STATUS_LABEL: Record<string, string> = { online: 'В сети', idle: 'Не активен', dnd: 'Не беспокоить', offline: 'Не в сети' }
@@ -78,10 +79,8 @@ export function BottomBar(p: Props) {
           <>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--green)', fontSize: 13, fontWeight: 600, padding: '0 6px' }}><Volume2 size={15} /> {p.voiceChannelName}</span>
             <VBtn active={p.muted} onClick={p.onMute} title={p.muted ? 'Включить микрофон' : 'Выключить микрофон'}>{p.muted ? <MicOff size={18} /> : <Mic size={18} />}</VBtn>
-            <VBtn active={p.deafened} onClick={p.onDeaf} title="Наушники"><Headphones size={18} /></VBtn>
-            <button onClick={p.onGoLive} className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 9, border: `1px solid ${p.streamOn ? 'var(--accent)' : 'var(--border)'}`, background: p.streamOn ? 'var(--accent-tint)' : 'var(--win)', color: p.streamOn ? 'var(--accent)' : 'var(--text-2)', borderRadius: 13, padding: '0 16px', height: 46, fontWeight: 600, fontSize: 13.5, cursor: 'pointer' }}>
-              <MonitorUp size={16} /> Демонстрация
-            </button>
+            <VBtn active={p.deafened} onClick={p.onDeaf} title={p.deafened ? 'Включить звук' : 'Заглушить звук'}>{p.deafened ? <HeadphoneOff size={18} /> : <Headphones size={18} />}</VBtn>
+            <ScreenShareControls streamOn={p.streamOn} onGoLive={p.onGoLive} />
             <button onClick={p.onLeaveVoice} className="danger-btn no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 13, padding: '0 17px', height: 46, fontWeight: 700, fontSize: 13.5, boxShadow: '0 4px 12px rgba(224,57,47,.25)' }}><PhoneOff size={16} /> Выйти</button>
           </>
         ) : (
@@ -95,6 +94,37 @@ export function BottomBar(p: Props) {
 function VBtn({ active, onClick, title, children }: { active?: boolean; onClick: () => void; title: string; children: React.ReactNode }) {
   return (
     <button onClick={onClick} title={title} className="no-drag" style={{ width: 46, height: 46, borderRadius: 13, fontSize: 18, cursor: 'pointer', border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`, background: active ? 'var(--accent-tint)' : 'var(--win)', color: active ? 'var(--accent)' : 'var(--text-2)' }}>{children}</button>
+  )
+}
+
+// Демонстрация экрана: основная кнопка (старт/стоп) + поповер выбора качества и трансляции звука.
+function ScreenShareControls({ streamOn, onGoLive }: { streamOn: boolean; onGoLive: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [s, setS] = useState(() => voice.getScreenSettings())
+  const tone = streamOn ? 'var(--accent)' : 'var(--text-2)'
+  const bg = streamOn ? 'var(--accent-tint)' : 'var(--win)'
+  function setQuality(q: ScreenQuality) { voice.setScreenQuality(q); setS((p) => ({ ...p, quality: q })) }
+  function toggleAudio() { const a = !s.audio; voice.setScreenAudio(a); setS((p) => ({ ...p, audio: a })) }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', position: 'relative' }}>
+      <button onClick={onGoLive} className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 9, border: `1px solid ${streamOn ? 'var(--accent)' : 'var(--border)'}`, borderRight: 'none', background: bg, color: tone, borderRadius: '13px 0 0 13px', padding: '0 14px', height: 46, fontWeight: 600, fontSize: 13.5, cursor: 'pointer' }}>
+        <MonitorUp size={16} /> {streamOn ? 'В эфире' : 'Демонстрация'}
+      </button>
+      <button onClick={() => setOpen((v) => !v)} title="Качество и звук" className="no-drag" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', border: `1px solid ${streamOn ? 'var(--accent)' : 'var(--border)'}`, background: bg, color: tone, borderRadius: '0 13px 13px 0', width: 34, height: 46, cursor: 'pointer' }}>
+        <ChevronUp size={15} style={{ transform: open ? 'rotate(180deg)' : undefined, transition: 'transform .15s' }} />
+      </button>
+      {open && (
+        <Popover onClose={() => setOpen(false)} style={{ right: 0, minWidth: 234 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-3)', padding: '5px 9px 6px' }}>КАЧЕСТВО ДЕМОНСТРАЦИИ</div>
+          {SCREEN_QUALITY_ORDER.map((q) => (
+            <MenuItem key={q} label={SCREEN_QUALITY_LABELS[q]} icon={s.quality === q ? <Check size={15} /> : <span style={{ width: 15, display: 'inline-block' }} />} active={s.quality === q} onClick={() => setQuality(q)} />
+          ))}
+          <div style={{ height: 1, background: 'var(--border)', margin: '5px 6px' }} />
+          <MenuItem label={s.audio ? 'Звук включён' : 'Транслировать звук'} icon={s.audio ? <Volume2 size={15} /> : <VolumeX size={15} />} active={s.audio} onClick={toggleAudio} />
+          <div style={{ fontSize: 10.5, color: 'var(--text-3)', padding: '2px 11px 6px', lineHeight: 1.35 }}>{streamOn ? 'Изменения применяются сразу' : 'Системный звук — только Windows'}</div>
+        </Popover>
+      )}
+    </div>
   )
 }
 

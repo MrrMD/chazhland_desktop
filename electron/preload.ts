@@ -22,6 +22,8 @@ contextBridge.exposeInMainWorld('chazh', {
     ipcRenderer.on('voice:toggle-mic', h)
     return () => ipcRenderer.removeListener('voice:toggle-mic', h)
   },
+  // трансляция системного звука при демонстрации экрана (loopback берётся в main)
+  setShareAudio: (on: boolean): Promise<void> => ipcRenderer.invoke('screen:setAudio', on),
 })
 
 // выгрузка/перезагрузка рендерера — снимаем глобальный хоткей, чтобы он не остался в ОС

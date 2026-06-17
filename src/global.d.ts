@@ -12,6 +12,8 @@ declare global {
     setBadge: (count: number) => void
     setMicHotkey: (accel: string | null) => Promise<string | null>
     onToggleMic: (cb: () => void) => () => void
+    /** Захватывать ли системный звук при демонстрации экрана (loopback; реально только Windows). */
+    setShareAudio: (on: boolean) => Promise<void>
   }
   interface Window {
     /** Мост из preload (electron/preload.ts). Отсутствует при запуске в обычном браузере. */

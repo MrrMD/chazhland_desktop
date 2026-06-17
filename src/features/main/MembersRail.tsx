@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, ChevronLeft, MicOff, Crown, Volume2 } from 'lucide-react'
+import { ChevronRight, ChevronLeft, MicOff, Crown, Volume2, VolumeX } from 'lucide-react'
 import { Avatar, presenceColor } from '@/components/Avatar'
 import { Skeleton } from '@/components/Skeleton'
 import { presence } from '@/lib/presence'
+import { voice, type VoiceParticipant } from '@/lib/voice'
 import { MOCK } from '@/lib/config'
 import type { Member, Presence } from '@/lib/types'
-import type { VoiceParticipant } from '@/lib/voice'
 
 const SUB: Record<string, string> = { online: 'в сети', idle: 'отошёл', dnd: 'не беспокоить', offline: 'не в сети' }
 
@@ -43,13 +43,7 @@ export function MembersRail({ members, loading, expanded, onToggle, voicePartici
         {voiceChannelName && (voiceParticipants?.length ?? 0) > 0 && (
           <>
             <Group label={`${voiceChannelName} · ${voiceParticipants!.length}`} show={expanded} color="var(--green)" icon={<Volume2 size={12} />} />
-            {voiceParticipants!.map((p) => (
-              <div key={p.id} className="member-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 6 }}>
-                <Avatar name={p.name} size={38} ringColor={p.speaking ? '#2faa6a' : undefined} />
-                {expanded && <div style={{ fontWeight: 600, fontSize: 13.5, color: p.speaking ? 'var(--green)' : 'var(--text)', minWidth: 0 }}>{p.name}</div>}
-                {expanded && !p.micOn && <span style={{ marginLeft: 'auto', color: 'var(--danger)', display: 'flex' }}><MicOff size={13} /></span>}
-              </div>
-            ))}
+            {voiceParticipants!.map((p) => <VoiceRow key={p.id} p={p} expanded={expanded} self={p.id === meId} />)}
           </>
         )}
         {online.length > 0 && <Group label={`В СЕТИ · ${online.length}`} show={expanded} />}
@@ -57,6 +51,37 @@ export function MembersRail({ members, loading, expanded, onToggle, voicePartici
         {offline.length > 0 && <Group label={`НЕ В СЕТИ · ${offline.length}`} show={expanded} />}
         {offline.map((m) => <Row key={m.userId} m={m} status="offline" expanded={expanded} dim self={m.userId === meId} onOpenDm={onOpenDm} />)}
       </div>
+    </div>
+  )
+}
+
+// Строка участника голосового: имя + индикатор мьюта + персональная громкость (для собеседников).
+// Слайдер раскрывается ИНЛАЙН под строкой — поповер в скролл-контейнере рейла обрезался бы overflow:auto.
+function VoiceRow({ p, expanded, self }: { p: VoiceParticipant; expanded: boolean; self: boolean }) {
+  const [volOpen, setVolOpen] = useState(false)
+  const pct = Math.round(p.volume * 100)
+  return (
+    <div>
+      <div className="member-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 6 }}>
+        <Avatar name={p.name} size={38} ringColor={p.speaking ? '#2faa6a' : undefined} />
+        {expanded && <div style={{ fontWeight: 600, fontSize: 13.5, color: p.speaking ? 'var(--green)' : 'var(--text)', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>}
+        {expanded && (
+          <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
+            {!p.micOn && <span style={{ color: 'var(--danger)', display: 'flex' }}><MicOff size={13} /></span>}
+            {!self && (
+              <button className="ib no-drag" title="Громкость" onClick={() => setVolOpen((v) => !v)} style={{ width: 26, height: 26, color: volOpen || p.volume !== 1 ? 'var(--accent)' : 'var(--text-3)' }}>
+                {p.volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              </button>
+            )}
+          </span>
+        )}
+      </div>
+      {expanded && volOpen && !self && (
+        <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '2px 10px 9px 12px' }}>
+          <input type="range" min={0} max={200} step={5} value={pct} onChange={(e) => voice.setParticipantVolume(p.id, Number(e.target.value) / 100)} style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)', width: 36, textAlign: 'right' }}>{pct}%</span>
+        </div>
+      )}
     </div>
   )
 }

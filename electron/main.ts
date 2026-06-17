@@ -17,6 +17,7 @@ let isQuitting = false
 let micAccel: string | null = null
 let rendererReady = false
 let pendingNotifChannel: string | null = null
+let shareSystemAudio = false // транслировать ли системный звук при демонстрации (loopback)
 
 function showWindow() {
   if (!win) { createWindow(); return }
@@ -116,11 +117,19 @@ function createWindow() {
   win.webContents.on('will-navigate', (e, url) => { if (!isOwnContent(url)) { e.preventDefault(); openExternalSafe(url) } })
   win.webContents.on('will-redirect', (e, url) => { if (!isOwnContent(url)) { e.preventDefault(); openExternalSafe(url) } })
 
+  // переключатель трансляции системного звука при демонстрации (читается обработчиком ниже)
+  ipcMain.handle('screen:setAudio', (_e, on: boolean) => { shareSystemAudio = !!on })
+
   // Демонстрация экрана (Go Live): getDisplayMedia в Electron требует обработчик (TZ р.6).
-  // Базово выдаём первый экран; позже — нативный пикер источника.
+  // Базово выдаём первый экран; позже — нативный пикер источника. Системный звук — через loopback,
+  // он поддержан только на Windows (на macOS getDisplayMedia системный звук не отдаёт).
   win.webContents.session.setDisplayMediaRequestHandler((_request, callback) => {
     desktopCapturer.getSources({ types: ['screen', 'window'] })
-      .then((sources) => callback(sources[0] ? { video: sources[0] } : {}))
+      .then((sources) => {
+        if (!sources[0]) return callback({})
+        const withAudio = shareSystemAudio && process.platform === 'win32'
+        callback(withAudio ? { video: sources[0], audio: 'loopback' } : { video: sources[0] })
+      })
       .catch(() => callback({}))
   })
 

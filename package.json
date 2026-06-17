@@ -18,14 +18,43 @@
   "build": {
     "appId": "ru.chazhland.desktop",
     "productName": "chazhland",
-    "directories": { "output": "release", "buildResources": "build" },
-    "files": ["dist/**", "dist-electron/**", "build/tray*.png", "package.json"],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "build/tray*.png",
+      "package.json"
+    ],
     "asar": true,
-    "win": { "target": [{ "target": "zip", "arch": ["x64"] }], "icon": "build/icon.png" },
-    "nsis": { "oneClick": false, "perMachine": false, "allowToChangeInstallationDirectory": true },
-    "mac": { "target": ["dmg"], "icon": "build/icon.png", "identity": null }
+    "win": {
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "icon": "build/icon.png",
+      "identity": null
+    }
   },
   "dependencies": {
+    "@livekit/krisp-noise-filter": "^0.4.3",
     "@stomp/stompjs": "^7.0.0",
     "livekit-client": "^2.5.0",
     "lucide-react": "^1.20.0",
