@@ -1,21 +1,22 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Search, X, Hash, Volume2, Play, Plus } from 'lucide-react'
-import type { Channel, ChannelType, Dm, ReadState } from '@/lib/types'
+import type { Channel, ChannelType, Dm, Member, ReadState } from '@/lib/types'
 import { Avatar } from '@/components/Avatar'
 import { CreateChannelModal } from './CreateChannelModal'
 import { useEscape } from '@/lib/useEscape'
+import { presence } from '@/lib/presence'
 import { MOCK } from '@/lib/config'
 
 const TYPE_ICON: Record<string, React.ReactNode> = { TEXT: <Hash size={18} />, VOICE: <Volume2 size={17} />, WATCH: <Play size={17} /> }
-// Демо-индикатор «в эфире» — только в mock: у реальных каналов backend-id, а живых счётчиков
-// по каналам бэк сюда пока не отдаёт (показывать выдуманные числа в проде нельзя).
+// Демо-роутер «в эфире» только для mock; в проде роутер живой — из presence (бэк отдаёт voice по каналам).
 const VOICE_LIVE: Record<string, number> = MOCK ? { ch_call: 3, ch_cs: 2 } : {}
 
 export function ChannelSwitcher({
-  channels, dms, readStates, currentId, activeVoiceChannelId, unread, onPick, onClose, onCreateChannel,
+  channels, dms, members, readStates, currentId, activeVoiceChannelId, unread, onPick, onClose, onCreateChannel,
 }: {
   channels: Channel[]
   dms: Dm[]
+  members: Member[]
   readStates: ReadState[]
   currentId: string
   activeVoiceChannelId: string | null
@@ -26,8 +27,14 @@ export function ChannelSwitcher({
 }) {
   const [q, setQ] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
+  const [, setTick] = useState(0)
+  useEffect(() => presence.subscribe(() => setTick((t) => t + 1)), []) // живой роутер голосовых каналов
   useEscape(onClose, !createOpen) // когда открыт вложенный модал создания — ESC закрывает его, не свитчер
+  const memberById = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
   const rs = useMemo(() => Object.fromEntries(readStates.map((r) => [r.channelId, r])), [readStates])
+  // кто сейчас в голосовом канале (для плиток): id из presence → участники с именем/аватаром
+  const rosterOf = (channelId: string): Member[] =>
+    MOCK ? [] : presence.voiceMembers(channelId).map((id) => memberById.get(id)).filter((m): m is Member => !!m)
   const filtered = channels.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()))
   const byType = (t: string) => filtered.filter((c) => c.type === t)
 
@@ -49,7 +56,11 @@ export function ChannelSwitcher({
             {byType('TEXT').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} unread={unread.has(c.id)} onPick={onPick} />)}
           </Section>
           <Section title="ГОЛОСОВЫЕ">
-            {byType('VOICE').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} voiceActive={c.id === activeVoiceChannelId} onPick={onPick} />)}
+            {byType('VOICE').map((c) => {
+              const roster = rosterOf(c.id)
+              const count = MOCK ? (VOICE_LIVE[c.id] ?? 0) : roster.length
+              return <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} voiceActive={c.id === activeVoiceChannelId} liveCount={count} roster={roster} onPick={onPick} />
+            })}
           </Section>
           <Section title="КИНОТЕАТР" last={dms.length === 0}>
             {byType('WATCH').map((c) => <Tile key={c.id} c={c} rs={rs[c.id]} current={c.id === currentId} unread={unread.has(c.id)} onPick={onPick} />)}
@@ -86,8 +97,8 @@ function Section({ title, accent, last, children }: { title: string; accent?: bo
   )
 }
 
-function Tile({ c, rs, current, voiceActive, unread, onPick }: { c: Channel; rs?: ReadState; current: boolean; voiceActive?: boolean; unread?: boolean; onPick: (id: string) => void }) {
-  const live = VOICE_LIVE[c.id]
+function Tile({ c, rs, current, voiceActive, unread, liveCount, roster, onPick }: { c: Channel; rs?: ReadState; current: boolean; voiceActive?: boolean; unread?: boolean; liveCount?: number; roster?: Member[]; onPick: (id: string) => void }) {
+  const live = liveCount ?? VOICE_LIVE[c.id]
   const mentions = rs?.mentionCount ?? 0
   // voiceActive (вы подключены к голосовому) — зелёная подсветка, отдельно от открытого текстового (акцент)
   const sub = voiceActive ? 'вы тут · в эфире' : current ? 'открыт сейчас' : live ? `● ${live} в эфире` : mentions > 0 ? `${mentions} упоминаний` : unread ? 'новые сообщения' : c.type === 'TEXT' ? 'прочитано' : 'пусто'
@@ -113,6 +124,14 @@ function Tile({ c, rs, current, voiceActive, unread, onPick }: { c: Channel; rs?
       </div>
       <div style={{ fontWeight: 700, fontSize: 14.5, marginTop: 10, color: voiceActive ? 'var(--green)' : current ? 'var(--accent)' : 'var(--text)' }}>{c.name}</div>
       <div style={{ fontSize: 11.5, color: voiceActive ? 'var(--green)' : current ? 'var(--accent)' : live ? 'var(--green)' : 'var(--text-3)', fontWeight: voiceActive || live ? 600 : 400 }}>{sub}</div>
+      {roster && roster.length > 0 && (
+        <div style={{ display: 'flex', gap: 4, marginTop: 9, flexWrap: 'wrap' }}>
+          {roster.slice(0, 6).map((m) => (
+            <span key={m.userId} title={m.username} style={{ display: 'flex' }}><Avatar name={m.username} src={m.avatarUrl} size={22} /></span>
+          ))}
+          {roster.length > 6 && <span style={{ alignSelf: 'center', fontSize: 11, fontWeight: 600, color: 'var(--text-3)' }}>+{roster.length - 6}</span>}
+        </div>
+      )}
     </div>
   )
 }
