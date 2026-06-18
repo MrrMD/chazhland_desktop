@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell, desktopCapturer, Tray, Menu, Notifi
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { registerTorrentIpc, sweepTorrentCacheOnStartup, teardownTorrent } from './torrent'
+import { registerMpvIpc, teardownMpv } from './mpv'
 
 // ESM-сборка (package.json "type":"module") — __dirname недоступен, вычисляем сами
 const appDir = path.dirname(fileURLToPath(import.meta.url))
@@ -79,6 +80,7 @@ function createWindow() {
   win.webContents.on('render-process-gone', () => {
     if (micAccel) { try { globalShortcut.unregister(micAccel) } catch { /* */ } micAccel = null }
     teardownTorrent().catch(() => {})
+    teardownMpv().catch(() => {})
   })
 
   // нативные desktop-уведомления; клик — фокус окна + переход в канал (через рендерер)
@@ -179,11 +181,12 @@ function createWindow() {
 app.whenReady().then(() => {
   sweepTorrentCacheOnStartup()
   registerTorrentIpc(() => win) // ОДИН раз (не в createWindow — иначе двойные ipcMain.handle)
+  registerMpvIpc(() => win)
   createWindow()
   createTray()
 })
 
-app.on('before-quit', () => { isQuitting = true; teardownTorrent().catch(() => {}) })
+app.on('before-quit', () => { isQuitting = true; teardownTorrent().catch(() => {}); teardownMpv().catch(() => {}) })
 app.on('will-quit', () => globalShortcut.unregisterAll())
 
 // окно прячется в трей, а не закрывается → window-all-closed обычно не сработает;

@@ -19,6 +19,15 @@ declare global {
     numPeers: number
     ready: boolean
   }
+  // события плеера mpv (из main по 'mpv:event')
+  type MpvEvent =
+    | { type: 'ready' }
+    | { type: 'loaded' }
+    | { type: 'time-pos'; value: number }
+    | { type: 'pause'; value: boolean }
+    | { type: 'end'; reason?: string }
+    | { type: 'exit' }
+    | { type: 'spawn-error'; error: string }
   interface ChazhBridge {
     platform: NodeJS.Platform
     minimize: () => void
@@ -40,6 +49,13 @@ declare global {
     torrentSelftest: () => Promise<{ ok: boolean; nodeVersion?: string; webtorrent?: boolean; ready?: boolean; error?: string }>
     /** Подписка на прогресс загрузки торрента; возвращает функцию отписки. */
     onTorrentProgress: (cb: (p: TorrentProgress) => void) => () => void
+    /** Плеер mpv (MKV/HEVC и пр.): загрузить URL-поток. */
+    mpvLoad: (p: { url: string; paused?: boolean; start?: number }) => Promise<{ ok: boolean; error?: string }>
+    mpvPause: (paused: boolean) => Promise<{ ok: boolean }>
+    mpvSeek: (sec: number) => Promise<{ ok: boolean }>
+    mpvStop: () => Promise<{ ok: boolean }>
+    /** Подписка на события mpv (time-pos/pause/loaded/end/exit); возвращает отписку. */
+    onMpvEvent: (cb: (e: MpvEvent) => void) => () => void
   }
   interface Window {
     /** Мост из preload (electron/preload.ts). Отсутствует при запуске в обычном браузере. */

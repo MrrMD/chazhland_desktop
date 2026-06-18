@@ -33,6 +33,16 @@ contextBridge.exposeInMainWorld('chazh', {
     ipcRenderer.on('torrent:progress', h)
     return () => ipcRenderer.removeListener('torrent:progress', h)
   },
+  // плеер mpv (для MKV/HEVC, что не тянет <video>): играет HTTP-поток торрента отдельным окном
+  mpvLoad: (p: { url: string; paused?: boolean; start?: number }) => ipcRenderer.invoke('mpv:load', p),
+  mpvPause: (paused: boolean) => ipcRenderer.invoke('mpv:pause', paused),
+  mpvSeek: (sec: number) => ipcRenderer.invoke('mpv:seek', sec),
+  mpvStop: () => ipcRenderer.invoke('mpv:stop'),
+  onMpvEvent: (cb: (p: unknown) => void) => {
+    const h = (_e: IpcRendererEvent, p: unknown) => cb(p)
+    ipcRenderer.on('mpv:event', h)
+    return () => ipcRenderer.removeListener('mpv:event', h)
+  },
 })
 
 // выгрузка/перезагрузка рендерера — снимаем глобальный хоткей, чтобы он не остался в ОС
