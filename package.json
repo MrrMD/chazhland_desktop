@@ -60,6 +60,7 @@
   },
   "dependencies": {
     "@livekit/krisp-noise-filter": "^0.4.3",
+    "@sapphi-red/web-noise-suppressor": "^0.3.5",
     "@stomp/stompjs": "^7.0.0",
     "livekit-client": "^2.5.0",
     "lucide-react": "^1.20.0",
