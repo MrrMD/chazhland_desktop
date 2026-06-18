@@ -7,10 +7,19 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
+import fs from 'node:fs'
 import crypto from 'node:crypto'
 
 function mpvBinary(): string {
-  return process.env.MPV_PATH || 'mpv' // система PATH; вендоринг бинаря под Windows — позже
+  if (process.env.MPV_PATH) return process.env.MPV_PATH
+  // ⚠️ GUI-приложения на macOS наследуют урезанный PATH БЕЗ /opt/homebrew/bin (Apple Silicon) и
+  // /usr/local/bin (Intel) — поэтому spawn('mpv') не находит brew-mpv. Ищем бинарь в реальных местах.
+  const candidates = [
+    '/opt/homebrew/bin/mpv', '/usr/local/bin/mpv', '/usr/bin/mpv',
+    'C:\\Program Files\\mpv\\mpv.exe', 'C:\\Program Files\\mpv.net\\mpvnet.exe',
+  ]
+  for (const c of candidates) { try { if (fs.existsSync(c)) return c } catch { /* */ } }
+  return 'mpv' // запасной вариант — из PATH (вендоринг бинаря под Windows — позже)
 }
 
 function ipcAddress(): string {
