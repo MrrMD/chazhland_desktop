@@ -30,6 +30,7 @@
       "node_modules/**/*"
     ],
     "asar": true,
+    "npmRebuild": false,
     "asarUnpack": [
       "**/*.node",
       "node_modules/node-datachannel/**"
