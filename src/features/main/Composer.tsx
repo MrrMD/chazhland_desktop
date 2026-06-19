@@ -19,6 +19,7 @@ export function Composer({ channelName, onSend, onType, replyToName, onCancelRep
   const [text, setText] = useState('')
   const [pending, setPending] = useState<Pending[]>([])
   const [emojiOpen, setEmojiOpen] = useState(false)
+  const [dragOver, setDragOver] = useState(false)
   const lastTyped = useRef(0)
   const fileRef = useRef<HTMLInputElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -91,8 +92,30 @@ export function Composer({ channelName, onSend, onType, replyToName, onCancelRep
     if (e.target.value && now - lastTyped.current > 3000) { lastTyped.current = now; onType?.() }
   }
 
+  // вставка изображения из буфера (Ctrl+V со скриншотом) — добавляем как вложение с превью
+  function onPaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const files = e.clipboardData?.files
+    if (files && files.length) { e.preventDefault(); addFiles(files) }
+  }
+  // перетаскивание файлов в композер
+  function onDrop(e: React.DragEvent) {
+    e.preventDefault(); setDragOver(false)
+    addFiles(e.dataTransfer?.files ?? null)
+  }
+
   return (
-    <form onSubmit={submit} style={{ padding: '8px 26px 18px', flex: 'none' }}>
+    <form
+      onSubmit={submit}
+      onDragOver={(e) => { if (e.dataTransfer?.types?.includes('Files')) { e.preventDefault(); setDragOver(true) } }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false) }}
+      onDrop={onDrop}
+      style={{ padding: '8px 26px 18px', flex: 'none', position: 'relative' }}
+    >
+      {dragOver && (
+        <div style={{ position: 'absolute', inset: 6, zIndex: 6, borderRadius: 16, border: '2px dashed var(--accent)', background: 'var(--accent-tint)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent)', fontWeight: 700, fontSize: 14, pointerEvents: 'none' }}>
+          Отпустите, чтобы прикрепить
+        </div>
+      )}
       {replyToName && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-2)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: '10px 10px 0 0', padding: '6px 14px', marginBottom: -1 }}>
           Ответ <b style={{ fontWeight: 600, color: 'var(--text)' }}>{replyToName}</b>
@@ -118,7 +141,7 @@ export function Composer({ channelName, onSend, onType, replyToName, onCancelRep
       <input ref={fileRef} type="file" multiple hidden onChange={(e) => { addFiles(e.target.files); e.target.value = '' }} />
       <div className="field" style={{ borderRadius: replyToName ? '0 0 16px 16px' : 16, border: '1px solid var(--border)', background: 'var(--surface)', padding: '11px 14px 11px 16px', gap: 12 }}>
         <button type="button" className="ib no-drag" onClick={() => fileRef.current?.click()} style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--surface-2)' }} title="Вложение"><Plus size={18} /></button>
-        <input ref={inputRef} value={text} onChange={onChange} placeholder={`Написать в #${channelName}…`} style={{ fontSize: 14.5 }} />
+        <input ref={inputRef} value={text} onChange={onChange} onPaste={onPaste} placeholder={`Написать в #${channelName}…`} style={{ fontSize: 14.5 }} />
         <span style={{ position: 'relative', display: 'flex' }}>
           <button type="button" className="ib no-drag" onClick={() => setEmojiOpen((v) => !v)} style={{ width: 32, height: 32, color: emojiOpen ? 'var(--accent)' : undefined }} title="Эмодзи"><Smile size={18} /></button>
           {emojiOpen && (

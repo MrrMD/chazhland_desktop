@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ChevronRight, ChevronLeft, MicOff, Crown, Volume2, VolumeX } from 'lucide-react'
+import { ChevronRight, ChevronLeft, MicOff, HeadphoneOff, Crown, Volume2, VolumeX } from 'lucide-react'
 import { Avatar, presenceColor } from '@/components/Avatar'
 import { Skeleton } from '@/components/Skeleton'
 import { presence } from '@/lib/presence'
@@ -26,6 +26,9 @@ export function MembersRail({ members, loading, expanded, onToggle, voicePartici
   const stat = (m: Member): Presence => (MOCK ? m.status : presence.statusOf(m.userId))
   const online = members.filter((m) => stat(m) !== 'offline')
   const offline = members.filter((m) => stat(m) === 'offline')
+  // имя и аватар голосовых участников берём из списка участников по userId (identity == userId):
+  // имя из токена LiveKit бывает пустым → иначе в строке висел бы длинный UUID вместо ника
+  const memberBy = new Map(members.map((m) => [m.userId, m]))
 
   return (
     <div style={{ width: expanded ? 230 : 66, flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--surface)', borderLeft: '1px solid var(--border)', overflow: 'hidden', transition: 'width .32s cubic-bezier(.22,.61,.36,1)' }}>
@@ -43,7 +46,7 @@ export function MembersRail({ members, loading, expanded, onToggle, voicePartici
         {voiceChannelName && (voiceParticipants?.length ?? 0) > 0 && (
           <>
             <Group label={`${voiceChannelName} · ${voiceParticipants!.length}`} show={expanded} color="var(--green)" icon={<Volume2 size={12} />} />
-            {voiceParticipants!.map((p) => <VoiceRow key={p.id} p={p} expanded={expanded} self={p.id === meId} />)}
+            {voiceParticipants!.map((p) => <VoiceRow key={p.id} p={p} expanded={expanded} self={p.id === meId} member={memberBy.get(p.id)} />)}
           </>
         )}
         {online.length > 0 && <Group label={`В СЕТИ · ${online.length}`} show={expanded} />}
@@ -57,17 +60,20 @@ export function MembersRail({ members, loading, expanded, onToggle, voicePartici
 
 // Строка участника голосового: имя + индикатор мьюта + персональная громкость (для собеседников).
 // Слайдер раскрывается ИНЛАЙН под строкой — поповер в скролл-контейнере рейла обрезался бы overflow:auto.
-function VoiceRow({ p, expanded, self }: { p: VoiceParticipant; expanded: boolean; self: boolean }) {
+function VoiceRow({ p, expanded, self, member }: { p: VoiceParticipant; expanded: boolean; self: boolean; member?: Member }) {
   const [volOpen, setVolOpen] = useState(false)
   const pct = Math.round(p.volume * 100)
+  const name = member?.username || p.name // ник из списка участников приоритетнее имени из токена LiveKit
   return (
     <div>
       <div className="member-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 6 }}>
-        <Avatar name={p.name} size={38} ringColor={p.speaking ? '#2faa6a' : undefined} />
-        {expanded && <div style={{ fontWeight: 600, fontSize: 13.5, color: p.speaking ? 'var(--green)' : 'var(--text)', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>}
+        <Avatar name={name} src={member?.avatarUrl} size={38} ringColor={p.speaking ? 'var(--green)' : undefined} />
+        {expanded && <div style={{ fontWeight: 600, fontSize: 13.5, color: p.speaking ? 'var(--green)' : 'var(--text)', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>}
         {expanded && (
           <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
-            {!p.micOn && <span style={{ color: 'var(--danger)', display: 'flex' }}><MicOff size={13} /></span>}
+            {/* оглушён (наушники замьючены) — индикатор справа; микрофон при этом тоже выключен */}
+            {p.deafened && <span style={{ color: 'var(--danger)', display: 'flex' }} title="Звук выключен"><HeadphoneOff size={13} /></span>}
+            {!p.micOn && <span style={{ color: 'var(--danger)', display: 'flex' }} title="Микрофон выключен"><MicOff size={13} /></span>}
             {!self && (
               <button className="ib no-drag" title="Громкость" onClick={() => setVolOpen((v) => !v)} style={{ width: 26, height: 26, color: volOpen || p.volume !== 1 ? 'var(--accent)' : 'var(--text-3)' }}>
                 {p.volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}

@@ -1,7 +1,7 @@
 import { MOCK } from './config'
 import { http, delay, setTokens } from './http'
 import type {
-  AttachmentInput, AuditEntry, Channel, ChannelType, Category, Dm, Member, Message, Presence, ReadState, Role, TokenResponse, User, WatchState, WatchSourceRequest,
+  AttachmentInput, AuditEntry, Channel, ChannelOverwrite, ChannelType, Category, Dm, Member, Message, OverwriteTarget, Permission, Presence, ReadState, Role, ServerRole, TokenResponse, User, WatchState, WatchSourceRequest,
 } from './types'
 import {
   MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_MEMBERS,
@@ -10,11 +10,12 @@ import {
 
 export interface ServerTree { categories: Category[]; channels: Channel[] }
 export interface AuthResult { token: TokenResponse; user: User }
+export interface SoundClip { id: string; name: string; url: string } // звук саундпада (бэк: SoundboardResponse)
 
 // ---- сырые DTO бэка (com.chazhland.messenger.web.dto) ----
 interface Page<T> { items: T[]; nextCursor: string | null; hasMore: boolean }
 interface UserDto { id: string; username: string; avatarUrl: string | null; status?: string; statusMessage?: string | null; role?: Role }
-interface MemberDto { userId: string; username: string; avatarUrl: string | null; role: Role; status: string; joinedAt: string }
+interface MemberDto { userId: string; username: string; avatarUrl: string | null; role: Role; status: string; joinedAt: string; soundboardDisabled?: boolean; roleIds?: string[] }
 interface ChannelDto { id: string; categoryId: string | null; name: string; type: Channel['type']; topic: string | null; position: number; userLimit: number | null; lastMessageId: string | null }
 interface TreeDto { serverId: string; categories: Category[]; channels: ChannelDto[] }
 interface AttachmentDto { id: string; url: string; contentType: string; size: number | null; filename: string | null; width: number | null; height: number | null; thumbnailUrl: string | null }
@@ -35,7 +36,7 @@ const resolveName = (id: string) => memberMap.get(id)?.username ?? id
 const MOCK_TOKEN: TokenResponse = { accessToken: 'mock.access', refreshToken: 'mock.refresh', tokenType: 'Bearer', expiresIn: 900 }
 
 function mapMember(d: MemberDto): Member {
-  return { userId: d.userId, username: d.username, avatarUrl: d.avatarUrl, role: d.role, status: (d.status as Presence) || 'offline', joinedAt: d.joinedAt }
+  return { userId: d.userId, username: d.username, avatarUrl: d.avatarUrl, role: d.role, status: (d.status as Presence) || 'offline', joinedAt: d.joinedAt, soundboardDisabled: d.soundboardDisabled ?? false, roleIds: d.roleIds ?? [] }
 }
 function mapChannel(d: ChannelDto): Channel {
   return { id: d.id, name: d.name, type: d.type, categoryId: d.categoryId, topic: d.topic, position: d.position, userLimit: d.userLimit, lastMessageId: d.lastMessageId }
@@ -170,6 +171,65 @@ export const api = {
     memberMap.clear()
     mapped.forEach((m) => memberMap.set(m.userId, m))
     return mapped
+  },
+
+  // ---- саундпад (общий, серверный): загрузил один — слышат все ----
+  async listSoundboard(): Promise<SoundClip[]> {
+    if (MOCK) return []
+    return http<SoundClip[]>('/soundboard')
+  },
+  async createSoundboard(name: string, objectKey: string): Promise<SoundClip> {
+    if (MOCK) return { id: 'sb_' + crypto.randomUUID().slice(0, 8), name, url: '' }
+    return http<SoundClip>('/soundboard', { method: 'POST', body: JSON.stringify({ name, objectKey }) })
+  },
+  async deleteSoundboard(id: string): Promise<void> {
+    if (MOCK) return
+    await http(`/soundboard/${id}`, { method: 'DELETE' })
+  },
+  // включить/выключить саундпад участнику (admin/owner; даже на админов)
+  async setMemberSoundboard(userId: string, disabled: boolean): Promise<void> {
+    if (MOCK) return
+    await http(`/members/${userId}/soundboard`, { method: 'PUT', body: JSON.stringify({ disabled }) })
+  },
+
+  // ---- кастомные роли ----
+  async roles(): Promise<ServerRole[]> {
+    if (MOCK) return []
+    return http<ServerRole[]>('/roles')
+  },
+  async createRole(p: { name: string; color?: string | null; permissions: Permission[] }): Promise<ServerRole> {
+    if (MOCK) return { id: 'r_' + crypto.randomUUID().slice(0, 8), name: p.name, color: p.color ?? null, position: 1, permissions: p.permissions, isDefault: false }
+    return http<ServerRole>('/roles', { method: 'POST', body: JSON.stringify(p) })
+  },
+  async updateRole(id: string, p: { name: string; color?: string | null; permissions: Permission[] }): Promise<ServerRole> {
+    if (MOCK) return { id, name: p.name, color: p.color ?? null, position: 1, permissions: p.permissions, isDefault: false }
+    return http<ServerRole>(`/roles/${id}`, { method: 'PATCH', body: JSON.stringify(p) })
+  },
+  async deleteRole(id: string): Promise<void> {
+    if (MOCK) return
+    await http(`/roles/${id}`, { method: 'DELETE' })
+  },
+  async assignRole(roleId: string, userId: string): Promise<void> {
+    if (MOCK) return
+    await http(`/roles/${roleId}/members/${userId}`, { method: 'PUT' })
+  },
+  async unassignRole(roleId: string, userId: string): Promise<void> {
+    if (MOCK) return
+    await http(`/roles/${roleId}/members/${userId}`, { method: 'DELETE' })
+  },
+
+  // ---- доступ к каналам (перекрытия прав ролей/участников) ----
+  async channelPermissions(channelId: string): Promise<ChannelOverwrite[]> {
+    if (MOCK) return []
+    return http<ChannelOverwrite[]>(`/channels/${channelId}/permissions`)
+  },
+  async setChannelPermission(channelId: string, p: { targetType: OverwriteTarget; targetId: string; allow: Permission[]; deny: Permission[] }): Promise<ChannelOverwrite> {
+    if (MOCK) return { id: 'ow_' + crypto.randomUUID().slice(0, 8), ...p }
+    return http<ChannelOverwrite>(`/channels/${channelId}/permissions`, { method: 'PUT', body: JSON.stringify(p) })
+  },
+  async clearChannelPermission(channelId: string, targetType: OverwriteTarget, targetId: string): Promise<void> {
+    if (MOCK) return
+    await http(`/channels/${channelId}/permissions/${targetType}/${targetId}`, { method: 'DELETE' })
   },
 
   async presenceSnapshot(): Promise<{ online: { userId: string; status: string }[]; voice: Record<string, string[]> }> {

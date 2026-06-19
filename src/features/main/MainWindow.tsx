@@ -48,6 +48,7 @@ export function MainWindow() {
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [vs, setVs] = useState<VoiceState>(voice.state)
   const [screenFull, setScreenFull] = useState(false)
+  const [screenCollapsed, setScreenCollapsed] = useState(false) // чужая демонстрация свёрнута (показываем чип в шапке)
   const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [typing, setTyping] = useState<{ id: string; name: string }[]>([])
@@ -65,6 +66,30 @@ export function MainWindow() {
   useEffect(() => voice.subscribe(setVs), [])
   useEffect(() => { presence.start(); return () => presence.stop() }, [])
   useEffect(() => { if (!vs.screenTrack && screenFull) setScreenFull(false) }, [vs.screenTrack, screenFull])
+  useEffect(() => { if (!vs.screenTrack && screenCollapsed) setScreenCollapsed(false) }, [vs.screenTrack, screenCollapsed])
+
+  // сменили свой аватар (в настройках) → освежаем список участников, чтобы новый аватар появился
+  // в рейле, голосовом и у автора новых сообщений (memberMap пере-наполняется в api.members()).
+  // Первый рендер пропускаем — участники и так грузятся в маунт-эффекте ниже.
+  const avatarRef = useRef(user.avatarUrl)
+  useEffect(() => {
+    if (avatarRef.current === user.avatarUrl) return
+    avatarRef.current = user.avatarUrl
+    setMembers((ms) => ms.map((m) => (m.userId === user.id ? { ...m, avatarUrl: user.avatarUrl } : m))) // мгновенно
+    api.members().then(setMembers).catch(() => {}) // авторитетно (+ обновляет кэш авторов сообщений)
+  }, [user.avatarUrl, user.id])
+
+  const membersById = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
+
+  // автор сообщения, которого нет в списке участников (только зашёл / список устарел) → освежаем участников,
+  // чтобы вместо длинного UUID показать ник. На каждого неизвестного — одна попытка (иначе цикл для вышедших).
+  const refetchedAuthorsRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const unknown = messages.find((m) => m.authorId && !membersById.has(m.authorId) && !refetchedAuthorsRef.current.has(m.authorId))
+    if (!unknown) return
+    refetchedAuthorsRef.current.add(unknown.authorId)
+    api.members().then(setMembers).catch(() => {})
+  }, [messages, membersById])
 
   // актуальный канал для асинхронных колбэков (откат реакции и т.п.), чтобы не затирать чужую ленту
   const currentIdRef = useRef(currentId)
@@ -233,6 +258,9 @@ export function MainWindow() {
   const myRole = members.find((m) => m.userId === user.id)?.role
   const canModerate = myRole === 'OWNER' || myRole === 'ADMIN'
   const unreadTotal = readStates.reduce((a, r) => a + r.mentionCount, 0)
+  // имя того, чья демонстрация активна (для чипа «развернуть») — ник из участников, не UUID из токена
+  const activeShare = vs.screens.find((s) => s.id === vs.activeScreenId)
+  const screenSharerName = (activeShare && (membersById.get(activeShare.userId)?.username || activeShare.by)) || vs.screenBy || 'кто-то'
   const isWatch = channel?.type === 'WATCH'
   useEffect(() => { window.chazh?.setBadge(unreadTotal) }, [unreadTotal]) // бейдж в доке/таскбаре
   // если права модератора пропали (понизили роль), пока открыта админ-панель — выкидываем в чат
@@ -397,6 +425,11 @@ export function MainWindow() {
                 <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#e0392f', animation: 'live 1.6s infinite' }} />Вы в эфире · демонстрация
               </div>
             )}
+            {vs.screenTrack && screenCollapsed && (
+              <button onClick={() => setScreenCollapsed(false)} className="no-drag" title="Развернуть демонстрацию" style={{ marginLeft: 10, display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--surface-2)', border: '1px solid var(--border)', color: 'var(--text)', borderRadius: 30, padding: '5px 13px', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#e0392f', animation: 'live 1.6s infinite' }} />{screenSharerName} · развернуть демонстрацию
+              </button>
+            )}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
               <button className="ib no-drag" onClick={() => setPanel((p) => (p === 'search' ? null : 'search'))} style={{ width: 38, height: 38, ...(panel === 'search' ? { background: 'var(--accent-tint)', color: 'var(--accent)' } : {}) }} title="Поиск"><Search size={16} /></button>
               <button className="ib no-drag" onClick={() => setPanel((p) => (p === 'pins' ? null : 'pins'))} style={{ width: 38, height: 38, ...(panel === 'pins' ? { background: 'var(--accent-tint)', color: 'var(--accent)' } : {}) }} title="Закреплённые"><Pin size={16} /></button>
@@ -407,12 +440,12 @@ export function MainWindow() {
 
           {/* body */}
           <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
-            {vs.screenTrack && <ScreenSharePane track={vs.screenTrack} by={vs.screenBy} full={screenFull} onToggleFull={() => setScreenFull((f) => !f)} />}
+            {vs.screenTrack && !screenCollapsed && <ScreenSharePane track={vs.screenTrack} by={vs.screenBy} full={screenFull} onToggleFull={() => setScreenFull((f) => !f)} onCollapse={() => { setScreenCollapsed(true); setScreenFull(false) }} screens={vs.screens} activeId={vs.activeScreenId} onSelect={(id) => voice.setActiveScreen(id)} nameOf={(uid) => membersById.get(uid)?.username} />}
             {!screenFull && (isWatch ? (
               <WatchView channelId={currentId} />
             ) : (
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
-                <ChatFeed messages={messages} readState={readState} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
+                <ChatFeed messages={messages} readState={readState} membersById={membersById} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
                 <TypingIndicator names={typing.map((t) => t.name)} />
                 <Composer channelName={channel?.name ?? ''} onSend={send} onType={() => ws.typing(currentId)} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>
@@ -445,6 +478,7 @@ export function MainWindow() {
         canModerate={canModerate}
         onLogout={logout}
         onLeaveVoice={() => voice.leave()}
+        soundboardDisabled={membersById.get(user.id)?.soundboardDisabled}
       />
 
       {channelsOpen && (

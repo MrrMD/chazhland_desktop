@@ -1,7 +1,10 @@
-import { useState } from 'react'
-import { LayoutGrid, Settings, Check, Mic, MicOff, Shield, LogOut, Volume2, VolumeX, Headphones, HeadphoneOff, MonitorUp, ChevronUp, PhoneOff, UserRound } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { LayoutGrid, Settings, Check, Mic, MicOff, Shield, LogOut, Volume2, VolumeX, Headphones, HeadphoneOff, MonitorUp, ChevronUp, PhoneOff, UserRound, Music, Plus, X } from 'lucide-react'
 import { Avatar, presenceColor } from '@/components/Avatar'
 import { voice, SCREEN_QUALITY_LABELS, SCREEN_QUALITY_ORDER, type ScreenQuality } from '@/lib/voice'
+import { soundboard } from '@/lib/soundboard'
+import { toast } from '@/lib/toast'
+import type { SoundClip } from '@/lib/api'
 import type { Presence, User } from '@/lib/types'
 
 const STATUS_LABEL: Record<string, string> = { online: 'В сети', idle: 'Не активен', dnd: 'Не беспокоить', offline: 'Не в сети' }
@@ -27,6 +30,7 @@ interface Props {
   canModerate: boolean // админ-панель видна только OWNER/ADMIN
   onLogout: () => void
   onLeaveVoice: () => void
+  soundboardDisabled?: boolean // саундпад выключен этому пользователю — прячем кнопку
 }
 
 export function BottomBar(p: Props) {
@@ -81,6 +85,7 @@ export function BottomBar(p: Props) {
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--green)', fontSize: 13, fontWeight: 600, padding: '0 6px' }}><Volume2 size={15} /> {p.voiceChannelName}</span>
             <VBtn active={p.muted} onClick={p.onMute} title={p.muted ? 'Включить микрофон' : 'Выключить микрофон'}>{p.muted ? <MicOff size={18} /> : <Mic size={18} />}</VBtn>
             <VBtn active={p.deafened} onClick={p.onDeaf} title={p.deafened ? 'Включить звук' : 'Заглушить звук'}>{p.deafened ? <HeadphoneOff size={18} /> : <Headphones size={18} />}</VBtn>
+            <SoundboardControl disabled={p.soundboardDisabled} />
             <ScreenShareControls streamOn={p.streamOn} onGoLive={p.onGoLive} />
             <button onClick={p.onLeaveVoice} className="danger-btn no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 13, padding: '0 17px', height: 46, fontWeight: 700, fontSize: 13.5, boxShadow: '0 4px 12px rgba(224,57,47,.25)' }}><PhoneOff size={16} /> Выйти</button>
           </>
@@ -123,6 +128,65 @@ function ScreenShareControls({ streamOn, onGoLive }: { streamOn: boolean; onGoLi
           <div style={{ height: 1, background: 'var(--border)', margin: '5px 6px' }} />
           <MenuItem label={s.audio ? 'Звук включён' : 'Транслировать звук'} icon={s.audio ? <Volume2 size={15} /> : <VolumeX size={15} />} active={s.audio} onClick={toggleAudio} />
           <div style={{ fontSize: 10.5, color: 'var(--text-3)', padding: '2px 11px 6px', lineHeight: 1.35 }}>{streamOn ? 'Изменения применяются сразу' : 'Системный звук — только Windows'}</div>
+        </Popover>
+      )}
+    </div>
+  )
+}
+
+// Саундпад: общий список звуков сервера (плитки). Клик — проиграть (слышат все), крестик — удалить,
+// «+» — загрузить файл и задать имя. Если саундпад выключен этому пользователю — кнопки нет вовсе.
+function SoundboardControl({ disabled }: { disabled?: boolean }) {
+  const [open, setOpen] = useState(false)
+  const [clips, setClips] = useState<SoundClip[]>(() => soundboard.list())
+  const [pending, setPending] = useState<File | null>(null)
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  useEffect(() => soundboard.subscribe(setClips), [])
+  if (disabled) return null
+
+  function pick(file?: File) {
+    if (!file) return
+    setPending(file); setName(file.name.replace(/\.[^.]+$/, '').slice(0, 64))
+  }
+  async function confirmAdd() {
+    if (!pending) return
+    setBusy(true)
+    try { await soundboard.add(pending, name); setPending(null); setName('') }
+    catch { toast.error('Не удалось добавить звук') }
+    finally { setBusy(false) }
+  }
+  async function del(id: string) {
+    try { await soundboard.remove(id) } catch { toast.error('Не удалось удалить') }
+  }
+
+  return (
+    <div style={{ position: 'relative', display: 'flex' }}>
+      <VBtn active={open} onClick={() => setOpen((v) => !v)} title="Саундпад"><Music size={18} /></VBtn>
+      {open && (
+        <Popover onClose={() => setOpen(false)} style={{ right: 0, minWidth: 268 }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-3)', padding: '5px 9px 8px' }}>САУНДПАД</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 7, padding: '0 5px 4px', maxHeight: 240, overflow: 'auto' }}>
+            {clips.map((c) => (
+              <div key={c.id} style={{ position: 'relative' }}>
+                <button onClick={() => soundboard.play(c)} className="no-drag" title={`Проиграть: ${c.name}`} style={{ width: '100%', height: 52, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '4px 8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</button>
+                <button onClick={() => del(c.id)} className="no-drag" title="Удалить" style={{ position: 'absolute', top: -5, right: -5, width: 18, height: 18, borderRadius: '50%', border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={11} /></button>
+              </div>
+            ))}
+            <button onClick={() => fileRef.current?.click()} className="no-drag" title="Добавить звук" style={{ height: 52, borderRadius: 10, border: '1.5px dashed var(--border-2)', background: 'transparent', color: 'var(--text-3)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={18} /></button>
+          </div>
+          {pending && (
+            <div style={{ padding: '6px 6px 2px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Имя звука" maxLength={64} autoFocus className="no-drag" style={{ padding: '7px 10px', borderRadius: 9, border: '1px solid var(--border-2)', background: 'var(--win)', color: 'var(--text)', font: 'inherit', fontSize: 13, outline: 'none' }} />
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button onClick={confirmAdd} disabled={busy} className="accent-btn no-drag" style={{ flex: 1, borderRadius: 9, padding: '7px 0', fontWeight: 700, fontSize: 12.5, opacity: busy ? 0.6 : 1 }}>{busy ? 'Загрузка…' : 'Добавить'}</button>
+                <button onClick={() => { setPending(null); setName('') }} className="pill no-drag" style={{ padding: '7px 12px', fontWeight: 600, fontSize: 12.5 }}>Отмена</button>
+              </div>
+            </div>
+          )}
+          <div style={{ fontSize: 10.5, color: 'var(--text-3)', padding: '4px 11px 4px', lineHeight: 1.35 }}>Звук слышат все в канале. Форматы: mp3, ogg.</div>
+          <input ref={fileRef} type="file" accept="audio/*" hidden onChange={(e) => { pick(e.target.files?.[0]); e.target.value = '' }} />
         </Popover>
       )}
     </div>

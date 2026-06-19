@@ -1,12 +1,16 @@
 import { Fragment, useEffect, useState } from 'react'
-import { ChevronLeft, ChevronDown, Lock, Key, X, UserMinus, ArrowLeftRight, Plus, Volume2, AlertTriangle } from 'lucide-react'
+import { ChevronLeft, ChevronDown, Lock, Key, X, UserMinus, ArrowLeftRight, Plus, Volume2, Music, AlertTriangle } from 'lucide-react'
 import { api } from '@/lib/api'
+import { toast } from '@/lib/toast'
 import { Avatar, presenceColor } from '@/components/Avatar'
 import { Skeleton } from '@/components/Skeleton'
 import { ConfirmModal, ChangeRoleModal } from './modals'
+import { RolesTab } from './RolesTab'
+import { ChannelAccessTab } from './ChannelAccessTab'
 import type { AuditEntry, Member } from '@/lib/types'
 
-type Tab = 'members' | 'audit'
+type Tab = 'members' | 'roles' | 'channels' | 'audit'
+const TAB_LABEL: Record<Tab, string> = { members: 'Участники', roles: 'Роли', channels: 'Каналы', audit: 'Аудит' }
 
 export function AdminScreen({ onClose }: { onClose: () => void }) {
   const [tab, setTab] = useState<Tab>('members')
@@ -16,15 +20,17 @@ export function AdminScreen({ onClose }: { onClose: () => void }) {
         <button className="ib no-drag" onClick={onClose} title="Назад" style={{ width: 34, height: 30 }}><ChevronLeft size={18} /></button>
         <span style={{ fontWeight: 800, fontSize: 17 }}>Админка</span>
         <div style={{ marginLeft: 'auto', display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 11, padding: 3 }}>
-          {(['members', 'audit'] as Tab[]).map((t) => (
+          {(['members', 'roles', 'channels', 'audit'] as Tab[]).map((t) => (
             <button key={t} className={'seg-btn no-drag' + (tab === t ? ' on' : '')} onClick={() => setTab(t)} style={{ fontSize: 13, padding: '6px 13px' }}>
-              {t === 'members' ? 'Участники' : 'Аудит'}
+              {TAB_LABEL[t]}
             </button>
           ))}
         </div>
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: '26px 30px' }}>
         {tab === 'members' && <MembersTab />}
+        {tab === 'roles' && <RolesTab />}
+        {tab === 'channels' && <ChannelAccessTab />}
         {tab === 'audit' && <AuditTab />}
       </div>
     </div>
@@ -40,6 +46,15 @@ function MembersTab() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   useEffect(() => { let a = true; api.members().then((r) => { if (a) setRows(r) }); return () => { a = false } }, [])
+  async function toggleSb(m: Member) {
+    const dis = !m.soundboardDisabled
+    setRows((rs) => (rs ? rs.map((x) => (x.userId === m.userId ? { ...x, soundboardDisabled: dis } : x)) : rs))
+    try { await api.setMemberSoundboard(m.userId, dis); toast.ok(dis ? 'Саундпад выключен участнику' : 'Саундпад включён') }
+    catch {
+      toast.error('Не удалось изменить доступ к саундпаду')
+      setRows((rs) => (rs ? rs.map((x) => (x.userId === m.userId ? { ...x, soundboardDisabled: !dis } : x)) : rs))
+    }
+  }
   if (!rows) return <Loading />
   const cols = '1.7fr 1.1fr .9fr 1fr auto'
   return (
@@ -69,6 +84,7 @@ function MembersTab() {
               {isOwner
                 ? <span style={{ color: 'var(--border-2)', fontSize: 15 }}>——</span>
                 : <div style={{ display: 'flex', gap: 7, color: 'var(--text-2)' }}>
+                    <span onClick={() => toggleSb(m)} className="ib no-drag" style={{ width: 30, height: 30, color: m.soundboardDisabled ? 'var(--danger)' : 'var(--text-2)' }} title={m.soundboardDisabled ? 'Саундпад выключен — включить' : 'Выключить саундпад участнику'}><Music size={15} /></span>
                     <span className="ib no-drag" style={{ width: 30, height: 30 }} title="Сбросить пароль"><Key size={15} /></span>
                     <span onClick={() => setKickT(m)} className="ib no-drag" style={{ width: 30, height: 30, color: 'var(--danger)' }} title="Исключить"><X size={15} /></span>
                   </div>}

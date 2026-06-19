@@ -28,35 +28,38 @@ export const THEMES: Record<ThemeName, Vars> = {
     '--idle': '#e0b43a',
     '--accent-press': '#c63468',
   },
+  // Тёмная тема в стиле Discord: серые поверхности + сине-фиолетовый (blurple) акцент.
   dark: {
-    '--bg': '#0c0b0a',
-    '--win': '#17150f',
-    '--surface': '#211e18',
-    '--surface-2': '#29251e',
-    '--surface-3': '#332e26',
-    '--border': '#332e26',
-    '--border-2': '#403a30',
-    '--text': '#f1ece2',
-    '--text-2': '#a8a194',
-    '--text-3': '#736d62',
-    '--scroll': '#3a352c',
-    '--scroll-h': '#4a443a',
-    '--shadow': 'rgba(0,0,0,.5)',
-    '--green': '#2faa6a',
-    '--green-tint': 'rgba(47,170,106,.18)',
-    '--blue': '#5b8ce6',
-    '--blue-tint': 'rgba(91,140,230,.2)',
-    '--danger': '#e0392f',
-    '--danger-tint': 'rgba(224,57,47,.18)',
-    '--warn': '#e0b43a',
-    '--warn-tint': 'rgba(224,180,58,.16)',
-    '--idle': '#e0b43a',
-    '--accent-press': '#c63468',
+    '--bg': '#1e1f22',        // самый тёмный фон (за всем)
+    '--win': '#313338',       // основная область (чат)
+    '--surface': '#2b2d31',   // хром: шапка, рейлы, нижняя панель, панели/модалки
+    '--surface-2': '#35373d', // ховер / поля
+    '--surface-3': '#3f4248', // приподнятый ховер
+    '--border': '#232529',
+    '--border-2': '#3a3d44',
+    '--text': '#dbdee1',
+    '--text-2': '#b5bac1',
+    '--text-3': '#949ba4',
+    '--scroll': '#1a1b1e',
+    '--scroll-h': '#0f1011',
+    '--shadow': 'rgba(0,0,0,.55)',
+    '--green': '#23a55a',
+    '--green-tint': 'rgba(35,165,90,.18)',
+    '--blue': '#5865f2',
+    '--blue-tint': 'rgba(88,101,242,.2)',
+    '--danger': '#da373c',
+    '--danger-tint': 'rgba(218,55,60,.16)',
+    '--warn': '#f0b232',
+    '--warn-tint': 'rgba(240,178,50,.16)',
+    '--idle': '#f0b232',
+    '--accent-press': '#4752c4',
   },
 }
 
-export const ACCENTS = ['#e0457b', '#5b6cff', '#13b886', '#ff6b4a', '#7c5cff'] as const
+export const ACCENTS = ['#5865f2', '#e0457b', '#5b6cff', '#13b886', '#ff6b4a', '#7c5cff'] as const
 export const DEFAULT_ACCENT = ACCENTS[0]
+// акцент по теме: тёмная — фирменный Discord-blurple, светлая — прежний тёплый розовый
+export const THEME_ACCENT: Record<ThemeName, string> = { light: '#e0457b', dark: '#5865f2' }
 
 export function hexA(hex: string, a: number): string {
   const h = hex.replace('#', '')

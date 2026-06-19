@@ -1,4 +1,5 @@
-import { Moon, Sun, Minus, Square, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Moon, Sun, Minus, Square, Copy, X } from 'lucide-react'
 import { useTheme } from '@/theme/ThemeProvider'
 
 const bridge = typeof window !== 'undefined' ? window.chazh : undefined
@@ -19,9 +20,21 @@ function isMacElectron(): boolean {
 export function TitleBar() {
   const { theme, toggleTheme } = useTheme()
   const mac = isMacElectron()
+  // отражаем состояние «развёрнуто», чтобы иконка/подсказка кнопки переключались между развернуть/восстановить;
+  // resize окна срабатывает при максимизации/восстановлении — по нему и пересинхронизируемся
+  const [isMax, setIsMax] = useState(false)
+  useEffect(() => {
+    if (mac) return
+    let alive = true
+    const sync = () => { bridge?.isMaximized().then((m) => { if (alive) setIsMax(m) }).catch(() => {}) }
+    sync()
+    window.addEventListener('resize', sync)
+    return () => { alive = false; window.removeEventListener('resize', sync) }
+  }, [mac])
   return (
     <div
       className="drag"
+      onDoubleClick={mac ? undefined : (e) => { if (!(e.target as HTMLElement).closest('.no-drag')) bridge?.maximize() }}
       style={{
         height: 36, flex: 'none', display: 'flex', alignItems: 'center', gap: 10,
         padding: mac ? '0 12px 0 82px' : '0 12px', background: 'var(--surface)', borderBottom: '1px solid var(--border)',
@@ -40,7 +53,7 @@ export function TitleBar() {
         </button>
         {!mac && <>
           <button className="ib no-drag" onClick={() => bridge?.minimize()} title="Свернуть" style={{ width: 34, height: 26 }}><Minus size={16} /></button>
-          <button className="ib no-drag" onClick={() => bridge?.maximize()} title="Развернуть" style={{ width: 34, height: 26 }}><Square size={13} /></button>
+          <button className="ib no-drag" onClick={() => bridge?.maximize()} title={isMax ? 'Восстановить' : 'Развернуть'} style={{ width: 34, height: 26 }}>{isMax ? <Copy size={12} /> : <Square size={13} />}</button>
           <button
             className="no-drag"
             onClick={() => bridge?.close()}

@@ -13,6 +13,7 @@ class PresenceStore {
   private offEvents: (() => void) | null = null
   private offStatus: (() => void) | null = null
   private timer: number | null = null
+  private snapTimer: number | null = null // периодическая пересинхронизация снапшота (анти-расхождение онлайна)
   private started = false
   private loadingSnap = false
   private pending: PEvent[] = [] // дельты, пришедшие во время запроса снапшота
@@ -77,6 +78,10 @@ class PresenceStore {
     // чтобы онлайн появлялся мгновенно, а не через ~20с по таймеру/дельтам
     this.offStatus = ws.onStatus((st) => { if (st === 'online') { ws.heartbeat(this.myStatus); this.loadSnapshot() } })
     this.timer = window.setInterval(() => ws.heartbeat(this.myStatus), 20000)
+    // периодически перечитываем снапшот: если клиент пропустил дельту присутствия (сетевой сбой без обрыва
+    // STOMP), его онлайн-список расходится с другими («у всех по-разному») и сам не чинится до реконнекта.
+    // Снапшот идемпотентен и идёт по HTTP — раз в ~45с приводит всех к одной картине.
+    this.snapTimer = window.setInterval(() => { if (!this.loadingSnap) this.loadSnapshot() }, 45000)
   }
 
   setStatus(s: Presence) { this.myStatus = s; ws.heartbeat(s) }
@@ -85,6 +90,7 @@ class PresenceStore {
     this.offEvents?.(); this.offEvents = null
     this.offStatus?.(); this.offStatus = null
     if (this.timer) { clearInterval(this.timer); this.timer = null }
+    if (this.snapTimer) { clearInterval(this.snapTimer); this.snapTimer = null }
     this.statuses.clear()
     this.voiceByChannel.clear()
     this.started = false

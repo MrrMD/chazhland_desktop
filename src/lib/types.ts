@@ -27,6 +27,34 @@ export interface Member {
   inVoice?: boolean
   speaking?: boolean
   joinedAt: string
+  soundboardDisabled?: boolean // саундпад выключен этому участнику (даже админу)
+  roleIds?: string[]           // назначенные кастомные роли (id)
+}
+
+// права как имена битов (бэк: Permission enum)
+export type Permission =
+  | 'VIEW_CHANNEL' | 'SEND_MESSAGES' | 'MANAGE_MESSAGES' | 'MANAGE_CHANNELS'
+  | 'MANAGE_ROLES' | 'MANAGE_SERVER' | 'KICK_MEMBERS' | 'CREATE_INVITE'
+  | 'MENTION_EVERYONE' | 'CONNECT' | 'ADMINISTRATOR'
+
+// кастомная роль сервера (бэк: RoleResponse)
+export interface ServerRole {
+  id: string
+  name: string
+  color: string | null
+  position: number
+  permissions: Permission[]
+  isDefault: boolean // @everyone
+}
+
+export type OverwriteTarget = 'ROLE' | 'MEMBER'
+// перекрытие прав на канале (бэк: ChannelOverwriteResponse)
+export interface ChannelOverwrite {
+  id: string
+  targetType: OverwriteTarget
+  targetId: string
+  allow: Permission[]
+  deny: Permission[]
 }
 
 export interface Category {
