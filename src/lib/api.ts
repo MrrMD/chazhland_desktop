@@ -1,7 +1,7 @@
 import { MOCK } from './config'
 import { http, delay, setTokens } from './http'
 import type {
-  AttachmentInput, AuditEntry, Channel, ChannelOverwrite, ChannelType, Category, Dm, Member, Message, OverwriteTarget, Permission, Presence, ReadState, Role, ServerRole, TokenResponse, User, WatchState, WatchSourceRequest,
+  AttachmentInput, AuditEntry, Channel, ChannelOverwrite, ChannelType, Category, Dm, Member, Message, OverwriteTarget, Permission, Presence, ReadState, Role, ServerRole, TokenResponse, User, WatchState, WatchSourceRequest, WatchSearchResult,
 } from './types'
 import {
   MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_MEMBERS,
@@ -15,7 +15,7 @@ export interface SoundClip { id: string; name: string; url: string } // звук
 // ---- сырые DTO бэка (com.chazhland.messenger.web.dto) ----
 interface Page<T> { items: T[]; nextCursor: string | null; hasMore: boolean }
 interface UserDto { id: string; username: string; avatarUrl: string | null; status?: string; statusMessage?: string | null; role?: Role }
-interface MemberDto { userId: string; username: string; avatarUrl: string | null; role: Role; status: string; joinedAt: string; soundboardDisabled?: boolean; roleIds?: string[] }
+interface MemberDto { userId: string; username: string; avatarUrl: string | null; role: Role; status: string; joinedAt: string; soundboardDisabled?: boolean; roleIds?: string[]; statusMessage?: string | null }
 interface ChannelDto { id: string; categoryId: string | null; name: string; type: Channel['type']; topic: string | null; position: number; userLimit: number | null; lastMessageId: string | null }
 interface TreeDto { serverId: string; categories: Category[]; channels: ChannelDto[] }
 interface AttachmentDto { id: string; url: string; contentType: string; size: number | null; filename: string | null; width: number | null; height: number | null; thumbnailUrl: string | null }
@@ -36,7 +36,7 @@ const resolveName = (id: string) => memberMap.get(id)?.username ?? id
 const MOCK_TOKEN: TokenResponse = { accessToken: 'mock.access', refreshToken: 'mock.refresh', tokenType: 'Bearer', expiresIn: 900 }
 
 function mapMember(d: MemberDto): Member {
-  return { userId: d.userId, username: d.username, avatarUrl: d.avatarUrl, role: d.role, status: (d.status as Presence) || 'offline', joinedAt: d.joinedAt, soundboardDisabled: d.soundboardDisabled ?? false, roleIds: d.roleIds ?? [] }
+  return { userId: d.userId, username: d.username, avatarUrl: d.avatarUrl, role: d.role, status: (d.status as Presence) || 'offline', joinedAt: d.joinedAt, soundboardDisabled: d.soundboardDisabled ?? false, roleIds: d.roleIds ?? [], statusMessage: d.statusMessage ?? null }
 }
 function mapChannel(d: ChannelDto): Channel {
   return { id: d.id, name: d.name, type: d.type, categoryId: d.categoryId, topic: d.topic, position: d.position, userLimit: d.userLimit, lastMessageId: d.lastMessageId }
@@ -368,9 +368,10 @@ export const api = {
 
   async audit(): Promise<AuditEntry[]> {
     if (MOCK) { await delay(150); return MOCK_AUDIT }
-    const list = await http<AuditDto[]>('/admin/audit')
+    // бэк отдаёт конверт курсорной пагинации Page<T>{items,nextCursor,hasMore}, а не плоский массив
+    const page = await http<Page<AuditDto>>('/admin/audit')
     if (memberMap.size === 0) await this.members()
-    return list.map((d) => ({
+    return page.items.map((d) => ({
       id: d.id, action: d.action, actorName: resolveName(d.actorId), text: auditText(d),
       meta: `${d.action}${d.targetType ? ' · ' + d.targetType : ''}${d.targetId ? ':' + d.targetId : ''}`,
       createdAt: fmtDateTime(d.createdAt),
@@ -415,6 +416,11 @@ export const api = {
     const kind = req.kind ?? 'DIRECT'
     if (MOCK) return { url: req.url ?? null, paused: true, positionSeconds: 0, updatedAt: Date.now(), hostId: '', lastActionBy: '', source: { kind, url: req.url ?? null, infoHash: req.infoHash ?? null } }
     return http(`/channels/${channelId}/watch/source`, { method: 'POST', body: JSON.stringify(req) })
+  },
+  // поиск торрентов по названию (Prowlarr на бэке); 503 — поиск не настроен/недоступен, 400 — q < 2 символов
+  async searchWatch(channelId: string, q: string): Promise<WatchSearchResult[]> {
+    if (MOCK) { await delay(400); return [] }
+    return http(`/channels/${channelId}/watch/search?q=${encodeURIComponent(q)}`)
   },
   async stopWatch(channelId: string): Promise<void> {
     if (MOCK) return

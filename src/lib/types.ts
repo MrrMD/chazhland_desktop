@@ -29,6 +29,7 @@ export interface Member {
   joinedAt: string
   soundboardDisabled?: boolean // саундпад выключен этому участнику (даже админу)
   roleIds?: string[]           // назначенные кастомные роли (id)
+  statusMessage?: string | null // кастомный статус «о себе» (бэк MemberResponse пока его не отдаёт)
 }
 
 // права как имена битов (бэк: Permission enum)
@@ -163,6 +164,19 @@ export interface WatchState {
   hostId: string
   lastActionBy: string
   source?: WatchSource | null // типизированный источник (может отсутствовать у legacy-записей/стопа)
+}
+// результат GET /watch/search?q= (бэк WatchSearchResult, @JsonInclude(NON_NULL)):
+// magnet/infoHash/codecNote могут отсутствовать; webPlayable — эвристика «сыграет ли в <video>» (иначе нужен mpv)
+export interface WatchSearchResult {
+  title: string
+  sizeBytes: number
+  seeders: number
+  leechers: number
+  indexer: string
+  magnet?: string | null
+  infoHash?: string | null
+  webPlayable: boolean
+  codecNote?: string | null
 }
 
 // Realtime-события из /topic/channel.{id} (ChatEvent @JsonInclude(NON_NULL) — присутствуют только релевантные типу поля)

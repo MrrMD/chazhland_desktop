@@ -76,7 +76,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
         <div>
           <button type="button" className="pill no-drag" onClick={() => fileRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', fontWeight: 600, fontSize: 13 }}><Camera size={15} /> Изменить аватар</button>
-          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 6 }}>PNG или JPG, лучше квадрат</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 6 }}>PNG, JPG или GIF (анимированный) — лучше квадрат</div>
         </div>
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { pickAvatar(e.target.files?.[0]); e.target.value = '' }} />
       </div>

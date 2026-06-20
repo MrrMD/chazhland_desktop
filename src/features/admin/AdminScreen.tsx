@@ -130,8 +130,24 @@ function renderBold(text: string) {
 
 function AuditTab() {
   const [rows, setRows] = useState<AuditEntry[] | null>(null)
-  useEffect(() => { let a = true; api.audit().then((r) => { if (a) setRows(r) }); return () => { a = false } }, [])
+  const [error, setError] = useState(false)
+  useEffect(() => {
+    let a = true
+    api.audit().then((r) => { if (a) setRows(r) }).catch(() => { if (a) { setError(true); setRows([]) } })
+    return () => { a = false }
+  }, [])
   if (!rows) return <Loading />
+  if (error) return (
+    <div style={{ animation: 'fadeIn .35s ease', display: 'flex', alignItems: 'center', gap: 9, background: 'var(--danger-tint)', border: '1px solid rgba(224,57,47,.3)', color: 'var(--danger)', borderRadius: 12, padding: '14px 16px', fontSize: 13.5, fontWeight: 600, width: 'fit-content' }}>
+      <AlertTriangle size={16} /> Не удалось загрузить журнал аудита
+    </div>
+  )
+  if (rows.length === 0) return (
+    <div style={{ animation: 'fadeIn .35s ease' }}>
+      <div style={{ fontWeight: 800, fontSize: 24, letterSpacing: '-.02em', marginBottom: 14 }}>Журнал аудита</div>
+      <div style={{ color: 'var(--text-3)', fontSize: 13.5, padding: '24px 4px' }}>Записей пока нет</div>
+    </div>
+  )
   return (
     <div style={{ animation: 'fadeIn .35s ease' }}>
       <div style={{ fontWeight: 800, fontSize: 24, letterSpacing: '-.02em', marginBottom: 14 }}>Журнал аудита</div>

@@ -104,8 +104,9 @@ function Row({ m, status, expanded, dim, self, onOpenDm }: { m: Member; status: 
       {expanded && (
         <>
           <div style={{ lineHeight: 1.2, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 13.5 }}>{m.username}</div>
-            <div style={{ fontSize: 11, color: presenceColor(status) }}>{SUB[status]}</div>
+            <div style={{ fontWeight: 600, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.username}</div>
+            {/* кастомный статус «о себе» приоритетнее метки присутствия (если бэк его отдаёт) */}
+            <div style={{ fontSize: 11, color: m.statusMessage?.trim() ? 'var(--text-3)' : presenceColor(status), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={m.statusMessage?.trim() || undefined}>{m.statusMessage?.trim() || SUB[status]}</div>
           </div>
           {m.role === 'OWNER' && <span style={{ marginLeft: 'auto', color: 'var(--accent)', display: 'flex' }}><Crown size={13} /></span>}
           {m.role === 'ADMIN' && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>admin</span>}

@@ -61,12 +61,19 @@ export function BottomBar(p: Props) {
       <div style={{ justifySelf: 'center', position: 'relative' }}>
         <button onClick={() => setStatusOpen((v) => !v)} className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 11, background: 'var(--win)', border: '1px solid var(--border)', borderRadius: 15, padding: '7px 18px 7px 9px', cursor: 'pointer', color: 'var(--text)' }}>
           <Avatar name={p.user.username} src={p.user.avatarUrl} size={40} presence={p.status} />
-          <div style={{ lineHeight: 1.2, textAlign: 'left' }}>
+          <div style={{ lineHeight: 1.2, textAlign: 'left', minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 14 }}>{p.user.username}</div>
-            <div style={{ fontSize: 11.5, color: presenceColor(p.status), display: 'flex', alignItems: 'center', gap: 5 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: presenceColor(p.status) }} />
-              {p.voiceChannelName ? `в эфире · ${p.voiceChannelName}` : STATUS_LABEL[p.status]}
-            </div>
+            {(() => {
+              // приоритет: в голосовом → статус «о себе» → пресенс-метка (онлайн/отошёл/dnd)
+              const custom = !p.voiceChannelName && !!p.user.statusMessage?.trim()
+              const text = p.voiceChannelName ? `в эфире · ${p.voiceChannelName}` : (p.user.statusMessage?.trim() || STATUS_LABEL[p.status])
+              return (
+                <div style={{ fontSize: 11.5, color: custom ? 'var(--text-3)' : presenceColor(p.status), display: 'flex', alignItems: 'center', gap: 5, maxWidth: 168 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: presenceColor(p.status), flex: 'none' }} />
+                  <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
+                </div>
+              )
+            })()}
           </div>
         </button>
         {statusOpen && (
