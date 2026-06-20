@@ -83,8 +83,8 @@ export function BottomBar(p: Props) {
         {p.voiceChannelName ? (
           <>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--green)', fontSize: 13, fontWeight: 600, padding: '0 6px' }}><Volume2 size={15} /> {p.voiceChannelName}</span>
-            <VBtn active={p.muted} onClick={p.onMute} title={p.muted ? 'Включить микрофон' : 'Выключить микрофон'}>{p.muted ? <MicOff size={18} /> : <Mic size={18} />}</VBtn>
-            <VBtn active={p.deafened} onClick={p.onDeaf} title={p.deafened ? 'Включить звук' : 'Заглушить звук'}>{p.deafened ? <HeadphoneOff size={18} /> : <Headphones size={18} />}</VBtn>
+            <VoiceButton active={p.muted} onClick={p.onMute} title={p.muted ? 'Включить микрофон' : 'Выключить микрофон'} vol={{ title: 'ГРОМКОСТЬ МИКРОФОНА', max: 200, get: () => Math.round(voice.getVolumeSettings().mic * 100), set: (v) => voice.setMicVolume(v / 100) }}>{p.muted ? <MicOff size={18} /> : <Mic size={18} />}</VoiceButton>
+            <VoiceButton active={p.deafened} onClick={p.onDeaf} title={p.deafened ? 'Включить звук' : 'Заглушить звук'} vol={{ title: 'ОБЩАЯ ГРОМКОСТЬ', max: 100, get: () => Math.round(voice.getVolumeSettings().master * 100), set: (v) => voice.setMasterVolume(v / 100) }}>{p.deafened ? <HeadphoneOff size={18} /> : <Headphones size={18} />}</VoiceButton>
             <SoundboardControl disabled={p.soundboardDisabled} />
             <ScreenShareControls streamOn={p.streamOn} onGoLive={p.onGoLive} />
             <button onClick={p.onLeaveVoice} className="danger-btn no-drag" style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 13, padding: '0 17px', height: 46, fontWeight: 700, fontSize: 13.5, boxShadow: '0 4px 12px rgba(224,57,47,.25)' }}><PhoneOff size={16} /> Выйти</button>
@@ -97,9 +97,35 @@ export function BottomBar(p: Props) {
   )
 }
 
-function VBtn({ active, onClick, title, children }: { active?: boolean; onClick: () => void; title: string; children: React.ReactNode }) {
+function VBtn({ active, onClick, onContextMenu, title, children }: { active?: boolean; onClick: () => void; onContextMenu?: (e: React.MouseEvent) => void; title: string; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} title={title} className="no-drag" style={{ width: 46, height: 46, borderRadius: 13, fontSize: 18, cursor: 'pointer', border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`, background: active ? 'var(--accent-tint)' : 'var(--win)', color: active ? 'var(--accent)' : 'var(--text-2)' }}>{children}</button>
+    <button onClick={onClick} onContextMenu={onContextMenu} title={title} className="no-drag" style={{ width: 46, height: 46, borderRadius: 13, fontSize: 18, cursor: 'pointer', border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`, background: active ? 'var(--accent-tint)' : 'var(--win)', color: active ? 'var(--accent)' : 'var(--text-2)' }}>{children}</button>
+  )
+}
+
+// Кнопка голосовой панели с громкостью по ПКМ: ЛКМ — действие (мьют/оглушение), ПКМ — поповер со слайдером.
+function VoiceButton({ active, onClick, title, children, vol }: { active?: boolean; onClick: () => void; title: string; children: React.ReactNode; vol: { title: string; max: number; get: () => number; set: (v: number) => void } }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ position: 'relative', display: 'flex' }}>
+      <VBtn active={active} onClick={onClick} onContextMenu={(e) => { e.preventDefault(); setOpen((v) => !v) }} title={`${title} · ПКМ — громкость`}>{children}</VBtn>
+      {open && <VolumePopover title={vol.title} value={vol.get()} max={vol.max} onChange={vol.set} onClose={() => setOpen(false)} />}
+    </div>
+  )
+}
+
+// Поповер-слайдер громкости (проценты). Локальный стейт ведёт ползунок, наружу шлём через onChange.
+function VolumePopover({ title, value, max = 100, onChange, onClose }: { title: string; value: number; max?: number; onChange: (v: number) => void; onClose: () => void }) {
+  const [pct, setPct] = useState(value)
+  function change(v: number) { setPct(v); onChange(v) }
+  return (
+    <Popover onClose={onClose} style={{ right: 0, minWidth: 210 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-3)', padding: '5px 9px 7px' }}>{title}</div>
+      <div className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 11px 9px' }}>
+        <input type="range" min={0} max={max} step={5} value={pct} onChange={(e) => change(Number(e.target.value))} style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }} />
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-2)', width: 40, textAlign: 'right' }}>{pct}%</span>
+      </div>
+    </Popover>
   )
 }
 
@@ -138,6 +164,7 @@ function ScreenShareControls({ streamOn, onGoLive }: { streamOn: boolean; onGoLi
 // «+» — загрузить файл и задать имя. Если саундпад выключен этому пользователю — кнопки нет вовсе.
 function SoundboardControl({ disabled }: { disabled?: boolean }) {
   const [open, setOpen] = useState(false)
+  const [volOpen, setVolOpen] = useState(false)
   const [clips, setClips] = useState<SoundClip[]>(() => soundboard.list())
   const [pending, setPending] = useState<File | null>(null)
   const [name, setName] = useState('')
@@ -163,7 +190,8 @@ function SoundboardControl({ disabled }: { disabled?: boolean }) {
 
   return (
     <div style={{ position: 'relative', display: 'flex' }}>
-      <VBtn active={open} onClick={() => setOpen((v) => !v)} title="Саундпад"><Music size={18} /></VBtn>
+      <VBtn active={open} onClick={() => setOpen((v) => !v)} onContextMenu={(e) => { e.preventDefault(); setVolOpen((v) => !v) }} title="Саундпад · ПКМ — громкость"><Music size={18} /></VBtn>
+      {volOpen && <VolumePopover title="ГРОМКОСТЬ САУНДПАДА" value={Math.round(voice.getVolumeSettings().soundboard * 100)} max={200} onChange={(v) => voice.setSoundboardVolume(v / 100)} onClose={() => setVolOpen(false)} />}
       {open && (
         <Popover onClose={() => setOpen(false)} style={{ right: 0, minWidth: 268 }}>
           <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-3)', padding: '5px 9px 8px' }}>САУНДПАД</div>

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { Maximize, Minimize, ChevronDown, LayoutGrid } from 'lucide-react'
+import { Maximize, Minimize, ChevronDown, LayoutGrid, Volume2, VolumeX } from 'lucide-react'
 import type { RemoteTrack } from 'livekit-client'
-import type { ScreenShare } from '@/lib/voice'
+import { voice, type ScreenShare } from '@/lib/voice'
 
 const paneBtn: React.CSSProperties = { border: 'none', background: 'rgba(0,0,0,.5)', color: '#fff', borderRadius: 11, width: 40, height: 40, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }
 
@@ -88,13 +88,29 @@ export function ScreenSharePane({ full, onToggleFull, onCollapse, screens, onSel
         <button onClick={onToggleFull} className="no-drag" title={full ? 'Выйти из полноэкранного' : 'На весь экран'} style={paneBtn}>{full ? <Minimize size={17} /> : <Maximize size={17} />}</button>
       </div>
 
-      {/* низ-лево: кто демонстрирует (только в фокус-режиме) */}
+      {/* низ-лево: кто демонстрирует + громкость звука демонстрации (только в фокус-режиме) */}
       {big && (
         <div style={{ position: 'absolute', left: 16, bottom: 16, display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(0,0,0,.5)', borderRadius: 30, padding: '6px 13px' }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#e0392f', animation: 'live 1.6s infinite' }} />
           <span style={{ color: '#fff', fontSize: 12, fontWeight: 600 }}>{nameFor(big)} демонстрирует экран</span>
+          <StreamVolume />
         </div>
       )}
     </div>
+  )
+}
+
+// Громкость звука просматриваемой демонстрации (screen-share audio). Кнопка-динамик раскрывает слайдер.
+function StreamVolume() {
+  const [open, setOpen] = useState(false)
+  const [pct, setPct] = useState(() => Math.round(voice.getVolumeSettings().stream * 100))
+  function change(v: number) { setPct(v); voice.setStreamVolume(v / 100) }
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: open ? 8 : 0, marginLeft: 2 }}>
+      <button onClick={() => setOpen((o) => !o)} className="no-drag" title="Громкость звука демонстрации" style={{ border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', display: 'flex', padding: 0 }}>
+        {pct === 0 ? <VolumeX size={15} /> : <Volume2 size={15} />}
+      </button>
+      {open && <input type="range" min={0} max={100} step={5} value={pct} onChange={(e) => change(Number(e.target.value))} className="no-drag" style={{ width: 92, accentColor: 'var(--accent)', cursor: 'pointer' }} />}
+    </span>
   )
 }

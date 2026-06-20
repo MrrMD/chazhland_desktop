@@ -6,6 +6,8 @@ import { api, type SoundClip } from './api'
 class Soundboard {
   private ctx: AudioContext | null = null
   private dest: MediaStreamAudioDestinationNode | null = null
+  private localGain: GainNode | null = null // громкость МОИХ триггеров локально (не влияет на публикуемый трек)
+  private localVolume = 1
   private buffers = new Map<string, AudioBuffer>() // декодированные клипы по url
   private clips: SoundClip[] = []
   private loaded = false
@@ -30,9 +32,19 @@ class Soundboard {
       const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
       this.ctx = new Ctor()
       this.dest = this.ctx.createMediaStreamDestination()
+      this.localGain = this.ctx.createGain()
+      this.localGain.gain.value = this.localVolume
+      this.localGain.connect(this.ctx.destination) // локальный путь (то, что слышу я), масштабируется громкостью
     }
     if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {})
     return this.ctx
+  }
+
+  // громкость МОЕГО локального воспроизведения саундпада (свои триггеры). На публикуемый трек —
+  // то, что слышат другие — НЕ влияет. Может превышать 1 (GainNode усиливает).
+  setVolume(v: number) {
+    this.localVolume = Math.max(0, v)
+    if (this.localGain) this.localGain.gain.value = this.localVolume
   }
   // трек, который voice.ts публикует в комнату (его слышат остальные). Создаётся лениво; молчит, пока
   // ничего не играет (DTX давит тишину). voice публикует его клон — чтобы LiveKit при выходе из канала
@@ -72,8 +84,8 @@ class Soundboard {
     if (!buf || !this.dest) return
     const src = ctx.createBufferSource()
     src.buffer = buf
-    src.connect(this.dest)       // → публикуемый трек: слышат все в канале
-    src.connect(ctx.destination) // → локально: триггерящий тоже слышит
+    src.connect(this.dest)                       // → публикуемый трек: слышат все в канале (полная громкость)
+    src.connect(this.localGain ?? ctx.destination) // → локально: триггерящий слышит, масштабируется громкостью
     src.start()
   }
 }

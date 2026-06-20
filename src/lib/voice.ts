@@ -1,5 +1,5 @@
 import { Room, RoomEvent, Track, AudioPresets, ScreenSharePresets, type RemoteTrack, type RemoteTrackPublication, type RemoteParticipant, type Participant, type LocalAudioTrack, type AudioCaptureOptions, type ScreenShareCaptureOptions, type TrackPublishOptions, type VideoPreset } from 'livekit-client'
-import { createRnnoiseProcessor, RNNOISE_PROCESSOR_NAME } from './rnnoise'
+import { createMicProcessor, MicProcessor } from './rnnoise'
 import { MOCK } from './config'
 import { api } from './api'
 import { sfx } from './sfx'
@@ -36,6 +36,11 @@ export interface VoiceSettings {
   soundboardMuted: boolean     // приглушить саундпад ОТ ДРУГИХ лично у себя
   screenQuality: ScreenQuality // качество демонстрации экрана
   screenAudio: boolean         // транслировать системный звук при демонстрации
+  // громкости (множители, 1 = по умолчанию). master — на ВСЕ входящие; остальные — на свою категорию
+  masterVolume: number     // 0..1 — общая громкость всего, что слышу (ПКМ по наушникам)
+  soundboardVolume: number // 0..2 — громкость саундпада у меня (ПКМ по саундпаду)
+  streamVolume: number     // 0..1 — громкость звука просматриваемой демонстрации
+  micVolume: number        // 0..2 — усиление моего микрофона (как «Input Volume»)
 }
 export interface VoiceState {
   channelId: string | null
@@ -51,6 +56,7 @@ export interface VoiceState {
   activeScreenId: string | null
 }
 export interface AudioDevice { id: string; label: string }
+export interface VolumeSettings { master: number; soundboard: number; stream: number; mic: number }
 
 const INITIAL: VoiceState = {
   channelId: null, channelName: null, connecting: false,
@@ -59,15 +65,18 @@ const INITIAL: VoiceState = {
 }
 const LS = 'chazh.voice'
 const LS_VOL = 'chazh.voice.vol' // персональная громкость собеседников: identity -> множитель (0..2)
-const DEFAULTS: VoiceSettings = { inputId: '', outputId: '', noiseSuppression: true, echoCancellation: true, autoGain: true, mode: 'voice', pttKey: 'Space', micThreshold: 0, soundboardMuted: false, screenQuality: 'q720', screenAudio: false }
+const DEFAULTS: VoiceSettings = { inputId: '', outputId: '', noiseSuppression: true, echoCancellation: true, autoGain: true, mode: 'voice', pttKey: 'Space', micThreshold: 0, soundboardMuted: false, screenQuality: 'q720', screenAudio: false, masterVolume: 1, soundboardVolume: 1, streamVolume: 1, micVolume: 1 }
 // глобальный хоткей тумблера микрофона (работает вне фокуса окна; true hold-PTT недоступен через globalShortcut)
 const MIC_HOTKEY = 'CommandOrControl+Shift+M'
 const SB_TRACK_NAME = 'soundboard' // имя публикуемого аудио-трека саундпада (отличаем на приёмнике от голоса)
 
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
+
 class Voice {
   private room: Room | null = null
-  private audioEls = new Map<RemoteTrack, HTMLAudioElement>()
-  private soundboardEls = new Map<RemoteTrack, HTMLAudioElement>() // входящие треки саундпада (мутятся отдельно)
+  private audioEls = new Map<RemoteTrack, { el: HTMLAudioElement; userId: string }>() // голос собеседников
+  private soundboardEls = new Map<RemoteTrack, HTMLAudioElement>() // входящие треки саундпада (своя громкость/мут)
+  private screenAudioEls = new Map<RemoteTrack, HTMLAudioElement>() // звук чужой демонстрации (своя громкость)
   private screenTracks = new Map<RemoteTrack, { userId: string; name: string }>()
   private screenIds = new WeakMap<RemoteTrack, string>() // стабильный id на трек (для выбора активной демонстрации)
   private screenIdSeq = 0
@@ -79,6 +88,7 @@ class Voice {
   private micBeforeDeaf = true
   private pttHeld = false
   private micChain: Promise<void> = Promise.resolve() // очередь операций с микрофоном (анти-гонка)
+  private micProcessor: MicProcessor | null = null // активная мик-цепочка (шумодав + gain); null = без обработки
   // голосовой гейт (порог реагирования микрофона): замеряем уровень с клона трека, публикуемый трек
   // глушим/открываем через mediaStreamTrack.enabled (дёшево, без пере-согласования)
   private gateCtx: AudioContext | null = null
@@ -93,6 +103,7 @@ class Voice {
   private cbs = new Set<(s: VoiceState) => void>()
 
   constructor() {
+    soundboard.setVolume(this.settings.masterVolume * this.settings.soundboardVolume) // громкость своих триггеров
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', (e) => this.onKey(e, true))
       window.addEventListener('keyup', (e) => this.onKey(e, false))
@@ -159,7 +170,7 @@ class Voice {
         .on(RoomEvent.ParticipantConnected, () => { sfx.join(); this.refresh() })
         .on(RoomEvent.ParticipantDisconnected, () => { sfx.leave(); this.refresh() })
         .on(RoomEvent.LocalTrackPublished, () => this.refresh())
-        .on(RoomEvent.Disconnected, () => { if (this.room === room) { this.stopMicGate(false); this.targetId = null; this.room = null; window.chazh?.setMicHotkey(null); this.set({ ...INITIAL }) } })
+        .on(RoomEvent.Disconnected, () => { if (this.room === room) { this.stopMicGate(false); this.targetId = null; this.room = null; this.micProcessor = null; window.chazh?.setMicHotkey(null); this.set({ ...INITIAL }) } })
       await room.connect(t.url, t.token)
       if (this.joinSeq !== seq) { room.removeAllListeners(); try { await room.disconnect() } catch { /* */ } return }
       if (this.settings.outputId) await room.switchActiveDevice('audiooutput', this.settings.outputId).catch(() => {})
@@ -184,18 +195,26 @@ class Voice {
 
   private attach(track: RemoteTrack, pub: RemoteTrackPublication | undefined, participant: RemoteParticipant) {
     if (track.kind === Track.Kind.Audio) {
-      const isSb = pub?.trackName === SB_TRACK_NAME // саундпад приходит отдельным аудио-треком
       const el = track.attach() as HTMLAudioElement
-      el.muted = this.state.deafened || (isSb && this.settings.soundboardMuted)
       el.autoplay = true
       if (this.settings.outputId && 'setSinkId' in el) (el as any).setSinkId(this.settings.outputId).catch(() => {})
       document.body.appendChild(el)
-      if (isSb) {
+      const m = this.settings.masterVolume
+      if (track.source === Track.Source.ScreenShareAudio) {
+        // звук чужой демонстрации экрана — отдельная категория со своей громкостью
+        this.screenAudioEls.set(track, el)
+        el.muted = this.state.deafened
+        el.volume = clamp01(m * this.settings.streamVolume)
+      } else if (pub?.trackName === SB_TRACK_NAME) {
+        // саундпад приходит отдельным аудио-треком
         this.soundboardEls.set(track, el)
+        el.muted = this.state.deafened || this.settings.soundboardMuted
+        el.volume = clamp01(m * this.settings.soundboardVolume)
       } else {
-        this.audioEls.set(track, el)
-        const vol = this.volumes.get(participant.identity) // восстановить персональную громкость собеседника
-        if (vol != null && vol !== 1) participant.setVolume(vol)
+        // обычный голос собеседника
+        this.audioEls.set(track, { el, userId: participant.identity })
+        el.muted = this.state.deafened
+        el.volume = clamp01(m * (this.volumes.get(participant.identity) ?? 1)) // персональная громкость собеседника
       }
     } else if (track.kind === Track.Kind.Video && track.source === Track.Source.ScreenShare) {
       this.screenTracks.set(track, { userId: participant.identity, name: participant.name || '' })
@@ -207,6 +226,7 @@ class Voice {
     track.detach().forEach((el) => el.remove())
     this.audioEls.delete(track)
     this.soundboardEls.delete(track)
+    this.screenAudioEls.delete(track)
     if (this.screenTracks.delete(track)) this.syncScreen()
     this.refresh()
   }
@@ -223,7 +243,7 @@ class Voice {
     this.activeScreenId = active ? active.id : null
     this.set({ screens, screenTrack: active ? active.track : null, screenBy: active ? active.by : null, activeScreenId: this.activeScreenId })
   }
-  // переключение между несколькими демонстрациями в канале (UI вызывает по клику на пилюлю)
+  // переключение между несколькими демонстрациями в канале (UI вызывает по клику на плитку)
   setActiveScreen(id: string) {
     if (!this.screenTracks.size) return
     this.activeScreenId = id
@@ -269,7 +289,7 @@ class Voice {
     if (d) { this.micBeforeDeaf = this.state.micOn; micOn = false }
     else { micOn = this.micBeforeDeaf }
     this.set({ deafened: d, micOn }) // синхронно: UI + собственный deafened, который читает refresh()
-    this.applyMutes() // оглушение глушит и голос собеседников, и саундпад
+    this.applyMutes() // оглушение глушит и голос собеседников, и саундпад, и звук демонстрации
     d ? sfx.deafOn() : sfx.deafOff()
     if (!MOCK && this.room) {
       this.room.localParticipant.setAttributes({ deaf: d ? '1' : '0' }).catch(() => {}) // транслируем остальным
@@ -281,13 +301,45 @@ class Voice {
   // единая точка мута входящего звука: оглушение глушит всё; саундпад дополнительно — по личной настройке
   private applyMutes() {
     const d = this.state.deafened
-    this.audioEls.forEach((el) => { el.muted = d })
+    this.audioEls.forEach((v) => { v.el.muted = d })
     this.soundboardEls.forEach((el) => { el.muted = d || this.settings.soundboardMuted })
+    this.screenAudioEls.forEach((el) => { el.muted = d })
   }
   setSoundboardMuted(on: boolean) {
     this.settings.soundboardMuted = on
     this.saveSettings()
     this.applyMutes()
+  }
+
+  // ---- громкости («что я слышу») ----
+  // пересчёт громкости всех управляемых аудио-элементов под текущие настройки (master × категория)
+  private applyVolumes() {
+    const m = this.settings.masterVolume
+    this.audioEls.forEach((v) => { v.el.volume = clamp01(m * (this.volumes.get(v.userId) ?? 1)) })
+    const sb = clamp01(m * this.settings.soundboardVolume)
+    this.soundboardEls.forEach((el) => { el.volume = sb })
+    soundboard.setVolume(m * this.settings.soundboardVolume) // локальный микшер своих триггеров (может >1)
+    const sv = clamp01(m * this.settings.streamVolume)
+    this.screenAudioEls.forEach((el) => { el.volume = sv })
+  }
+  getVolumeSettings(): VolumeSettings {
+    return { master: this.settings.masterVolume, soundboard: this.settings.soundboardVolume, stream: this.settings.streamVolume, mic: this.settings.micVolume }
+  }
+  setMasterVolume(v: number) {
+    this.settings.masterVolume = clamp01(v); this.saveSettings()
+    this.applyVolumes()
+  }
+  setSoundboardVolume(v: number) {
+    this.settings.soundboardVolume = Math.max(0, Math.min(2, v)); this.saveSettings()
+    this.applyVolumes()
+  }
+  setStreamVolume(v: number) {
+    this.settings.streamVolume = clamp01(v); this.saveSettings()
+    this.applyVolumes()
+  }
+  async setMicVolume(v: number) {
+    this.settings.micVolume = Math.max(0, Math.min(2, v)); this.saveSettings()
+    if (this.room && this.state.micOn) await this.refreshMicProcessor() // gain применится на лету (или поднимет процессор)
   }
 
   async toggleScreen() {
@@ -371,7 +423,10 @@ class Voice {
   async setOutputDevice(id: string) {
     this.settings.outputId = id; this.saveSettings()
     if (this.room) await this.room.switchActiveDevice('audiooutput', id || 'default').catch(() => {})
-    this.audioEls.forEach((el) => { if ('setSinkId' in el) (el as any).setSinkId(id || 'default').catch(() => {}) })
+    const apply = (el: HTMLAudioElement) => { if ('setSinkId' in el) (el as any).setSinkId(id || 'default').catch(() => {}) }
+    this.audioEls.forEach((v) => apply(v.el))
+    this.soundboardEls.forEach(apply)
+    this.screenAudioEls.forEach(apply)
   }
   async setProcessing(p: Partial<Pick<VoiceSettings, 'noiseSuppression' | 'echoCancellation' | 'autoGain'>>) {
     Object.assign(this.settings, p); this.saveSettings()
@@ -380,7 +435,7 @@ class Voice {
       // бы: при stopMicTrackOnMute=false трек переиспользуется и новые echoCancellation/AGC игнорируются.
       const track = this.room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track as LocalAudioTrack | undefined
       if (track) await track.restartTrack(this.captureOpts()).catch(() => {})
-      await this.refreshMicProcessor() // вкл./выкл. Krisp вслед за тумблером шумоподавления
+      await this.refreshMicProcessor() // вкл./выкл. шумодав вслед за тумблером (gain — сохраняем)
       this.stopMicGate(false); this.syncMicGate() // трек пересоздан — пересобираем клон-замер гейта
     }
   }
@@ -393,22 +448,30 @@ class Voice {
   }
   setPttKey(code: string) { this.settings.pttKey = code; this.saveSettings() }
 
-  // Нейросетевой шумодав RNNoise поверх браузерного NS — давит стук клавиш/мыши, которые браузерный
-  // noiseSuppression пропускает. ПОЛНОСТЬЮ клиентский (Web Audio + WASM), без сервера/лицензии — в отличие
-  // от Krisp, которому нужен LiveKit Cloud (на self-host он давал 404). Тумблер «Шумоподавление» управляет
-  // им; при ошибке тихо откатываемся на браузерный NS из captureOpts().
+  // Мик-цепочка: нейросетевой шумодав RNNoise (давит стук клавиш/мыши) + ручное усиление (gain).
+  // RNNoise ПОЛНОСТЬЮ клиентский (Web Audio + WASM), без сервера/лицензии — в отличие от Krisp, которому
+  // нужен LiveKit Cloud (на self-host он давал 404). Процессор поднимаем ТОЛЬКО когда он что-то меняет
+  // (шумодав вкл ИЛИ громкость ≠ 1) — иначе публикуем сырой трек, как раньше (нулевая регрессия).
+  // Изменения применяются на лету (setSuppress / setGain), без перезагрузки WASM.
   private async refreshMicProcessor() {
     if (MOCK || !this.room) return
     const track = this.room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track as LocalAudioTrack | undefined
     if (!track) return
-    const want = this.settings.noiseSuppression
-    const has = track.getProcessor()?.name === RNNOISE_PROCESSOR_NAME
-    if (want === has) return // уже в нужном состоянии — НЕ пересоздаём процессор. Критично для PTT:
-                             // трек переживает mute, поэтому каждое нажатие иначе грузило бы WASM-модель заново
+    const suppress = this.settings.noiseSuppression
+    const gain = this.settings.micVolume
+    const need = suppress || gain !== 1
+    const cur = this.micProcessor && track.getProcessor() === this.micProcessor ? this.micProcessor : null
+    if (!need) {
+      if (cur) { try { await track.stopProcessor() } catch { /* */ } }
+      this.micProcessor = null
+      return
+    }
+    if (cur) { cur.setSuppress(suppress); cur.setGain(gain); return } // живое обновление — без пересоздания
     try {
-      if (want) await track.setProcessor(createRnnoiseProcessor())
-      else await track.stopProcessor()
-    } catch { /* RNNoise недоступен — остаётся браузерный noiseSuppression */ }
+      const proc = createMicProcessor({ suppress, gain })
+      await track.setProcessor(proc)
+      this.micProcessor = proc
+    } catch { this.micProcessor = null /* недоступно — остаётся браузерный noiseSuppression из captureOpts */ }
   }
 
   // ---- голосовой гейт (порог реагирования микрофона) ----
@@ -464,14 +527,13 @@ class Voice {
     this.syncMicGate() // пересечение 0↔>0 запускает/останавливает гейт; иначе он сам читает новое значение
   }
 
-  // ---- громкость собеседников (на стороне приёмника, у каждого своя) ----
+  // ---- персональная громкость собеседников (на стороне приёмника, у каждого своя) ----
   getParticipantVolume(userId: string): number { return this.volumes.get(userId) ?? 1 }
   setParticipantVolume(userId: string, vol: number) {
     const v = Math.max(0, Math.min(2, vol))
     if (v === 1) this.volumes.delete(userId); else this.volumes.set(userId, v) // 1 = дефолт, не храним
     this.saveVolumes()
-    const p = this.room?.getParticipantByIdentity(userId)
-    if (p && p !== this.room?.localParticipant) (p as RemoteParticipant).setVolume(v)
+    this.applyVolumes() // громкость собеседника = master × персональный множитель
     this.refresh()
   }
 
@@ -532,14 +594,17 @@ class Voice {
   }
   private async teardownRoom() {
     this.stopMicGate(false)
-    this.audioEls.forEach((el) => el.remove())
+    this.audioEls.forEach((v) => v.el.remove())
     this.audioEls.clear()
     this.soundboardEls.forEach((el) => el.remove())
     this.soundboardEls.clear()
+    this.screenAudioEls.forEach((el) => el.remove())
+    this.screenAudioEls.clear()
     this.screenTracks.clear()
     this.activeScreenId = null
     this.speaking.clear()
     this.pttHeld = false
+    this.micProcessor = null
     const r = this.room
     this.room = null
     if (r) { r.removeAllListeners(); try { await r.disconnect() } catch { /* */ } }
