@@ -147,7 +147,7 @@ export function Composer({ channelName, onSend, onType, replyToName, onCancelRep
           {emojiOpen && (
             <>
               <div onClick={() => setEmojiOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-              <div style={{ position: 'absolute', bottom: 'calc(100% + 10px)', right: 0, zIndex: 41, width: 280, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 14px 34px -12px var(--shadow)', padding: 7, display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 1 }}>
+              <div style={{ position: 'absolute', bottom: 'calc(100% + 10px)', right: 0, zIndex: 41, width: 280, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 14px 34px -12px var(--shadow)', padding: 7, display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 1, animation: 'popIn .15s cubic-bezier(.22,.61,.36,1)', transformOrigin: 'bottom right' }}>
                 {EMOJIS.map((em) => (
                   <button key={em} type="button" className="ib no-drag" onClick={() => insertEmoji(em)} style={{ width: 32, height: 32, fontSize: 17, borderRadius: 8 }}>{em}</button>
                 ))}

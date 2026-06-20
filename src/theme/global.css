@@ -35,19 +35,24 @@ button { font-family: inherit; }
 @keyframes live { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes shimmer { 0% { background-position: -420px 0; } 100% { background-position: 420px 0; } }
+@keyframes popIn { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+@keyframes reactionPop { 0% { transform: scale(.55); } 55% { transform: scale(1.18); } 100% { transform: scale(1); } }
 
 /* скелетоны загрузки */
 .skel { background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 37%, var(--surface-2) 63%); background-size: 420px 100%; animation: shimmer 1.25s ease-in-out infinite; border-radius: 8px; }
 
 /* ---- interactive helpers (то, что в .dc делалось через style-hover) ---- */
-.ib { display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--text-2); cursor: pointer; border-radius: 11px; transition: background .18s, color .18s, transform .15s, border-color .18s; }
-.ib:hover { background: var(--surface-2); color: var(--text); }
+.ib { display: inline-flex; align-items: center; justify-content: center; border: none; background: transparent; color: var(--text-2); cursor: pointer; border-radius: 11px; transition: background .18s, color .18s, transform .12s, border-color .18s; }
+.ib:hover { background: var(--surface-2); color: var(--text); transform: translateY(-1px); }
+.ib:active { transform: translateY(0) scale(.9); }
 
-.pill { display: inline-flex; align-items: center; gap: 9px; border: 1px solid var(--border); background: var(--win); color: var(--text); border-radius: 13px; cursor: pointer; transition: border-color .18s, color .18s, background .18s; }
-.pill:hover { border-color: var(--accent); color: var(--accent); }
+.pill { display: inline-flex; align-items: center; gap: 9px; border: 1px solid var(--border); background: var(--win); color: var(--text); border-radius: 13px; cursor: pointer; transition: border-color .18s, color .18s, background .18s, transform .12s; }
+.pill:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+.pill:active { transform: scale(.97); }
 
-.reaction { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--surface); border-radius: 30px; cursor: pointer; transition: border-color .15s, color .15s; }
-.reaction:hover { border-color: var(--accent); }
+.reaction { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--surface); border-radius: 30px; cursor: pointer; transition: border-color .15s, color .15s, transform .12s; }
+.reaction:hover { border-color: var(--accent); transform: translateY(-1px); }
+.reaction:active { transform: scale(.94); }
 .reaction.mine { border-color: var(--accent); background: var(--accent-tint); color: var(--accent); }
 
 .msg-row { transition: background .15s; border-radius: 12px; }

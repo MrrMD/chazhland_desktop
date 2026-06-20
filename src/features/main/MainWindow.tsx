@@ -442,10 +442,15 @@ export function MainWindow() {
           <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
             {vs.screenTrack && !screenCollapsed && <ScreenSharePane full={screenFull} onToggleFull={() => setScreenFull((f) => !f)} onCollapse={() => { setScreenCollapsed(true); setScreenFull(false) }} screens={vs.screens} onSelect={(id) => voice.setActiveScreen(id)} nameOf={(uid) => membersById.get(uid)?.username} />}
             {!screenFull && (isWatch ? (
-              <WatchView channelId={currentId} />
+              <div key={`w:${currentId}`} style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', animation: 'fadeIn .26s ease' }}>
+                <WatchView channelId={currentId} />
+              </div>
             ) : (
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
-                <ChatFeed messages={messages} readState={readState} membersById={membersById} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
+                {/* key={currentId} — перезапускает fadeIn при смене канала; Composer вне обёртки, чтобы сохранить черновик */}
+                <div key={currentId} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', animation: 'fadeIn .26s ease' }}>
+                  <ChatFeed messages={messages} readState={readState} membersById={membersById} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
+                </div>
                 <TypingIndicator names={typing.map((t) => t.name)} />
                 <Composer channelName={channel?.name ?? ''} onSend={send} onType={() => ws.typing(currentId)} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>

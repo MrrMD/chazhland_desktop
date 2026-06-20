@@ -62,6 +62,8 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
   const [editing, setEditing] = useState(false)
   const [val, setVal] = useState('')
   const [picker, setPicker] = useState<null | 'top' | 'bottom'>(null)
+  const [popEmoji, setPopEmoji] = useState<string | null>(null) // эмодзи, по которому только что кликнули — для pop-анимации
+  const [popNonce, setPopNonce] = useState(0)                   // меняем ключ пилюли, чтобы анимация перезапускалась на повторный клик
   const [lightbox, setLightbox] = useState<string | null>(null)
   useEscape(() => setLightbox(null), !!lightbox)
   useEscape(() => setPicker(null), !!picker)
@@ -83,7 +85,8 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
     setEditing(false)
     if (v && v !== m.content) onEdit?.(m.id, v)
   }
-  function pick(emoji: string) { onReact?.(emoji); setPicker(null) }
+  function react(emoji: string) { setPopEmoji(emoji); setPopNonce((n) => n + 1); onReact?.(emoji) }
+  function pick(emoji: string) { react(emoji); setPicker(null) }
 
   return (
     <div
@@ -163,9 +166,12 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
 
         {m.reactions.length > 0 && (
           <div style={{ marginTop: 9, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-            {m.reactions.map((r) => (
-              <div key={r.emoji} onClick={() => onReact?.(r.emoji)} className={'reaction' + (r.mine ? ' mine' : '')} style={{ padding: '3px 11px', fontSize: 13, fontWeight: 600, color: r.mine ? undefined : 'var(--text-2)' }}>{r.emoji} {r.count}</div>
-            ))}
+            {m.reactions.map((r) => {
+              const popped = r.emoji === popEmoji
+              return (
+                <div key={popped ? `${r.emoji}#${popNonce}` : r.emoji} onClick={() => react(r.emoji)} className={'reaction' + (r.mine ? ' mine' : '')} style={{ padding: '3px 11px', fontSize: 13, fontWeight: 600, color: r.mine ? undefined : 'var(--text-2)', animation: popped ? 'reactionPop .32s cubic-bezier(.34,1.56,.64,1)' : undefined }}>{r.emoji} {r.count}</div>
+              )
+            })}
             <div className="reaction" onClick={() => setPicker((p) => (p === 'bottom' ? null : 'bottom'))} style={{ justifyContent: 'center', width: 30, height: 26, color: 'var(--text-3)' }} title="Добавить реакцию"><SmilePlus size={15} /></div>
           </div>
         )}
@@ -178,7 +184,7 @@ function EmojiPicker({ anchor, onPick, onClose }: { anchor: 'top' | 'bottom'; on
   return (
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-      <div style={{ position: 'absolute', zIndex: 41, width: 280, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 14px 34px -12px var(--shadow)', padding: 7, display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 1, ...(anchor === 'top' ? { top: 18, right: 10 } : { top: '100%', left: 55 }) }}>
+      <div style={{ position: 'absolute', zIndex: 41, width: 280, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 14px 34px -12px var(--shadow)', padding: 7, display: 'grid', gridTemplateColumns: 'repeat(8,1fr)', gap: 1, animation: 'popIn .15s cubic-bezier(.22,.61,.36,1)', transformOrigin: anchor === 'top' ? 'top right' : 'top left', ...(anchor === 'top' ? { top: 18, right: 10 } : { top: '100%', left: 55 }) }}>
       {EMOJIS.map((em) => (
         <button key={em} className="ib no-drag" onClick={() => onPick(em)} style={{ width: 32, height: 32, fontSize: 17, borderRadius: 8 }}>{em}</button>
       ))}
