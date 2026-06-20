@@ -11,6 +11,7 @@ import { ChannelSwitcher } from './ChannelSwitcher'
 import { BottomBar } from './BottomBar'
 import { WatchView } from './WatchView'
 import { ScreenSharePane } from './ScreenSharePane'
+import { ScreenPicker } from './ScreenPicker'
 import { VoiceSettingsModal } from './VoiceSettingsModal'
 import { SettingsModal } from './SettingsModal'
 import { ChatPanel } from './ChatPanel'
@@ -51,6 +52,7 @@ export function MainWindow() {
   const [screenCollapsed, setScreenCollapsed] = useState(false) // чужая демонстрация свёрнута (показываем чип в шапке)
   const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [screenPickerOpen, setScreenPickerOpen] = useState(false)
   const [typing, setTyping] = useState<{ id: string; name: string }[]>([])
   const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const [panel, setPanel] = useState<null | 'search' | 'pins'>(null)
@@ -472,7 +474,7 @@ export function MainWindow() {
         deafened={vs.deafened}
         onDeaf={() => voice.toggleDeaf()}
         streamOn={vs.screenOn}
-        onGoLive={() => voice.toggleScreen()}
+        onGoLive={() => { if (vs.screenOn) voice.toggleScreen(); else if (window.chazh?.getScreenSources) setScreenPickerOpen(true); else voice.toggleScreen() }}
         voiceChannelName={vs.channelName}
         onOpenChannels={() => setChannelsOpen(true)}
         unreadTotal={unreadTotal}
@@ -503,6 +505,7 @@ export function MainWindow() {
 
       {voiceSettingsOpen && <VoiceSettingsModal onClose={() => setVoiceSettingsOpen(false)} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {screenPickerOpen && <ScreenPicker onClose={() => setScreenPickerOpen(false)} onPick={async (id) => { setScreenPickerOpen(false); await window.chazh?.pickScreenSource(id); voice.toggleScreen() }} />}
     </div>
   )
 }

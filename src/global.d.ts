@@ -1,6 +1,14 @@
 export {}
 
 declare global {
+  /** Источник демонстрации экрана (из desktopCapturer): экран или окно. */
+  interface ScreenSource {
+    id: string
+    name: string
+    type: 'screen' | 'window'
+    thumbnail: string | null // dataURL-превью
+    appIcon: string | null   // dataURL иконки приложения (для окон)
+  }
   interface TorrentStartResult {
     ok: boolean
     token?: string
@@ -41,6 +49,10 @@ declare global {
     onToggleMic: (cb: () => void) => () => void
     /** Захватывать ли системный звук при демонстрации экрана (loopback; реально только Windows). */
     setShareAudio: (on: boolean) => Promise<void>
+    /** Список экранов/окон с превью для пикера демонстрации. */
+    getScreenSources: () => Promise<ScreenSource[]>
+    /** Выбрать источник демонстрации для следующего getDisplayMedia (одноразово). */
+    pickScreenSource: (id: string | null) => Promise<void>
     /** Запустить торрент в main, получить локальный stream-URL для плеера. */
     torrentStart: (p: { magnet?: string; infoHash?: string }) => Promise<TorrentStartResult>
     /** Остановить торрент (по токену из torrentStart) и очистить кэш. */

@@ -24,6 +24,9 @@ contextBridge.exposeInMainWorld('chazh', {
   },
   // трансляция системного звука при демонстрации экрана (loopback берётся в main)
   setShareAudio: (on: boolean): Promise<void> => ipcRenderer.invoke('screen:setAudio', on),
+  // пикер демонстрации: список экранов/окон + выбор источника для следующего getDisplayMedia
+  getScreenSources: () => ipcRenderer.invoke('screen:getSources'),
+  pickScreenSource: (id: string | null): Promise<void> => ipcRenderer.invoke('screen:pickSource', id),
   // совместный просмотр торрентов: движок в main, отдаёт локальный stream-URL для <video>
   torrentStart: (p: { magnet?: string; infoHash?: string }) => ipcRenderer.invoke('torrent:start', p),
   torrentStop: (token?: string) => ipcRenderer.invoke('torrent:stop', token),

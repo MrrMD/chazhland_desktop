@@ -20,6 +20,7 @@ let micAccel: string | null = null
 let rendererReady = false
 let pendingNotifChannel: string | null = null
 let shareSystemAudio = false // транслировать ли системный звук при демонстрации (loopback)
+let pickedSourceId: string | null = null // выбранный пользователем экран/окно для следующего getDisplayMedia
 
 function showWindow() {
   if (!win) { createWindow(); return }
@@ -126,15 +127,31 @@ function createWindow() {
   // переключатель трансляции системного звука при демонстрации (читается обработчиком ниже)
   ipcMain.handle('screen:setAudio', (_e, on: boolean) => { shareSystemAudio = !!on })
 
+  // список доступных источников (экраны + окна) с превью и иконкой приложения — для пикера в рендерере
+  ipcMain.handle('screen:getSources', async () => {
+    const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 320, height: 200 }, fetchWindowIcons: true })
+    return sources.map((s) => ({
+      id: s.id,
+      name: s.name,
+      type: s.id.startsWith('screen:') ? 'screen' : 'window',
+      thumbnail: s.thumbnail.isEmpty() ? null : s.thumbnail.toDataURL(),
+      appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
+    }))
+  })
+  // выбор источника пользователем — применяется к СЛЕДУЮЩЕМУ getDisplayMedia (одноразово)
+  ipcMain.handle('screen:pickSource', (_e, id: string | null) => { pickedSourceId = id || null })
+
   // Демонстрация экрана (Go Live): getDisplayMedia в Electron требует обработчик (TZ р.6).
-  // Базово выдаём первый экран; позже — нативный пикер источника. Системный звук — через loopback,
-  // он поддержан только на Windows (на macOS getDisplayMedia системный звук не отдаёт).
+  // Берём выбранный пользователем источник (pickedSourceId из пикера); если выбора нет — первый экран.
+  // Системный звук — через loopback, поддержан только на Windows (на macOS getDisplayMedia его не отдаёт).
   win.webContents.session.setDisplayMediaRequestHandler((_request, callback) => {
     desktopCapturer.getSources({ types: ['screen', 'window'] })
       .then((sources) => {
-        if (!sources[0]) return callback({})
+        const chosen = (pickedSourceId && sources.find((s) => s.id === pickedSourceId)) || sources[0]
+        pickedSourceId = null // одноразовый выбор: следующая демонстрация снова спросит
+        if (!chosen) return callback({})
         const withAudio = shareSystemAudio && process.platform === 'win32'
-        callback(withAudio ? { video: sources[0], audio: 'loopback' } : { video: sources[0] })
+        callback(withAudio ? { video: chosen, audio: 'loopback' } : { video: chosen })
       })
       .catch(() => callback({}))
   })
