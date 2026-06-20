@@ -440,7 +440,7 @@ export function MainWindow() {
 
           {/* body */}
           <div style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
-            {vs.screenTrack && !screenCollapsed && <ScreenSharePane track={vs.screenTrack} by={vs.screenBy} full={screenFull} onToggleFull={() => setScreenFull((f) => !f)} onCollapse={() => { setScreenCollapsed(true); setScreenFull(false) }} screens={vs.screens} activeId={vs.activeScreenId} onSelect={(id) => voice.setActiveScreen(id)} nameOf={(uid) => membersById.get(uid)?.username} />}
+            {vs.screenTrack && !screenCollapsed && <ScreenSharePane full={screenFull} onToggleFull={() => setScreenFull((f) => !f)} onCollapse={() => { setScreenCollapsed(true); setScreenFull(false) }} screens={vs.screens} onSelect={(id) => voice.setActiveScreen(id)} nameOf={(uid) => membersById.get(uid)?.username} />}
             {!screenFull && (isWatch ? (
               <WatchView channelId={currentId} />
             ) : (
