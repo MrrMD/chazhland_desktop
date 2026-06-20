@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld('chazh', {
   mpvLoad: (p: { url: string; paused?: boolean; start?: number }) => ipcRenderer.invoke('mpv:load', p),
   mpvPause: (paused: boolean) => ipcRenderer.invoke('mpv:pause', paused),
   mpvSeek: (sec: number) => ipcRenderer.invoke('mpv:seek', sec),
+  mpvSetAudio: (id: number | false) => ipcRenderer.invoke('mpv:setAudio', id),
+  mpvSetSub: (id: number | false) => ipcRenderer.invoke('mpv:setSub', id),
+  mpvSetSpeed: (v: number) => ipcRenderer.invoke('mpv:setSpeed', v),
   mpvStop: () => ipcRenderer.invoke('mpv:stop'),
   onMpvEvent: (cb: (p: unknown) => void) => {
     const h = (_e: IpcRendererEvent, p: unknown) => cb(p)

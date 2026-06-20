@@ -27,12 +27,17 @@ declare global {
     numPeers: number
     ready: boolean
   }
+  // дорожка mpv (аудио/субтитры)
+  interface MpvTrack { id: number; title?: string; lang?: string; codec?: string }
   // события плеера mpv (из main по 'mpv:event')
   type MpvEvent =
     | { type: 'ready' }
     | { type: 'loaded' }
     | { type: 'time-pos'; value: number }
     | { type: 'pause'; value: boolean }
+    | { type: 'buffering'; value: boolean } // paused-for-cache: mpv добуферивает
+    | { type: 'tracks'; audio: MpvTrack[]; sub: MpvTrack[]; aid: number | false; sid: number | false }
+    | { type: 'track-change'; kind: 'audio' | 'sub'; id: number | false }
     | { type: 'end'; reason?: string }
     | { type: 'exit' }
     | { type: 'spawn-error'; error: string }
@@ -65,6 +70,12 @@ declare global {
     mpvLoad: (p: { url: string; paused?: boolean; start?: number }) => Promise<{ ok: boolean; error?: string }>
     mpvPause: (paused: boolean) => Promise<{ ok: boolean }>
     mpvSeek: (sec: number) => Promise<{ ok: boolean }>
+    /** Выбрать аудиодорожку (id из tracks) или false=отключить. */
+    mpvSetAudio: (id: number | false) => Promise<{ ok: boolean }>
+    /** Выбрать субтитры (id из tracks) или false=выключить. */
+    mpvSetSub: (id: number | false) => Promise<{ ok: boolean }>
+    /** Скорость воспроизведения (для плавного авто-доката при отставании). */
+    mpvSetSpeed: (v: number) => Promise<{ ok: boolean }>
     mpvStop: () => Promise<{ ok: boolean }>
     /** Подписка на события mpv (time-pos/pause/loaded/end/exit); возвращает отписку. */
     onMpvEvent: (cb: (e: MpvEvent) => void) => () => void

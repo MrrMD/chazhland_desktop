@@ -64,6 +64,10 @@ button { font-family: inherit; }
 .tile { transition: transform .15s, border-color .15s; }
 .tile:hover { transform: translateY(-2px); border-color: var(--accent); }
 
+/* строка результата поиска в кинозале (тёмный оверлей, не на theme-surface) */
+.wresult { transition: background .15s; }
+.wresult:hover { background: rgba(255,255,255,.07); }
+
 .accent-btn { border: none; background: var(--accent); color: #fff; cursor: pointer; transition: transform .15s, background .15s; }
 .accent-btn:hover { transform: translateY(-1px); }
 .accent-btn:active { transform: translateY(0); background: var(--accent-press); }

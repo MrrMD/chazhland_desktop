@@ -36,8 +36,15 @@ interface Session {
   buf: string
   address: string
 }
+interface MpvTrack { id: number; title?: string; lang?: string; codec?: string }
 let session: Session | null = null
 let getWindow: () => BrowserWindow | null = () => null
+
+// состояние для корректного синхрона:
+let pausedForCache = false      // mpv добуферивает — это НЕ ручная пауза, не рассылаем в комнату
+let loadingFlag = false         // идёт загрузка файла — глушим всплеск pause/seek до file-loaded
+let lastSentPause: boolean | null = null // последняя пауза, которую задали МЫ — гасим её эхо
+let durationSec = 0             // длительность для клампа seek
 
 function emit(payload: unknown): void {
   const w = getWindow()
@@ -63,10 +70,33 @@ function onIpcData(chunk: Buffer): void {
     try { msg = JSON.parse(line) } catch { continue }
     if (msg.event === 'property-change') {
       if (msg.name === 'time-pos' && typeof msg.data === 'number') emit({ type: 'time-pos', value: msg.data })
-      else if (msg.name === 'pause') emit({ type: 'pause', value: !!msg.data })
+      else if (msg.name === 'duration') { if (typeof msg.data === 'number') durationSec = msg.data }
+      else if (msg.name === 'paused-for-cache') { pausedForCache = !!msg.data; emit({ type: 'buffering', value: pausedForCache }) }
+      else if (msg.name === 'track-list' && Array.isArray(msg.data)) {
+        const audio: MpvTrack[] = []
+        const sub: MpvTrack[] = []
+        let aid: number | false = false
+        let sid: number | false = false
+        for (const t of msg.data) {
+          const item: MpvTrack = { id: t.id, title: t.title || undefined, lang: t.lang || undefined, codec: t.codec || undefined }
+          if (t.type === 'audio') { audio.push(item); if (t.selected) aid = t.id }
+          else if (t.type === 'sub') { sub.push(item); if (t.selected) sid = t.id }
+        }
+        emit({ type: 'tracks', audio, sub, aid, sid })
+      }
+      else if (msg.name === 'aid') emit({ type: 'track-change', kind: 'audio', id: typeof msg.data === 'number' ? msg.data : false })
+      else if (msg.name === 'sid') emit({ type: 'track-change', kind: 'sub', id: typeof msg.data === 'number' ? msg.data : false })
+      else if (msg.name === 'pause') {
+        const paused = !!msg.data
+        if (loadingFlag) return                                              // всплеск во время загрузки — игнор
+        if (pausedForCache) return                                           // добуферивание, не ручная пауза
+        if (lastSentPause !== null && paused === lastSentPause) { lastSentPause = null; return } // эхо нашей команды
+        emit({ type: 'pause', value: paused })
+      }
     } else if (msg.event === 'end-file') {
       emit({ type: 'end', reason: msg.reason })
     } else if (msg.event === 'file-loaded') {
+      loadingFlag = false
       emit({ type: 'loaded' })
     }
   }
@@ -82,6 +112,11 @@ function connectIpc(): void {
       session.sock = sock
       sendCmd(['observe_property', 1, 'time-pos'])
       sendCmd(['observe_property', 2, 'pause'])
+      sendCmd(['observe_property', 3, 'paused-for-cache'])
+      sendCmd(['observe_property', 4, 'track-list'])
+      sendCmd(['observe_property', 5, 'aid'])
+      sendCmd(['observe_property', 6, 'sid'])
+      sendCmd(['observe_property', 7, 'duration'])
       emit({ type: 'ready' })
     })
     sock.on('data', onIpcData)
@@ -93,6 +128,7 @@ function connectIpc(): void {
 
 async function load(url: string, paused: boolean, startSec: number): Promise<{ ok: boolean; error?: string }> {
   await stop()
+  loadingFlag = true; pausedForCache = false; lastSentPause = null; durationSec = 0
   const address = ipcAddress()
   const args = [
     '--no-config', '--no-terminal', '--idle=yes', '--force-window=yes', '--keep-open=yes',
@@ -118,12 +154,18 @@ async function load(url: string, paused: boolean, startSec: number): Promise<{ o
   return { ok: true }
 }
 
-function setPaused(paused: boolean): void { sendCmd(['set_property', 'pause', paused]) }
-function seek(sec: number): void { sendCmd(['set_property', 'time-pos', Math.max(0, sec)]) }
+function setPaused(paused: boolean): void { lastSentPause = paused; sendCmd(['set_property', 'pause', paused]) }
+function seek(sec: number): void {
+  const clamped = durationSec > 0 ? Math.min(durationSec - 0.5, Math.max(0, sec)) : Math.max(0, sec)
+  sendCmd(['set_property', 'time-pos', clamped])
+}
+function setTrack(prop: 'aid' | 'sid', id: number | false): void { sendCmd(['set_property', prop, id === false ? 'no' : id]) }
+function setSpeed(v: number): void { sendCmd(['set_property', 'speed', Number.isFinite(v) ? v : 1]) }
 
 async function stop(): Promise<void> {
   const s = session
   session = null
+  loadingFlag = false; pausedForCache = false; lastSentPause = null; durationSec = 0
   if (!s) return
   try { s.sock?.write(JSON.stringify({ command: ['quit'] }) + '\n') } catch { /* */ }
   try { s.sock?.destroy() } catch { /* */ }
@@ -136,6 +178,9 @@ export function registerMpvIpc(getWin: () => BrowserWindow | null): void {
   ipcMain.handle('mpv:load', (_e, p: { url: string; paused?: boolean; start?: number }) => load(p.url, !!p?.paused, p?.start ?? 0))
   ipcMain.handle('mpv:pause', (_e, paused: boolean) => { setPaused(!!paused); return { ok: true } })
   ipcMain.handle('mpv:seek', (_e, sec: number) => { seek(typeof sec === 'number' ? sec : 0); return { ok: true } })
+  ipcMain.handle('mpv:setAudio', (_e, id: number | false) => { setTrack('aid', id); return { ok: true } })
+  ipcMain.handle('mpv:setSub', (_e, id: number | false) => { setTrack('sid', id); return { ok: true } })
+  ipcMain.handle('mpv:setSpeed', (_e, v: number) => { setSpeed(typeof v === 'number' ? v : 1); return { ok: true } })
   ipcMain.handle('mpv:stop', async () => { await stop(); return { ok: true } })
 }
 

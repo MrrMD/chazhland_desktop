@@ -1,9 +1,27 @@
 import { useEffect, useRef, useState } from 'react'
-import { Film, Link2, Loader2, MonitorPlay } from 'lucide-react'
+import { Film, Link2, Loader2, MonitorPlay, Search, X } from 'lucide-react'
 import { api } from '@/lib/api'
 import { ws } from '@/lib/ws'
 import { toast } from '@/lib/toast'
-import type { WatchAction, WatchState, WatchSourceKind } from '@/lib/types'
+import { HttpError } from '@/lib/http'
+import type { WatchAction, WatchState, WatchSourceKind, WatchSearchResult } from '@/lib/types'
+
+function srvMsg(e: HttpError): string | null {
+  try { const j = JSON.parse(e.body); return typeof j?.message === 'string' ? j.message : null } catch { return null }
+}
+function fmtSize(n: number): string {
+  if (!n) return '—'
+  const gb = n / 1073741824
+  return gb >= 1 ? `${gb.toFixed(2)} ГБ` : `${(n / 1048576).toFixed(0)} МБ`
+}
+function trackLabel(t: MpvTrack): string {
+  const parts: string[] = []
+  if (t.lang) parts.push(t.lang.toUpperCase())
+  if (t.title) parts.push(t.title)
+  if (!parts.length && t.codec) parts.push(t.codec)
+  if (!parts.length) parts.push(`дорожка ${t.id}`)
+  return parts.join(' · ')
+}
 
 type Issue = { kind: 'codec' | 'failed' | 'link' | 'nobridge'; msg?: string }
 type Player = 'video' | 'mpv' // <video> для mp4/прямых ссылок; mpv (отдельное окно) для MKV/HEVC
@@ -20,12 +38,23 @@ export function WatchView({ channelId }: { channelId: string }) {
   const mpvPos = useRef(0) // последняя time-pos из mpv
   const mpvSuppressUntil = useRef(0) // подавление эха: пока мы сами рулим mpv, его события не шлём обратно
   const mpvActive = useRef(false)
+  const mpvSpeed = useRef(1) // текущая заданная скорость (чтобы не слать set_property повторно)
   const [state, setState] = useState<WatchState | null>(null)
   const [urlInput, setUrlInput] = useState('')
   const [issue, setIssue] = useState<Issue | null>(null)
   const [buffering, setBuffering] = useState(false)
   const [dl, setDl] = useState<{ pct: number; peers: number } | null>(null)
   const [mpvMode, setMpvMode] = useState(false) // играем во внешнем окне mpv
+  const [tracks, setTracks] = useState<{ audio: MpvTrack[]; sub: MpvTrack[] } | null>(null) // дорожки текущего файла в mpv
+  const [aid, setAid] = useState<number | false>(false) // выбранная аудиодорожка
+  const [sid, setSid] = useState<number | false>(false) // выбранные субтитры
+  const [behind, setBehind] = useState(false) // отстаём от хоста и докачиваем (mpv)
+  // поиск по названию (оверлей над кинозалом)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<WatchSearchResult[] | null>(null) // null = ещё не искали
+  const [searching, setSearching] = useState(false)
+  const [searchErr, setSearchErr] = useState<string | null>(null)
 
   function effectivePos(s: WatchState) {
     return s.paused ? s.positionSeconds : s.positionSeconds + Math.max(0, (Date.now() - s.updatedAt) / 1000)
@@ -42,7 +71,11 @@ export function WatchView({ channelId }: { channelId: string }) {
     if (tok) { try { await window.chazh?.torrentStop(tok) } catch { /* */ } }
   }
   async function stopMpvIfAny() {
-    if (mpvActive.current) { mpvActive.current = false; setMpvMode(false); try { await window.chazh?.mpvStop() } catch { /* */ } }
+    if (mpvActive.current) {
+      mpvActive.current = false; setMpvMode(false); mpvSpeed.current = 1
+      setTracks(null); setAid(false); setSid(false); setBehind(false)
+      try { await window.chazh?.mpvStop() } catch { /* */ }
+    }
   }
 
   // Резолвит источник: url + каким плеером играть (null url = не играем, причина в issueRef).
@@ -154,18 +187,36 @@ export function WatchView({ channelId }: { channelId: string }) {
       if (!alive || !mpvActive.current) return
       if (e.type === 'time-pos') { mpvPos.current = e.value }
       else if (e.type === 'pause') {
-        if (Date.now() < mpvSuppressUntil.current) return // наша же команда — не эхо
+        // mpv.ts уже отсеял буферизацию и эхо наших команд; mpvSuppressUntil — вторичная страховка на загрузку
+        if (Date.now() < mpvSuppressUntil.current) return
         sendControl(e.value ? 'PAUSE' : 'PLAY', mpvPos.current)
-      } else if (e.type === 'spawn-error') { mpvActive.current = false; setMpvMode(false); setIssue({ kind: 'failed', msg: e.error }) }
+      } else if (e.type === 'buffering') { setBehind(e.value) } // paused-for-cache → «докачиваем…»
+      else if (e.type === 'tracks') { setTracks({ audio: e.audio, sub: e.sub }); setAid(e.aid); setSid(e.sid) }
+      else if (e.type === 'track-change') { if (e.kind === 'audio') setAid(e.id); else setSid(e.id) }
+      else if (e.type === 'spawn-error') { mpvActive.current = false; setMpvMode(false); setIssue({ kind: 'failed', msg: e.error }) }
       else if (e.type === 'exit') { mpvActive.current = false; setMpvMode(false) }
     })
-    // дрейф-реконсиляция (только для <video>; mpv ведём из apply)
+    // дрейф-реконсиляция: <video> — мягкий seek; mpv — бейдж отставания + плавный авто-докат скоростью
     const iv = window.setInterval(() => {
-      const r = remote.current; const v = videoRef.current
-      if (!r || r.paused || !v || issueRef.current || resolved.current?.player !== 'video' || resolved.current?.url == null) return
-      const target = effectivePos(r)
-      if (Math.abs(v.currentTime - target) > 2.5) { try { v.currentTime = target } catch { /* */ } }
-    }, 4000)
+      const r = remote.current
+      if (!r || issueRef.current || resolved.current?.url == null) return
+      if (resolved.current.player === 'video') {
+        const v = videoRef.current
+        if (!r.paused && v) {
+          const target = effectivePos(r)
+          if (Math.abs(v.currentTime - target) > 2.5) { try { v.currentTime = target } catch { /* */ } }
+        }
+      } else if (resolved.current.player === 'mpv' && mpvActive.current) {
+        if (r.paused) {
+          if (mpvSpeed.current !== 1) { mpvSpeed.current = 1; window.chazh?.mpvSetSpeed?.(1) }
+        } else {
+          const diff = effectivePos(r) - mpvPos.current // >0 = отстаём от хоста
+          const want = diff > 5 ? 1 : diff > 1.2 ? 1.05 : 1 // далеко позади → ждём докачку, чуть позади → ускоряемся
+          if (mpvSpeed.current !== want) { mpvSpeed.current = want; window.chazh?.mpvSetSpeed?.(want) }
+          setBehind(diff > 5)
+        }
+      }
+    }, 3000)
     return () => {
       alive = false; off(); offProg?.(); offMpv?.(); window.clearInterval(iv)
       videoRef.current?.pause(); stopTorrentIfAny(); stopMpvIfAny()
@@ -183,6 +234,34 @@ export function WatchView({ channelId }: { channelId: string }) {
     else req = { kind: 'DIRECT', url: text }
     try { await apply(await api.setWatchSource(channelId, req)) } catch { toast.error('Не удалось загрузить источник') }
   }
+
+  async function runSearch() {
+    const q = query.trim()
+    if (q.length < 2) { setSearchErr('Введите минимум 2 символа'); setResults(null); return }
+    setSearching(true); setSearchErr(null); setResults(null)
+    try {
+      setResults(await api.searchWatch(channelId, q))
+    } catch (e) {
+      if (e instanceof HttpError) {
+        if (e.status === 503) setSearchErr('Поиск временно недоступен — трекеры на сервере не настроены. Можно вставить magnet вручную.')
+        else if (e.status === 403) setSearchErr('Нет прав на управление просмотром в этом канале.')
+        else setSearchErr(srvMsg(e) ?? `Ошибка поиска (${e.status})`)
+      } else setSearchErr('Не удалось связаться с сервером.')
+    } finally { setSearching(false) }
+  }
+
+  async function pickResult(r: WatchSearchResult) {
+    // infoHash приоритетнее magnet: Prowlarr часто кладёт в magnet проксирующий http://…/download (НЕ magnet:),
+    // который бэк отклоняет как «Invalid magnet». Чистый btih-хэш бэк сам превращает в канонический magnet.
+    const realMagnet = r.magnet && /^magnet:\?/i.test(r.magnet) ? r.magnet : null
+    const req = r.infoHash ? { kind: 'TORRENT' as const, infoHash: r.infoHash }
+      : realMagnet ? { kind: 'TORRENT' as const, url: realMagnet } : null
+    if (!req) { toast.error('У релиза нет magnet/infoHash'); return }
+    setSearchOpen(false)
+    try { await apply(await api.setWatchSource(channelId, req)) }
+    catch (e) { toast.error(e instanceof HttpError ? (srvMsg(e) ?? 'Не удалось загрузить источник') : 'Не удалось загрузить источник') }
+  }
+
   function stop() {
     api.stopWatch(channelId).catch(() => {})
     applyGen.current++
@@ -229,10 +308,34 @@ export function WatchView({ channelId }: { channelId: string }) {
           </div>
         )}
         {mpvMode && !issue && (
-          <div style={{ textAlign: 'center', color: '#c7c0b5', maxWidth: 360 }}>
+          <div style={{ textAlign: 'center', color: '#c7c0b5', maxWidth: 440 }}>
             <div style={{ marginBottom: 10, display: 'flex', justifyContent: 'center' }}><MonitorPlay size={40} /></div>
             <div style={{ fontWeight: 700, fontSize: 16, color: '#e9e3d8' }}>Играем в окне mpv</div>
-            <div style={{ fontSize: 13, marginTop: 4 }}>MKV/HEVC открыт во внешнем плеере mpv, синхронно с комнатой. {dl && dl.pct < 100 ? `Загружено ${dl.pct}%.` : ''} (Встраивание в окно — следующий шаг.)</div>
+            <div style={{ fontSize: 13, marginTop: 4 }}>MKV/HEVC открыт во внешнем плеере mpv, синхронно с комнатой. (Встраивание в окно — следующий шаг.)</div>
+            {behind
+              ? <div style={{ fontSize: 13, marginTop: 9, color: '#e0b43a', display: 'flex', alignItems: 'center', gap: 7, justifyContent: 'center' }}><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />отстаём, докачиваем…{dl ? ` (${dl.pct}%)` : ''}</div>
+              : (dl && dl.pct < 100 && <div style={{ fontSize: 12.5, marginTop: 9 }}>загружено {dl.pct}% · пиров: {dl.peers}</div>)}
+            {tracks && (tracks.audio.length > 1 || tracks.sub.length > 0) && (
+              <div style={{ marginTop: 16, display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap' }}>
+                {tracks.audio.length > 1 && (
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: '#8a847a', textTransform: 'uppercase' }}>Озвучка</span>
+                    <select value={aid === false ? '' : String(aid)} onChange={(e) => { const id = Number(e.target.value); setAid(id); window.chazh?.mpvSetAudio?.(id) }} style={{ background: '#1a1815', color: '#e9e3d8', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, padding: '6px 8px', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', maxWidth: 210 }}>
+                      {tracks.audio.map((t) => <option key={t.id} value={t.id}>{trackLabel(t)}</option>)}
+                    </select>
+                  </label>
+                )}
+                {tracks.sub.length > 0 && (
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                    <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: '#8a847a', textTransform: 'uppercase' }}>Субтитры</span>
+                    <select value={sid === false ? 'off' : String(sid)} onChange={(e) => { const v = e.target.value; const id = v === 'off' ? false : Number(v); setSid(id); window.chazh?.mpvSetSub?.(id) }} style={{ background: '#1a1815', color: '#e9e3d8', border: '1px solid rgba(255,255,255,.15)', borderRadius: 8, padding: '6px 8px', fontSize: 12.5, fontWeight: 600, fontFamily: 'inherit', cursor: 'pointer', maxWidth: 210 }}>
+                      <option value="off">выкл</option>
+                      {tracks.sub.map((t) => <option key={t.id} value={t.id}>{trackLabel(t)}</option>)}
+                    </select>
+                  </label>
+                )}
+              </div>
+            )}
           </div>
         )}
         {issue && (
@@ -249,8 +352,43 @@ export function WatchView({ channelId }: { channelId: string }) {
             {dl && dl.pct < 100 && <span style={{ color: '#c7c0b5', fontSize: 12 }}>· {dl.pct}%</span>}
           </div>
         )}
+        {searchOpen && (
+          <div style={{ position: 'absolute', inset: 0, zIndex: 5, background: 'rgba(14,13,12,.97)', display: 'flex', flexDirection: 'column', animation: 'ovIn .2s ease' }}>
+            <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 10, padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,.08)' }}>
+              <div className="field" style={{ flex: 1, padding: '10px 14px', background: 'rgba(255,255,255,.06)', borderColor: 'rgba(255,255,255,.14)' }}>
+                <span style={{ color: '#c7c0b5', display: 'flex' }}><Search size={15} /></span>
+                <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Название фильма…" onKeyDown={(e) => { if (e.key === 'Enter') runSearch() }} style={{ color: '#fff' }} />
+              </div>
+              <button className="accent-btn no-drag" onClick={runSearch} disabled={searching} style={{ borderRadius: 12, padding: '10px 18px', fontWeight: 700, opacity: searching ? 0.6 : 1 }}>{searching ? 'Ищем…' : 'Найти'}</button>
+              <button className="ib no-drag" onClick={() => setSearchOpen(false)} title="Закрыть" style={{ width: 38, height: 38, color: '#c7c0b5' }}><X size={18} /></button>
+            </div>
+            <div style={{ flex: 1, overflow: 'auto', padding: '8px 10px' }}>
+              {searching && <div style={{ textAlign: 'center', color: '#c7c0b5', padding: '34px 0' }}><Loader2 size={28} style={{ animation: 'spin 1s linear infinite' }} /></div>}
+              {!searching && searchErr && <div style={{ textAlign: 'center', color: '#d98a82', padding: '34px 18px', fontSize: 13, lineHeight: 1.5 }}>{searchErr}</div>}
+              {!searching && !searchErr && !results && <div style={{ textAlign: 'center', color: '#8a847a', padding: '34px 18px', fontSize: 13 }}>Введите название и нажмите «Найти».</div>}
+              {!searching && !searchErr && results && results.length === 0 && <div style={{ textAlign: 'center', color: '#8a847a', padding: '34px 18px', fontSize: 13 }}>Ничего не найдено. Попробуй другое название.</div>}
+              {!searching && !searchErr && results?.map((r, i) => (
+                <button key={i} className="wresult no-drag" onClick={() => pickResult(r)} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', border: 'none', background: 'transparent', color: '#e9e3d8', cursor: 'pointer', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.title}</div>
+                    <div style={{ fontSize: 11.5, color: '#8a847a', marginTop: 2, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                      <span>{fmtSize(r.sizeBytes)}</span>
+                      <span style={{ color: r.seeders > 0 ? '#5cbf86' : '#8a847a' }}>↑ {r.seeders}</span>
+                      <span>↓ {r.leechers}</span>
+                      <span>{r.indexer}</span>
+                    </div>
+                  </div>
+                  {r.webPlayable
+                    ? <span style={{ fontSize: 11, fontWeight: 700, color: '#5cbf86', background: 'rgba(92,191,134,.13)', borderRadius: 6, padding: '2px 8px', flex: 'none' }}>mp4</span>
+                    : <span title="нужен mpv" style={{ fontSize: 11, fontWeight: 700, color: '#d9b25a', background: 'rgba(217,178,90,.13)', borderRadius: 6, padding: '2px 8px', flex: 'none', maxWidth: 120, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.codecNote ?? 'mpv'}</span>}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
       <div style={{ flex: 'none', display: 'flex', gap: 10, padding: '12px 16px', borderTop: '1px solid var(--border)', alignItems: 'center' }}>
+        <button className="pill no-drag" onClick={() => { setSearchOpen(true); setSearchErr(null) }} title="Поиск по названию" style={{ padding: '10px 14px', fontWeight: 600 }}><Search size={15} /> Поиск</button>
         <div className="field" style={{ flex: 1, padding: '10px 14px' }}>
           <span style={{ color: 'var(--text-3)', display: 'flex' }}><Link2 size={15} /></span>
           <input value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="https://… (mp4) или magnet:…" onKeyDown={(e) => { if (e.key === 'Enter') loadUrl() }} />
