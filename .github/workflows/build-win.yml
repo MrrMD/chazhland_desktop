@@ -1,0 +1,82 @@
+name: Build Windows
+
+# Сборка Windows-дистрибутива (zip, x64) прямо на windows-раннере GitHub.
+# Зачем именно на Windows, а не кросс-сборкой с mac: нативный модуль node-datachannel
+# (WebRTC для торрент-просмотра) ставится `npm ci` под win32-x64 и работает в Electron
+# (N-API, пересборка не нужна). mpv.exe/yt-dlp.exe подтягиваются здесь же — их не держим в git.
+#
+# Где брать готовый билд:
+#  - любой push в main / ручной запуск → артефакт "chazhland-win-x64" на странице запуска;
+#  - push тега vX.Y.Z → плюс GitHub Release с прикреплённым zip (постоянная ссылка для скачивания).
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+concurrency:
+  group: build-win-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # нужно для создания Release по тегу
+
+jobs:
+  build:
+    name: Build & package (windows)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch mpv + yt-dlp (для просмотра по ссылке/MKV)
+        shell: pwsh
+        continue-on-error: true   # не валим сборку, если зеркало бинарей недоступно — ядро всё равно соберётся
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $dir = "resources/mpv/win32-x64"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          # yt-dlp — стабильная ссылка latest
+          Invoke-WebRequest -Uri "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe" -OutFile "$dir/yt-dlp.exe"
+          # mpv — последний x86_64-сборки zhongfly/mpv-winbuild (имя ассета версионируется, ищем через API)
+          $headers = @{ "User-Agent" = "gh-actions"; "Authorization" = "Bearer $env:GH_TOKEN" }
+          $rel = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/zhongfly/mpv-winbuild/releases/latest"
+          $asset = $rel.assets | Where-Object { $_.name -match '^mpv-x86_64-\d.*\.7z$' } | Select-Object -First 1
+          if ($asset) {
+            Invoke-WebRequest -Headers @{ "User-Agent" = "gh-actions" } -Uri $asset.browser_download_url -OutFile mpv.7z
+            7z x mpv.7z -ompv-extract -y | Out-Null
+            $exe = Get-ChildItem -Path mpv-extract -Recurse -Filter mpv.exe | Select-Object -First 1
+            if ($exe) { Copy-Item $exe.FullName "$dir/mpv.exe" -Force }
+          }
+          Get-ChildItem $dir
+
+      - name: Build renderer + electron
+        run: npm run build
+
+      - name: Package Windows zip
+        run: npx --no-install electron-builder --win --publish never
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chazhland-win-x64
+          path: release/*.zip
+          if-no-files-found: error
+
+      - name: Publish GitHub Release (on tag)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*.zip
