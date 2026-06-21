@@ -4,6 +4,7 @@ import { api } from '@/lib/api'
 import { ws } from '@/lib/ws'
 import { toast } from '@/lib/toast'
 import { HttpError } from '@/lib/http'
+import { sfx } from '@/lib/sfx'
 import type { WatchAction, WatchState, WatchSourceKind, WatchSearchResult } from '@/lib/types'
 
 function srvMsg(e: HttpError): string | null {
@@ -13,6 +14,13 @@ function fmtSize(n: number): string {
   if (!n) return '—'
   const gb = n / 1073741824
   return gb >= 1 ? `${gb.toFixed(2)} ГБ` : `${(n / 1048576).toFixed(0)} МБ`
+}
+// page-хосты, которые резолвит yt-dlp (зеркалит backend SsrfGuard.link-allowed-hosts) → kind=LINK
+function isLinkHost(text: string): boolean {
+  try {
+    const h = new URL(text).hostname.replace(/^www\./, '').toLowerCase()
+    return /(^|\.)(youtube\.com|youtu\.be|youtube-nocookie\.com|vk\.com|vkvideo\.ru|rutube\.ru|ok\.ru|dzen\.ru|my\.mail\.ru|vimeo\.com)$/.test(h)
+  } catch { return false }
 }
 function trackLabel(t: MpvTrack): string {
   const parts: string[] = []
@@ -30,7 +38,7 @@ export function WatchView({ channelId }: { channelId: string }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const remote = useRef<WatchState | null>(null)
   const loadedKey = useRef<string | null>(null) // что загружено в активный плеер
-  const resolved = useRef<{ key: string; url: string | null; player: Player } | null>(null)
+  const resolved = useRef<{ key: string; url: string | null; player: Player; link?: boolean } | null>(null)
   const issueRef = useRef<Issue | null>(null)
   const torrentToken = useRef<string | null>(null)
   const applyGen = useRef(0)
@@ -109,13 +117,23 @@ export function WatchView({ channelId }: { channelId: string }) {
       }
       return
     }
+    // LINK (YouTube/VK/Rutube/…): резолвит mpv+yt-dlp, SSRF-проверка page-URL в main
+    const pageUrl = s.source?.url ?? s.url
+    if (typeof window.chazh?.mpvLoadLink !== 'function' || !pageUrl) {
+      await stopTorrentIfAny(); await stopMpvIfAny()
+      issueRef.current = { kind: 'link' } // старый клиент без моста или нет ссылки
+      resolved.current = { key, url: null, player: 'video' }
+      return
+    }
     await stopTorrentIfAny(); await stopMpvIfAny()
-    issueRef.current = { kind: 'link' }
-    resolved.current = { key, url: null, player: 'video' }
+    issueRef.current = null
+    resolved.current = { key, url: pageUrl, player: 'mpv', link: true }
   }
 
-  async function apply(s: WatchState) {
+  async function apply(s: WatchState, opts?: { announce?: boolean }) {
     const gen = ++applyGen.current
+    // «showtime» — только когда новый источник прилетел по WS (announce), а не при открытии канала
+    if (opts?.announce && s.url && sourceKey(s) !== loadedKey.current) sfx.watchStart()
     remote.current = s
     setState(s)
     if (!s.url) {
@@ -139,7 +157,13 @@ export function WatchView({ channelId }: { channelId: string }) {
       if (r.key !== loadedKey.current) {
         loadedKey.current = r.key
         mpvSuppressUntil.current = Date.now() + 1500
-        await window.chazh?.mpvLoad({ url: r.url, paused: s.paused, start: effectivePos(s) })
+        const res = r.link
+          ? await window.chazh?.mpvLoadLink({ url: r.url, paused: s.paused, start: effectivePos(s) })
+          : await window.chazh?.mpvLoad({ url: r.url, paused: s.paused, start: effectivePos(s) })
+        if (res && !res.ok) { // SSRF-отказ / битая ссылка
+          mpvActive.current = false; setMpvMode(false); loadedKey.current = null
+          issueRef.current = { kind: 'failed', msg: res.error }; setIssue(issueRef.current)
+        }
         return
       }
       mpvSuppressUntil.current = Date.now() + 800
@@ -178,7 +202,7 @@ export function WatchView({ channelId }: { channelId: string }) {
     issueRef.current = null; mpvActive.current = false; mpvPos.current = 0
     setIssue(null); setBuffering(false); setMpvMode(false); setState(null)
     api.watchState(channelId).then((s) => { if (alive && s) apply(s) }).catch(() => {})
-    const off = ws.onWatch(channelId, (s) => { if (alive) apply(s) })
+    const off = ws.onWatch(channelId, (s) => { if (alive) apply(s, { announce: true }) })
     const offProg = window.chazh?.onTorrentProgress?.((p) => {
       if (!alive || !torrentToken.current || p.token !== torrentToken.current) return
       setDl({ pct: Math.round((p.progress ?? 0) * 100), peers: p.numPeers ?? 0 })
@@ -231,6 +255,7 @@ export function WatchView({ channelId }: { channelId: string }) {
     let req: { kind: WatchSourceKind; url?: string; infoHash?: string }
     if (/^magnet:\?/i.test(text)) req = { kind: 'TORRENT', url: text }
     else if (/^[0-9a-fA-F]{40}$/.test(text) || /^[A-Za-z2-7]{32}$/.test(text)) req = { kind: 'TORRENT', infoHash: text }
+    else if (isLinkHost(text)) req = { kind: 'LINK', url: text }
     else req = { kind: 'DIRECT', url: text }
     try { await apply(await api.setWatchSource(channelId, req)) } catch { toast.error('Не удалось загрузить источник') }
   }
@@ -275,7 +300,7 @@ export function WatchView({ channelId }: { channelId: string }) {
   const issueText: Record<Issue['kind'], { title: string; sub: string }> = {
     codec: { title: 'Формат пока не поддерживается', sub: 'mp4-раздачи играются в окне. Для MKV/HEVC нужен mpv — установи его (brew install mpv / winget install mpv) и перезапусти.' },
     failed: { title: 'Не удалось загрузить', sub: (issue?.msg ?? 'Возможно, нет раздающих. Попробуй другую раздачу.') },
-    link: { title: 'Ссылки на страницы пока не поддерживаются', sub: 'Появятся позже (yt-dlp + mpv).' },
+    link: { title: 'Ссылка не поддерживается этой версией', sub: 'Обнови клиент — для YouTube/VK нужен встроенный yt-dlp+mpv (установи mpv и yt-dlp).' },
     nobridge: { title: 'Движок не загружен', sub: 'Полностью перезапусти приложение (npm run dev).' },
   }
   const showVideo = !!state?.url && !issue && !buffering && !mpvMode
@@ -391,7 +416,7 @@ export function WatchView({ channelId }: { channelId: string }) {
         <button className="pill no-drag" onClick={() => { setSearchOpen(true); setSearchErr(null) }} title="Поиск по названию" style={{ padding: '10px 14px', fontWeight: 600 }}><Search size={15} /> Поиск</button>
         <div className="field" style={{ flex: 1, padding: '10px 14px' }}>
           <span style={{ color: 'var(--text-3)', display: 'flex' }}><Link2 size={15} /></span>
-          <input value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="https://… (mp4) или magnet:…" onKeyDown={(e) => { if (e.key === 'Enter') loadUrl() }} />
+          <input value={urlInput} onChange={(e) => setUrlInput(e.target.value)} placeholder="ссылка mp4 · magnet · YouTube/VK…" onKeyDown={(e) => { if (e.key === 'Enter') loadUrl() }} />
         </div>
         <button className="accent-btn no-drag" onClick={loadUrl} style={{ borderRadius: 12, padding: '10px 18px', fontWeight: 700 }}>Загрузить</button>
         {state?.url && <button className="pill no-drag" onClick={stop} style={{ padding: '10px 14px', fontWeight: 600 }}>Стоп</button>}

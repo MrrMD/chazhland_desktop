@@ -116,7 +116,7 @@ export function VoiceSettingsModal({ onClose }: { onClose: () => void }) {
         <Hint>{s.micThreshold === 0 ? 'Гейт выключен — микрофон передаёт всегда.' : 'Говорите: полоска должна переходить за метку. Ниже метки микрофон молчит. Действует в режиме голосовой активации.'}</Hint>
       </Section>
       <Section label="Звуки интерфейса">
-        <Toggle label="Звуки действий (мут, демонстрация, вход/выход)" on={sounds} onClick={() => { const v = !sounds; sfx.setEnabled(v); setSounds(v); if (v) sfx.micOn() }} />
+        <Toggle label="Звуки действий и уведомлений (мут, вход/выход, упоминания, ЛС)" on={sounds} onClick={() => { const v = !sounds; sfx.setEnabled(v); setSounds(v); if (v) sfx.micOn() }} />
         <Toggle label="Слышать саундпад других" on={!s.soundboardMuted} onClick={() => { const muted = !s.soundboardMuted; voice.setSoundboardMuted(muted); setS((p) => ({ ...p, soundboardMuted: muted })) }} />
       </Section>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>

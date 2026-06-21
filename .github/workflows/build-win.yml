@@ -1,17 +1,19 @@
 name: Build Windows
 
-# Сборка Windows-дистрибутива (zip, x64) прямо на windows-раннере GitHub.
+# Сборка Windows-дистрибутива на windows-раннере GitHub из ветки dev (рабочая ветка).
 # Зачем именно на Windows, а не кросс-сборкой с mac: нативный модуль node-datachannel
 # (WebRTC для торрент-просмотра) ставится `npm ci` под win32-x64 и работает в Electron
 # (N-API, пересборка не нужна). mpv.exe/yt-dlp.exe подтягиваются здесь же — их не держим в git.
 #
+# Выпускаем СРАЗУ установщик NSIS (готов к установке) + портативный zip.
 # Где брать готовый билд:
-#  - любой push в main / ручной запуск → артефакт "chazhland-win-x64" на странице запуска;
-#  - push тега vX.Y.Z → плюс GitHub Release с прикреплённым zip (постоянная ссылка для скачивания).
+#  - любой push в dev / ручной запуск → артефакт "chazhland-win-x64" на странице запуска
+#    (внутри: "chazhland Setup X.Y.Z.exe" — установщик, и chazhland-X.Y.Z-win.zip — портативный);
+#  - push тега vX.Y.Z → плюс GitHub Release с прикреплёнными установщиком и zip (постоянная ссылка).
 
 on:
   push:
-    branches: [ main ]
+    branches: [ dev ]
     tags: [ 'v*' ]
   workflow_dispatch:
 
@@ -65,18 +67,22 @@ jobs:
       - name: Build renderer + electron
         run: npm run build
 
-      - name: Package Windows zip
-        run: npx --no-install electron-builder --win --publish never
+      - name: Package Windows installer + zip
+        run: npx --no-install electron-builder --win nsis zip --publish never
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: chazhland-win-x64
-          path: release/*.zip
+          path: |
+            release/*.exe
+            release/*.zip
           if-no-files-found: error
 
       - name: Publish GitHub Release (on tag)
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: release/*.zip
+          files: |
+            release/*.exe
+            release/*.zip

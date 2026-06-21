@@ -66,8 +66,10 @@ declare global {
     torrentSelftest: () => Promise<{ ok: boolean; nodeVersion?: string; webtorrent?: boolean; ready?: boolean; error?: string }>
     /** Подписка на прогресс загрузки торрента; возвращает функцию отписки. */
     onTorrentProgress: (cb: (p: TorrentProgress) => void) => () => void
-    /** Плеер mpv (MKV/HEVC и пр.): загрузить URL-поток. */
+    /** Плеер mpv (MKV/HEVC и пр.): загрузить URL-поток (доверенный, напр. loopback-поток торрента). */
     mpvLoad: (p: { url: string; paused?: boolean; start?: number }) => Promise<{ ok: boolean; error?: string }>
+    /** LINK-источник (YouTube/VK/…): mpv+yt-dlp с SSRF-проверкой page-URL в main. */
+    mpvLoadLink: (p: { url: string; paused?: boolean; start?: number }) => Promise<{ ok: boolean; error?: string }>
     mpvPause: (paused: boolean) => Promise<{ ok: boolean }>
     mpvSeek: (sec: number) => Promise<{ ok: boolean }>
     /** Выбрать аудиодорожку (id из tracks) или false=отключить. */

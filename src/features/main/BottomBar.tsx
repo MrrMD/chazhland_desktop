@@ -43,7 +43,7 @@ export function BottomBar(p: Props) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, justifySelf: 'start', position: 'relative' }}>
         <button className="pill no-drag" onClick={p.onOpenChannels} style={{ padding: '10px 15px', fontWeight: 600, fontSize: 13.5, position: 'relative' }}>
           <LayoutGrid size={16} /> Сменить канал
-          {p.unreadTotal > 0 && <span style={{ position: 'absolute', top: -7, right: -7, background: 'var(--danger)', color: '#fff', borderRadius: 30, fontSize: 10, fontWeight: 700, padding: '1px 6px', border: '2px solid var(--surface)' }}>{p.unreadTotal}</span>}
+          {p.unreadTotal > 0 && <span key={p.unreadTotal} style={{ position: 'absolute', top: -7, right: -7, background: 'var(--danger)', color: '#fff', borderRadius: 30, fontSize: 10, fontWeight: 700, padding: '1px 6px', border: '2px solid var(--surface)', animation: 'badgePop .3s ease' }}>{p.unreadTotal}</span>}
         </button>
         <button className="pill no-drag" onClick={() => setMenuOpen((v) => !v)} title="Настройки" style={{ width: 46, height: 46, justifyContent: 'center', color: 'var(--text-2)' }}><Settings size={18} /></button>
         {menuOpen && (

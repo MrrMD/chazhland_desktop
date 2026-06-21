@@ -29,7 +29,7 @@ export interface Member {
   joinedAt: string
   soundboardDisabled?: boolean // саундпад выключен этому участнику (даже админу)
   roleIds?: string[]           // назначенные кастомные роли (id)
-  statusMessage?: string | null // кастомный статус «о себе» (бэк MemberResponse пока его не отдаёт)
+  statusMessage?: string | null // кастомный статус «о себе» (приходит из MemberResponse)
 }
 
 // права как имена битов (бэк: Permission enum)

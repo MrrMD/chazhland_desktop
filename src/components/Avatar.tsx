@@ -25,7 +25,7 @@ export function presenceColor(s: Presence): string {
 }
 
 export function Avatar({
-  name, src, size = 40, presence, dim = false, ringColor,
+  name, src, size = 40, presence, dim = false, ringColor, speaking = false,
 }: {
   name: string
   src?: string | null
@@ -33,6 +33,7 @@ export function Avatar({
   presence?: Presence
   dim?: boolean
   ringColor?: string
+  speaking?: boolean // активный спикер — пульсирующее зелёное кольцо (keyframe ring)
 }) {
   const dot = Math.max(10, Math.round(size * 0.3))
   return (
@@ -42,7 +43,9 @@ export function Avatar({
           width: size, height: size, borderRadius: '50%', background: gradFor(name),
           color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontWeight: 700, fontSize: Math.round(size * 0.38), overflow: 'hidden',
-          boxShadow: ringColor ? `0 0 0 2px ${ringColor}` : undefined,
+          // говорит → пульс-кольцо (ring анимирует box-shadow); иначе статичное кольцо ringColor
+          boxShadow: !speaking && ringColor ? `0 0 0 2px ${ringColor}` : undefined,
+          animation: speaking ? 'ring 1.5s ease-out infinite' : undefined,
         }}
       >
         {src
@@ -54,6 +57,7 @@ export function Avatar({
           style={{
             position: 'absolute', right: -1, bottom: -1, width: dot, height: dot, borderRadius: '50%',
             background: presenceColor(presence), border: '2.5px solid var(--surface)',
+            transition: 'background .3s ease', // плавная смена цвета статуса (online↔idle↔dnd)
           }}
         />
       )}

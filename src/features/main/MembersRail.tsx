@@ -65,9 +65,9 @@ function VoiceRow({ p, expanded, self, member }: { p: VoiceParticipant; expanded
   const pct = Math.round(p.volume * 100)
   const name = member?.username || p.name // ник из списка участников приоритетнее имени из токена LiveKit
   return (
-    <div>
+    <div style={{ animation: 'fadeIn .25s ease' }}>
       <div className="member-row" style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 6 }}>
-        <Avatar name={name} src={member?.avatarUrl} size={38} ringColor={p.speaking ? 'var(--green)' : undefined} />
+        <Avatar name={name} src={member?.avatarUrl} size={38} speaking={p.speaking} />
         {expanded && <div style={{ fontWeight: 600, fontSize: 13.5, color: p.speaking ? 'var(--green)' : 'var(--text)', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</div>}
         {expanded && (
           <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>

@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ws, type WsStatus } from '@/lib/ws'
+import { sfx } from '@/lib/sfx'
 
 // Глобальный баннер состояния соединения (global chrome): reconnect / оффлайн.
 export function ConnectionBanner() {
@@ -16,13 +17,26 @@ export function ConnectionBanner() {
   }, [])
 
   const offline = !online
+  // звук связи: «отключение» — только если до этого были онлайн (без ложного бипа на старте);
+  // «восстановление» — только если реально падали
+  const everOnline = useRef(false)
+  const wasDown = useRef(false)
+  useEffect(() => {
+    if (status === 'online' && !offline) {
+      if (wasDown.current) { wasDown.current = false; sfx.reconnect() }
+      everOnline.current = true
+    } else if (everOnline.current && !wasDown.current) {
+      wasDown.current = true; sfx.disconnect()
+    }
+  }, [status, offline])
+
   if (status === 'online' && !offline) return null
 
   const text = offline ? 'Нет соединения с сервером' : 'Переподключение…'
   return (
     <div style={{
       flex: 'none', height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-      fontSize: 12.5, fontWeight: 600,
+      fontSize: 12.5, fontWeight: 600, animation: 'bannerIn .25s ease',
       background: offline ? 'var(--danger-tint)' : 'var(--warn-tint)',
       color: offline ? 'var(--danger)' : 'var(--warn)',
     }}>

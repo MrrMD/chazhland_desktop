@@ -1,5 +1,7 @@
 // Глобальные всплывающие уведомления (успех/ошибка/инфо). Синглтон — вызывается из любого
 // места (в т.ч. из не-React модулей: api/voice), UI подписывается через components/Toaster.
+import { sfx } from './sfx'
+
 export type ToastKind = 'ok' | 'error' | 'info'
 export interface Toast { id: number; kind: ToastKind; text: string }
 
@@ -21,7 +23,7 @@ class Toaster {
     window.setTimeout(() => this.dismiss(id), ms)
   }
   ok(t: string) { this.push('ok', t) }
-  error(t: string) { this.push('error', t) }
+  error(t: string) { sfx.error(); this.push('error', t) }
   info(t: string) { this.push('info', t) }
   dismiss(id: number) { this.items = this.items.filter((t) => t.id !== id); this.emit() }
 }

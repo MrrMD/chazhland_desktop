@@ -2,16 +2,32 @@
 // (или MPV_PATH) и играем HTTP-поток торрента, управляя по JSON-IPC (loadfile/pause/seek; наблюдаем
 // time-pos/pause/eof). Пока mpv открывается ОТДЕЛЬНЫМ окном — встраивание в окно Electron (--wid) и
 // бандл бинаря под Windows — следующий шаг. Безопасность: --no-config (чужой конфиг не подцепит run/shell).
-import { ipcMain, type BrowserWindow } from 'electron'
+import { app, ipcMain, type BrowserWindow } from 'electron'
 import { spawn, type ChildProcess } from 'node:child_process'
 import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
+import dns from 'node:dns'
+
+// Вендоренный бинарь (mpv.exe / yt-dlp.exe): прод — extraResources → resourcesPath/mpv/;
+// dev — <appRoot>/resources/mpv/<platform>-<arch>/. Под Windows бинари кладёт тестер (см. resources/mpv/README).
+function vendoredBin(name: string): string | null {
+  const exe = process.platform === 'win32' ? `${name}.exe` : name
+  const plat = `${process.platform}-${process.arch}`
+  const candidates = [
+    path.join(process.resourcesPath || '', 'mpv', exe),                          // упакованное приложение
+    path.join(process.env.APP_ROOT || app.getAppPath(), 'resources', 'mpv', plat, exe), // dev
+  ]
+  for (const c of candidates) { try { if (c && fs.existsSync(c)) return c } catch { /* */ } }
+  return null
+}
 
 function mpvBinary(): string {
   if (process.env.MPV_PATH) return process.env.MPV_PATH
+  const vend = vendoredBin('mpv')
+  if (vend) return vend
   // ⚠️ GUI-приложения на macOS наследуют урезанный PATH БЕЗ /opt/homebrew/bin (Apple Silicon) и
   // /usr/local/bin (Intel) — поэтому spawn('mpv') не находит brew-mpv. Ищем бинарь в реальных местах.
   const candidates = [
@@ -19,7 +35,43 @@ function mpvBinary(): string {
     'C:\\Program Files\\mpv\\mpv.exe', 'C:\\Program Files\\mpv.net\\mpvnet.exe',
   ]
   for (const c of candidates) { try { if (fs.existsSync(c)) return c } catch { /* */ } }
-  return 'mpv' // запасной вариант — из PATH (вендоринг бинаря под Windows — позже)
+  return 'mpv' // запасной вариант — из PATH
+}
+
+// Путь к yt-dlp для mpv ytdl_hook (LINK-источники: YouTube/VK/…). null → mpv поищет в PATH сам.
+function ytDlpPath(): string | null {
+  if (process.env.YTDLP_PATH) return process.env.YTDLP_PATH
+  const vend = vendoredBin('yt-dlp')
+  if (vend) return vend
+  for (const c of ['/opt/homebrew/bin/yt-dlp', '/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp']) {
+    try { if (fs.existsSync(c)) return c } catch { /* */ }
+  }
+  return null
+}
+
+// SSRF-защита для LINK: page-URL приходит из комнаты (недоверенный) → пускаем ТОЛЬКО https на публичный хост.
+function isBlockedIp(ip: string): boolean {
+  const v = ip.toLowerCase()
+  if (v === '::1' || v.startsWith('fe80:') || v.startsWith('fc') || v.startsWith('fd')) return true // loopback/link-local/ULA v6
+  const m = v.replace(/^::ffff:/, '').match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/)
+  if (!m) return false
+  const [a, b] = [Number(m[1]), Number(m[2])]
+  if (a === 127 || a === 10 || a === 0) return true                  // loopback / private / «this host»
+  if (a === 169 && b === 254) return true                            // link-local + metadata 169.254.169.254
+  if (a === 172 && b >= 16 && b <= 31) return true                   // private
+  if (a === 192 && b === 168) return true                            // private
+  if (a === 100 && b >= 64 && b <= 127) return true                  // CGNAT
+  return false
+}
+async function validateLinkUrl(raw: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  let u: URL
+  try { u = new URL(raw) } catch { return { ok: false, error: 'Битая ссылка' } }
+  if (u.protocol !== 'https:') return { ok: false, error: 'Разрешены только https-ссылки' }
+  try {
+    const addrs = await dns.promises.lookup(u.hostname, { all: true })
+    if (addrs.some((a) => isBlockedIp(a.address))) return { ok: false, error: 'Недопустимый адрес (внутренний)' }
+  } catch { return { ok: false, error: 'Не удалось разрешить хост' } }
+  return { ok: true }
 }
 
 function ipcAddress(): string {
@@ -130,12 +182,15 @@ async function load(url: string, paused: boolean, startSec: number): Promise<{ o
   await stop()
   loadingFlag = true; pausedForCache = false; lastSentPause = null; durationSec = 0
   const address = ipcAddress()
+  const ytdl = ytDlpPath()
   const args = [
     '--no-config', '--no-terminal', '--idle=yes', '--force-window=yes', '--keep-open=yes',
     `--input-ipc-server=${address}`,
     `--pause=${paused ? 'yes' : 'no'}`,
     `--start=${Math.max(0, Math.floor(startSec))}`,
     '--title=chazhland · кинозал',
+    // LINK-источники: ytdl_hook резолвит page-URL (YouTube/VK/…). Для loopback-потока торрента не активируется.
+    ...(ytdl ? [`--script-opts=ytdl_hook-ytdl_path=${ytdl}`] : []),
     url,
   ]
   let proc: ChildProcess
@@ -176,6 +231,11 @@ async function stop(): Promise<void> {
 export function registerMpvIpc(getWin: () => BrowserWindow | null): void {
   getWindow = getWin
   ipcMain.handle('mpv:load', (_e, p: { url: string; paused?: boolean; start?: number }) => load(p.url, !!p?.paused, p?.start ?? 0))
+  ipcMain.handle('mpv:loadLink', async (_e, p: { url: string; paused?: boolean; start?: number }) => {
+    const v = await validateLinkUrl(p?.url ?? '')        // недоверенный page-URL из комнаты — SSRF-гейт перед mpv/yt-dlp
+    if (!v.ok) return { ok: false, error: v.error }
+    return load(p.url, !!p?.paused, p?.start ?? 0)
+  })
   ipcMain.handle('mpv:pause', (_e, paused: boolean) => { setPaused(!!paused); return { ok: true } })
   ipcMain.handle('mpv:seek', (_e, sec: number) => { seek(typeof sec === 'number' ? sec : 0); return { ok: true } })
   ipcMain.handle('mpv:setAudio', (_e, id: number | false) => { setTrack('aid', id); return { ok: true } })

@@ -19,6 +19,7 @@ import { AdminScreen } from '@/features/admin/AdminScreen'
 import { ws } from '@/lib/ws'
 import { toast } from '@/lib/toast'
 import { mentionsUser } from '@/lib/mentions'
+import { sfx } from '@/lib/sfx'
 import { Search, Pin, Bell, Users, Hash, Volume2, Play, AtSign } from 'lucide-react'
 
 const TYPE_ICON: Record<ChannelType, React.ReactNode> = { TEXT: <Hash size={18} />, VOICE: <Volume2 size={18} />, WATCH: <Play size={18} />, DM: <AtSign size={18} /> }
@@ -102,6 +103,7 @@ export function MainWindow() {
   const treeRef = useRef(tree); useEffect(() => { treeRef.current = tree }, [tree])
   const dmsRef = useRef(dms); useEffect(() => { dmsRef.current = dms }, [dms])
   const userRef = useRef(user); useEffect(() => { userRef.current = user }, [user])
+  const messagesRef = useRef(messages); messagesRef.current = messages // свежие сообщения для WS-колбэков (звук реакции)
 
   useEffect(() => {
     api.serverTree().then((t) => {
@@ -158,6 +160,7 @@ export function MainWindow() {
         const mid = e.messageId, emoji = e.emoji
         if (!mid || !emoji || e.userId === user.id) return // своё уже учтено оптимистично (см. react())
         const add = e.type === 'REACTION_ADDED'
+        if (add && messagesRef.current.find((x) => x.id === mid)?.authorId === user.id) sfx.reaction() // отреагировали на твоё сообщение
         setMessages((ms) => ms.map((m) => {
           if (m.id !== mid) return m
           const rs = m.reactions.slice()
@@ -189,6 +192,7 @@ export function MainWindow() {
       // Но упоминание учитываем (бейдж), чтобы не потерять его: сбросится, когда вернёмся к «хвосту».
       if (e.type === 'MESSAGE_CREATED' && detachedRef.current) {
         if (m.authorId !== userRef.current.id && mentionsUser(m.content, userRef.current.username)) {
+          sfx.mention() // упомянули, пока мы листаем историю этого же канала
           setReadStates((rs) => rs.map((r) => (r.channelId === currentId ? { ...r, mentionCount: r.mentionCount + 1 } : r)))
         }
         return
@@ -230,6 +234,7 @@ export function MainWindow() {
       setUnread((u) => (u.has(id) ? u : new Set(u).add(id)))
       const isDm = dmsRef.current.some((d) => d.id === id)
       if (isDm || mentionsUser(m.content, userRef.current.username)) {
+        isDm ? sfx.dm() : sfx.mention() // фоновый канал/ЛС — звук-пинг (в дополнение к нативному уведомлению)
         setReadStates((rs) => {
           const i = rs.findIndex((r) => r.channelId === id)
           if (i >= 0) return rs.map((r, j) => (j === i ? { ...r, mentionCount: r.mentionCount + 1 } : r))

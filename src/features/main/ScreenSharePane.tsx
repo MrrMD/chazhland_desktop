@@ -17,7 +17,7 @@ function ScreenTile({ track, name, onClick }: { track: RemoteTrack; name: string
   }, [track])
   return (
     <div className="no-drag" onClick={onClick} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      style={{ position: 'relative', minHeight: 0, borderRadius: 14, overflow: 'hidden', background: '#000', cursor: 'pointer', border: `2px solid ${hover ? 'var(--accent)' : 'transparent'}`, transition: 'border-color .12s' }}>
+      style={{ position: 'relative', minHeight: 0, borderRadius: 14, overflow: 'hidden', background: '#000', cursor: 'pointer', border: `2px solid ${hover ? 'var(--accent)' : 'transparent'}`, transition: 'border-color .12s', animation: 'fadeIn .25s ease' }}>
       <video ref={ref} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
       <div style={{ position: 'absolute', left: 10, bottom: 10, display: 'flex', alignItems: 'center', gap: 7, background: 'rgba(0,0,0,.55)', borderRadius: 24, padding: '5px 11px', maxWidth: 'calc(100% - 20px)' }}>
         <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#e0392f', flex: 'none', animation: 'live 1.6s infinite' }} />

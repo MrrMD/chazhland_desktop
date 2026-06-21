@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('chazh', {
   },
   // плеер mpv (для MKV/HEVC, что не тянет <video>): играет HTTP-поток торрента отдельным окном
   mpvLoad: (p: { url: string; paused?: boolean; start?: number }) => ipcRenderer.invoke('mpv:load', p),
+  mpvLoadLink: (p: { url: string; paused?: boolean; start?: number }) => ipcRenderer.invoke('mpv:loadLink', p),
   mpvPause: (paused: boolean) => ipcRenderer.invoke('mpv:pause', paused),
   mpvSeek: (sec: number) => ipcRenderer.invoke('mpv:seek', sec),
   mpvSetAudio: (id: number | false) => ipcRenderer.invoke('mpv:setAudio', id),

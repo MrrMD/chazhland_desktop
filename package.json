@@ -44,7 +44,13 @@
           ]
         }
       ],
-      "icon": "build/icon.png"
+      "icon": "build/icon.png",
+      "extraResources": [
+        {
+          "from": "resources/mpv/win32-x64",
+          "to": "mpv"
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
