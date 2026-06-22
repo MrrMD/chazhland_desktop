@@ -13,7 +13,8 @@
     "icons": "node scripts/gen-icons.mjs",
     "dist": "npm run build && electron-builder",
     "dist:win": "npm run build && electron-builder --win",
-    "dist:mac": "npm run build && electron-builder --mac"
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux"
   },
   "build": {
     "appId": "ru.chazhland.desktop",
@@ -63,6 +64,13 @@
       ],
       "icon": "build/icon.png",
       "identity": null
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "build/icon.png",
+      "category": "Network"
     }
   },
   "dependencies": {

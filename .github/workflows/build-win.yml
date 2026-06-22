@@ -1,15 +1,18 @@
-name: Build Windows
+name: Build desktop
 
-# Сборка Windows-дистрибутива на windows-раннере GitHub из ветки dev (рабочая ветка).
-# Зачем именно на Windows, а не кросс-сборкой с mac: нативный модуль node-datachannel
-# (WebRTC для торрент-просмотра) ставится `npm ci` под win32-x64 и работает в Electron
-# (N-API, пересборка не нужна). mpv.exe/yt-dlp.exe подтягиваются здесь же — их не держим в git.
+# Сборка десктоп-дистрибутивов на раннерах GitHub из ветки dev (рабочая ветка).
+# Windows — на windows-раннере (NSIS-установщик + zip), Linux — на ubuntu-раннере (AppImage).
+# Нативный node-datachannel (WebRTC для торрент-просмотра) ставится `npm ci` под целевую ОС
+# и работает в Electron (N-API, пересборка не нужна).
 #
-# Выпускаем СРАЗУ установщик NSIS (готов к установке) + портативный zip.
 # Где брать готовый билд:
-#  - любой push в dev / ручной запуск → артефакт "chazhland-win-x64" на странице запуска
-#    (внутри: "chazhland Setup X.Y.Z.exe" — установщик, и chazhland-X.Y.Z-win.zip — портативный);
-#  - push тега vX.Y.Z → плюс GitHub Release с прикреплёнными установщиком и zip (постоянная ссылка).
+#  - push в dev / ручной запуск → артефакты на странице запуска:
+#      "chazhland-win-x64"   (Setup .exe — установщик, и .zip — портативный),
+#      "chazhland-linux-x64" (.AppImage — один файл, chmod +x и запуск);
+#  - push тега vX.Y.Z → GitHub Release со всеми файлами (постоянная ссылка).
+#
+# mpv/yt-dlp: на Windows вкладываются в сборку (скачиваются ниже); на Linux НЕ бандлятся —
+# там mpv ставится системно (apt install mpv yt-dlp), код берёт его из PATH.
 
 on:
   push:
@@ -18,17 +21,16 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: build-win-${{ github.ref }}
+  group: build-desktop-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: write   # нужно для создания Release по тегу
 
 jobs:
-  build:
+  windows:
     name: Build & package (windows)
     runs-on: windows-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -70,7 +72,7 @@ jobs:
       - name: Package Windows installer + zip
         run: npx --no-install electron-builder --win nsis zip --publish never
 
-      - name: Upload build artifact
+      - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:
           name: chazhland-win-x64
@@ -79,10 +81,47 @@ jobs:
             release/*.zip
           if-no-files-found: error
 
-      - name: Publish GitHub Release (on tag)
-        if: startsWith(github.ref, 'refs/tags/v')
+  linux:
+    name: Build & package (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer + electron
+        run: npm run build
+
+      - name: Package Linux AppImage
+        run: npx --no-install electron-builder --linux AppImage --publish never
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chazhland-linux-x64
+          path: release/*.AppImage
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [ windows, linux ]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Publish Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            release/*.exe
-            release/*.zip
+          files: dist/**/*
