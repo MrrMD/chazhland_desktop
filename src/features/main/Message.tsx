@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Reply, SmilePlus, Pencil, Ban, Download, X, Pin, File as FileIcon, Trash2, Copy, Mail, UserRound, MessageSquare } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Reply, SmilePlus, Pencil, Ban, Download, X, Pin, File as FileIcon, Trash2, Copy, Mail, UserRound, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Avatar, presenceColor } from '@/components/Avatar'
 import { toast } from '@/lib/toast'
 import { useEscape } from '@/lib/useEscape'
@@ -68,10 +68,19 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
   const [picker, setPicker] = useState<null | 'top' | 'bottom'>(null)
   const [popEmoji, setPopEmoji] = useState<string | null>(null) // эмодзи, по которому только что кликнули — для pop-анимации
   const [popNonce, setPopNonce] = useState(0)                   // меняем ключ пилюли, чтобы анимация перезапускалась на повторный клик
-  const [lightbox, setLightbox] = useState<string | null>(null)
+  const [lightbox, setLightbox] = useState<number | null>(null) // индекс открытой картинки в images
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)       // ПКМ-контекст-меню
   const [popover, setPopover] = useState<{ x: number; y: number } | null>(null)  // карточка профиля автора
-  useEscape(() => setLightbox(null), !!lightbox)
+  const images = m.attachments.filter((a) => a.contentType.startsWith('image/') && !!a.url)
+  function lbStep(d: number) { setLightbox((i) => (i === null ? i : (i + d + images.length) % images.length)) }
+  useEffect(() => {
+    if (lightbox === null) return
+    const h = (e: KeyboardEvent) => { if (e.key === 'ArrowRight') lbStep(1); else if (e.key === 'ArrowLeft') lbStep(-1) }
+    window.addEventListener('keydown', h)
+    return () => window.removeEventListener('keydown', h)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lightbox, images.length])
+  useEscape(() => setLightbox(null), lightbox !== null)
   useEscape(() => setPicker(null), !!picker)
   useEscape(() => setMenu(null), !!menu)
   useEscape(() => setPopover(null), !!popover)
@@ -176,10 +185,17 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
           )
         )}
 
-        {m.attachments.map((a, i) => <AttachmentView key={i} a={a} onOpen={() => setLightbox(a.url)} />)}
-        {lightbox && (
+        {m.attachments.map((a, i) => <AttachmentView key={i} a={a} onOpen={() => setLightbox(images.indexOf(a))} />)}
+        {lightbox !== null && images[lightbox] && (
           <div onClick={() => setLightbox(null)} style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 40, animation: 'ovIn .2s ease' }}>
-            <img src={lightbox} alt="" style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 10, objectFit: 'contain' }} />
+            <img src={images[lightbox].url} alt="" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 10, objectFit: 'contain' }} />
+            {images.length > 1 && (
+              <>
+                <button className="no-drag" onClick={(e) => { e.stopPropagation(); lbStep(-1) }} title="Назад" style={{ position: 'absolute', left: 24, top: '50%', transform: 'translateY(-50%)', width: 44, height: 44, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,.15)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronLeft size={22} /></button>
+                <button className="no-drag" onClick={(e) => { e.stopPropagation(); lbStep(1) }} title="Вперёд" style={{ position: 'absolute', right: 24, top: '50%', transform: 'translateY(-50%)', width: 44, height: 44, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,.15)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><ChevronRight size={22} /></button>
+                <div style={{ position: 'absolute', bottom: 22, left: '50%', transform: 'translateX(-50%)', color: '#fff', fontSize: 13, fontWeight: 600, background: 'rgba(0,0,0,.5)', borderRadius: 20, padding: '5px 13px' }}>{lightbox + 1} / {images.length}</div>
+              </>
+            )}
             <button className="no-drag" onClick={() => setLightbox(null)} title="Закрыть" style={{ position: 'absolute', top: 20, right: 24, width: 40, height: 40, borderRadius: 12, border: 'none', background: 'rgba(255,255,255,.15)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><X size={20} /></button>
           </div>
         )}

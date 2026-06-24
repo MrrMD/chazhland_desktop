@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Plus, Smile, Send, X } from 'lucide-react'
+import { Plus, Smile, Send, X, Type, Bold, Italic, Strikethrough, Code, EyeOff } from 'lucide-react'
 import { api } from '@/lib/api'
 import { toast } from '@/lib/toast'
 import { useEscape } from '@/lib/useEscape'
@@ -19,6 +19,7 @@ export function Composer({ channelName, onSend, onType, replyToName, onCancelRep
   const [text, setText] = useState('')
   const [pending, setPending] = useState<Pending[]>([])
   const [emojiOpen, setEmojiOpen] = useState(false)
+  const [fmtOpen, setFmtOpen] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const lastTyped = useRef(0)
   const fileRef = useRef<HTMLInputElement>(null)
@@ -26,6 +27,7 @@ export function Composer({ channelName, onSend, onType, replyToName, onCancelRep
   const pendingRef = useRef<Pending[]>([])
   pendingRef.current = pending
   useEscape(() => setEmojiOpen(false), emojiOpen)
+  useEscape(() => setFmtOpen(false), fmtOpen)
 
   // вставка эмодзи в позицию каретки (или в конец, если фокус потерян)
   function insertEmoji(em: string) {
@@ -35,6 +37,17 @@ export function Composer({ channelName, onSend, onType, replyToName, onCancelRep
     setText((t) => t.slice(0, s) + em + t.slice(e))
     setEmojiOpen(false)
     requestAnimationFrame(() => { const node = inputRef.current; if (node) { node.focus(); const pos = s + em.length; node.setSelectionRange(pos, pos) } })
+  }
+
+  // оборачивание выделения (или вставка маркеров с кареткой внутри) для тулбара форматирования
+  function wrapSel(before: string, after: string) {
+    const el = inputRef.current
+    const s = el?.selectionStart ?? text.length
+    const e = el?.selectionEnd ?? text.length
+    const sel = text.slice(s, e)
+    setText(text.slice(0, s) + before + sel + after + text.slice(e))
+    setFmtOpen(false)
+    requestAnimationFrame(() => { const n = inputRef.current; if (n) { n.focus(); const pos = sel ? s + before.length + sel.length + after.length : s + before.length; n.setSelectionRange(pos, pos) } })
   }
 
   // освобождаем objectURL превью при размонтировании
@@ -143,6 +156,21 @@ export function Composer({ channelName, onSend, onType, replyToName, onCancelRep
         <button type="button" className="ib no-drag" onClick={() => fileRef.current?.click()} style={{ width: 32, height: 32, borderRadius: 9, background: 'var(--surface-2)' }} title="Вложение"><Plus size={18} /></button>
         <input ref={inputRef} value={text} onChange={onChange} onPaste={onPaste} placeholder={`Написать в #${channelName}…`} style={{ fontSize: 14.5 }} />
         <span style={{ position: 'relative', display: 'flex' }}>
+          <button type="button" className="ib no-drag" onClick={() => setFmtOpen((v) => !v)} style={{ width: 32, height: 32, color: fmtOpen ? 'var(--accent)' : undefined }} title="Форматирование"><Type size={18} /></button>
+          {fmtOpen && (
+            <>
+              <div onClick={() => setFmtOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+              <div style={{ position: 'absolute', bottom: 'calc(100% + 10px)', right: 0, zIndex: 41, display: 'flex', gap: 2, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 14px 34px -12px var(--shadow)', padding: 4, animation: 'popIn .15s cubic-bezier(.22,.61,.36,1)', transformOrigin: 'bottom right' }}>
+                <FmtBtn title="Жирный" onClick={() => wrapSel('**', '**')}><Bold size={16} /></FmtBtn>
+                <FmtBtn title="Курсив" onClick={() => wrapSel('*', '*')}><Italic size={16} /></FmtBtn>
+                <FmtBtn title="Зачёркнутый" onClick={() => wrapSel('~~', '~~')}><Strikethrough size={16} /></FmtBtn>
+                <FmtBtn title="Моноширинный код" onClick={() => wrapSel('`', '`')}><Code size={16} /></FmtBtn>
+                <FmtBtn title="Спойлер" onClick={() => wrapSel('||', '||')}><EyeOff size={16} /></FmtBtn>
+              </div>
+            </>
+          )}
+        </span>
+        <span style={{ position: 'relative', display: 'flex' }}>
           <button type="button" className="ib no-drag" onClick={() => setEmojiOpen((v) => !v)} style={{ width: 32, height: 32, color: emojiOpen ? 'var(--accent)' : undefined }} title="Эмодзи"><Smile size={18} /></button>
           {emojiOpen && (
             <>
@@ -159,6 +187,10 @@ export function Composer({ channelName, onSend, onType, replyToName, onCancelRep
       </div>
     </form>
   )
+}
+
+function FmtBtn({ children, title, onClick }: { children: React.ReactNode; title: string; onClick: () => void }) {
+  return <button type="button" className="ib no-drag" onClick={onClick} title={title} style={{ width: 32, height: 32, borderRadius: 8 }}>{children}</button>
 }
 
 function Spinner() {

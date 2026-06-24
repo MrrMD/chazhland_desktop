@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react'
+import { Fragment, useState, type ReactNode } from 'react'
 import { MENTION_RE, IS_MENTION } from './mentions'
 
 // Лёгкий рендер форматирования сообщений БЕЗ библиотек и БЕЗ dangerouslySetInnerHTML:
@@ -16,6 +16,7 @@ const INLINE_SRC =
   '(`[^`\\n]+`)' +
   '|(\\*\\*[^\\n]+?\\*\\*)' +
   '|(~~[^\\n]+?~~)' +
+  '|(\\|\\|[^\\n]+?\\|\\|)' +
   '|((?<![\\p{L}\\p{N}])\\*(?!\\s)(?:\\*\\*[^\\n]+?\\*\\*|[^*\\n])+\\*(?![\\p{L}\\p{N}]))' +
   '|((?<![\\p{L}\\p{N}_])_(?!\\s)[^_\\n]+?_(?![\\p{L}\\p{N}_]))' +
   '|(https?://[^\\s<]+)'
@@ -41,13 +42,15 @@ function inlineNodes(text: string, key: () => number): ReactNode[] {
   let m: RegExpExecArray | null
   while ((m = re.exec(text))) {
     if (m.index > last) out.push(...mentionNodes(text.slice(last, m.index), key))
-    const [, code, bold, strike, italic1, italic2, link] = m
+    const [, code, bold, strike, spoiler, italic1, italic2, link] = m
     if (code) {
       out.push(<code key={key()} style={CODE_STYLE}>{code.slice(1, -1)}</code>)
     } else if (bold) {
       out.push(<strong key={key()}>{inlineNodes(bold.slice(2, -2), key)}</strong>)
     } else if (strike) {
       out.push(<s key={key()}>{inlineNodes(strike.slice(2, -2), key)}</s>)
+    } else if (spoiler) {
+      out.push(<Spoiler key={key()}>{inlineNodes(spoiler.slice(2, -2), key)}</Spoiler>)
     } else if (italic1) {
       out.push(<em key={key()}>{inlineNodes(italic1.slice(1, -1), key)}</em>)
     } else if (italic2) {
@@ -70,6 +73,22 @@ function inlineNodes(text: string, key: () => number): ReactNode[] {
   }
   if (last < text.length) out.push(...mentionNodes(text.slice(last), key))
   return out
+}
+
+// спойлер ||текст||: чёрный блок до клика, затем раскрывается
+function Spoiler({ children }: { children: ReactNode }) {
+  const [shown, setShown] = useState(false)
+  return (
+    <span
+      onClick={(e) => { if (!shown) { e.stopPropagation(); setShown(true) } }}
+      title={shown ? undefined : 'Показать спойлер'}
+      style={shown
+        ? { background: 'var(--surface-3)', borderRadius: 4, padding: '0 3px' }
+        : { background: 'var(--text)', color: 'transparent', borderRadius: 4, padding: '0 3px', cursor: 'pointer', userSelect: 'none' }}
+    >
+      {children}
+    </span>
+  )
 }
 
 export function renderRichText(text: string): ReactNode {
