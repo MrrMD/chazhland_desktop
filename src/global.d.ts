@@ -50,6 +50,8 @@ declare global {
     notify: (p: { title: string; body: string; channelId?: string }) => Promise<void>
     onNotificationClick: (cb: (d: { channelId: string }) => void) => () => void
     setBadge: (count: number) => void
+    /** Авто-idle: подписка на смену простоя системы (main опрашивает powerMonitor); возвращает отписку. */
+    onIdleChange: (cb: (d: { idle: boolean }) => void) => () => void
     setMicHotkey: (accel: string | null) => Promise<string | null>
     onToggleMic: (cb: () => void) => () => void
     /** Захватывать ли системный звук при демонстрации экрана (loopback; реально только Windows). */

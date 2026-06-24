@@ -110,6 +110,7 @@ export function MainWindow() {
   const userRef = useRef(user); useEffect(() => { userRef.current = user }, [user])
   const statusRef = useRef(status); useEffect(() => { statusRef.current = status }, [status]) // для DND-гейта в фоновых WS-колбэках
   const notifLevelsRef = useRef(notifLevels); notifLevelsRef.current = notifLevels // свежие уровни уведомлений для фонового хэндлера
+  const autoIdleRef = useRef(false) // авто-idle активен → вернём online при активности (если не сменили статус вручную)
   const messagesRef = useRef(messages); messagesRef.current = messages // свежие сообщения для WS-колбэков (звук реакции)
 
   useEffect(() => {
@@ -271,6 +272,18 @@ export function MainWindow() {
   useEffect(() => {
     if (!window.chazh?.onNotificationClick) return
     return window.chazh.onNotificationClick(({ channelId }) => { setCurrentId(channelId); setView('chat'); setPanel(null) })
+  }, [])
+
+  // авто-idle по простою системы (main опрашивает powerMonitor): online→idle и обратно;
+  // ручной статус (dnd/idle) не трогаем — авто-переход только из online, возврат только из авто-idle
+  function applyPresence(st: Presence) { setStatus(st); presence.setStatus(st) }
+  useEffect(() => {
+    if (!window.chazh?.onIdleChange) return
+    return window.chazh.onIdleChange(({ idle }) => {
+      if (idle) { if (statusRef.current === 'online') { autoIdleRef.current = true; applyPresence('idle') } }
+      else if (autoIdleRef.current) { autoIdleRef.current = false; applyPresence('online') }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const channel = useMemo<Channel | undefined>(() => {
@@ -538,7 +551,7 @@ export function MainWindow() {
       <BottomBar
         user={user}
         status={status}
-        onStatus={(st) => { setStatus(st); presence.setStatus(st); localStorage.setItem('chazh.status', st) }}
+        onStatus={(st) => { applyPresence(st); localStorage.setItem('chazh.status', st); autoIdleRef.current = false }}
         muted={!vs.micOn}
         onMute={() => voice.toggleMic()}
         deafened={vs.deafened}

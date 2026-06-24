@@ -15,6 +15,12 @@ contextBridge.exposeInMainWorld('chazh', {
     return () => ipcRenderer.removeListener('notif:clicked', h)
   },
   setBadge: (count: number) => ipcRenderer.send('app:badge', count),
+  // авто-idle: main опрашивает простой системы и шлёт idle:true/false
+  onIdleChange: (cb: (d: { idle: boolean }) => void) => {
+    const h = (_e: IpcRendererEvent, d: { idle: boolean }) => cb(d)
+    ipcRenderer.on('idle:changed', h)
+    return () => ipcRenderer.removeListener('idle:changed', h)
+  },
   // глобальный тумблер микрофона
   setMicHotkey: (accel: string | null): Promise<string | null> => ipcRenderer.invoke('voice:setMicHotkey', accel),
   onToggleMic: (cb: () => void) => {

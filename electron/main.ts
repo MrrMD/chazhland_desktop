@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, shell, desktopCapturer, Tray, Menu, Notification, globalShortcut, nativeImage } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, desktopCapturer, Tray, Menu, Notification, globalShortcut, nativeImage, screen, powerMonitor } from 'electron'
 import path from 'node:path'
+import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { registerTorrentIpc, sweepTorrentCacheOnStartup, teardownTorrent } from './torrent'
 import { registerMpvIpc, teardownMpv } from './mpv'
@@ -21,6 +22,41 @@ let rendererReady = false
 let pendingNotifChannel: string | null = null
 let shareSystemAudio = false // транслировать ли системный звук при демонстрации (loopback)
 let pickedSourceId: string | null = null // выбранный пользователем экран/окно для следующего getDisplayMedia
+let idleState = false
+let idleTimer: ReturnType<typeof setInterval> | null = null
+const IDLE_AFTER_SEC = 300 // 5 минут бездействия системы → авто-idle
+
+// --- сохранение/восстановление геометрии окна ---
+interface WinState { x?: number; y?: number; width: number; height: number; isMaximized?: boolean }
+const stateFile = () => path.join(app.getPath('userData'), 'window-state.json')
+function loadWindowState(): WinState | null {
+  try { return JSON.parse(fs.readFileSync(stateFile(), 'utf8')) as WinState } catch { return null }
+}
+function saveWindowState() {
+  if (!win || win.isDestroyed()) return
+  try {
+    const b = win.getNormalBounds() // bounds без учёта maximize → восстановим корректный размер
+    fs.writeFileSync(stateFile(), JSON.stringify({ x: b.x, y: b.y, width: b.width, height: b.height, isMaximized: win.isMaximized() }))
+  } catch { /* нет доступа к диску — переживём без запоминания */ }
+}
+// сохранённая позиция видна хотя бы на одном дисплее (монитор могли отключить → не прятать окно за экран)
+function visibleOnSomeDisplay(s: WinState): boolean {
+  if (!Number.isInteger(s.x) || !Number.isInteger(s.y)) return false
+  return screen.getAllDisplays().some((d) => {
+    const a = d.workArea
+    return s.x! < a.x + a.width && s.x! + s.width > a.x && s.y! < a.y + a.height && s.y! + s.height > a.y
+  })
+}
+
+// опрос простоя системы → переключаем рендерер в idle и обратно
+function startIdleWatch() {
+  if (idleTimer) return
+  idleTimer = setInterval(() => {
+    if (!win || win.isDestroyed()) return
+    const idle = powerMonitor.getSystemIdleTime() >= IDLE_AFTER_SEC
+    if (idle !== idleState) { idleState = idle; win.webContents.send('idle:changed', { idle }) }
+  }, 20000)
+}
 
 function showWindow() {
   if (!win) { createWindow(); return }
@@ -47,9 +83,12 @@ function createTray() {
 }
 
 function createWindow() {
+  const saved = loadWindowState()
+  const pos = saved && visibleOnSomeDisplay(saved) ? { x: saved.x, y: saved.y } : {}
   win = new BrowserWindow({
-    width: 1340,
-    height: 860,
+    width: saved?.width ?? 1340,
+    height: saved?.height ?? 860,
+    ...pos,
     minWidth: 940,
     minHeight: 600,
     // macOS — нативные «светофоры» (titleBarStyle hidden), сдвинутые под кастомный titlebar;
@@ -67,6 +106,13 @@ function createWindow() {
       webSecurity: false,
     },
   })
+
+  if (saved?.isMaximized) win.maximize()
+  // запоминаем размер/позицию/maximize (окно прячется в трей, поэтому ловим жесты, а не close)
+  win.on('resized', saveWindowState)
+  win.on('moved', saveWindowState)
+  win.on('maximize', saveWindowState)
+  win.on('unmaximize', saveWindowState)
 
   // window-контролы из рендерера
   ipcMain.on('win:minimize', () => win?.minimize())
@@ -201,9 +247,15 @@ app.whenReady().then(() => {
   registerMpvIpc(() => win)
   createWindow()
   createTray()
+  startIdleWatch()
 })
 
-app.on('before-quit', () => { isQuitting = true; teardownTorrent().catch(() => {}); teardownMpv().catch(() => {}) })
+app.on('before-quit', () => {
+  isQuitting = true
+  saveWindowState()
+  if (idleTimer) { clearInterval(idleTimer); idleTimer = null }
+  teardownTorrent().catch(() => {}); teardownMpv().catch(() => {})
+})
 app.on('will-quit', () => globalShortcut.unregisterAll())
 
 // окно прячется в трей, а не закрывается → window-all-closed обычно не сработает;
