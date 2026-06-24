@@ -3,7 +3,7 @@ import { api, type ServerTree } from '@/lib/api'
 import { useAuth } from '@/store/auth'
 import { voice, type VoiceState } from '@/lib/voice'
 import { presence } from '@/lib/presence'
-import type { AttachmentInput, Channel, ChannelType, Dm, Member, Message, NotificationLevel, Presence, ReadState } from '@/lib/types'
+import type { AttachmentInput, Channel, ChannelType, Dm, Member, Message, NotificationLevel, Presence, ReadState, ServerRole } from '@/lib/types'
 import { ChatFeed } from './ChatFeed'
 import { Composer } from './Composer'
 import { MembersRail } from './MembersRail'
@@ -41,6 +41,7 @@ export function MainWindow() {
   const [tree, setTree] = useState<ServerTree>({ categories: [], channels: [] })
   const [dms, setDms] = useState<Dm[]>([])
   const [members, setMembers] = useState<Member[]>([])
+  const [roles, setRoles] = useState<ServerRole[]>([]) // кастомные роли сервера (для цветных ников/бейджей)
   const [readStates, setReadStates] = useState<ReadState[]>([])
   const [messages, setMessages] = useState<Message[]>([])
   const [currentId, setCurrentId] = useState('')
@@ -123,6 +124,7 @@ export function MainWindow() {
     api.readStates().then(setReadStates).catch(() => {})
     api.listDms().then(setDms).catch(() => {})
     api.notificationSettings().then((list) => setNotifLevels(new Map(list.map((s) => [s.channelId, s.level])))).catch(() => {})
+    api.roles().then(setRoles).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -533,13 +535,13 @@ export function MainWindow() {
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
                 {/* key={currentId} — перезапускает fadeIn при смене канала; Composer вне обёртки, чтобы сохранить черновик */}
                 <div key={currentId} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', animation: 'fadeIn .26s ease' }}>
-                  <ChatFeed messages={messages} readState={readState} membersById={membersById} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onOpenDm={openDm} onMarkUnread={markChannelUnreadFrom} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
+                  <ChatFeed messages={messages} readState={readState} membersById={membersById} roles={roles} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onOpenDm={openDm} onMarkUnread={markChannelUnreadFrom} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
                 </div>
                 <TypingIndicator names={typing.map((t) => t.name)} />
                 <Composer channelName={channel?.name ?? ''} onSend={send} onType={() => ws.typing(currentId)} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>
             ))}
-            {!screenFull && <MembersRail members={members} loading={!membersLoaded} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} meId={user.id} onOpenDm={openDm} />}
+            {!screenFull && <MembersRail members={members} roles={roles} loading={!membersLoaded} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} meId={user.id} onOpenDm={openDm} />}
             {panel && currentId && (
               <ChatPanel mode={panel} channelId={currentId} channelName={channel?.name ?? ''} pinsVersion={pinsVersion} onClose={() => setPanel(null)} onUnpin={(id) => pinMsg(id, false)} onJump={jumpTo} />
             )}

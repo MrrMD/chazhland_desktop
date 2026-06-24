@@ -5,6 +5,7 @@ import { toast } from '@/lib/toast'
 import { useEscape } from '@/lib/useEscape'
 import { presence } from '@/lib/presence'
 import { MOCK } from '@/lib/config'
+import { hexA } from '@/theme/themes'
 import { renderRichText } from '@/lib/markdown'
 import { EMOJIS } from '@/lib/emojis'
 import type { Attachment, Message as Msg, Presence } from '@/lib/types'
@@ -46,6 +47,8 @@ interface Props {
   meName?: string
   authorName?: string             // имя автора, разрезолвленное на момент рендера из живого списка участников
   authorAvatarUrl?: string | null // (в DTO сообщения их нет — иначе у не-в-списке автора виден UUID/нет аватара)
+  nameColor?: string | null       // цвет ника по высшей цветной роли
+  topRole?: { name: string; color: string | null } | null // высшая кастомная роль — бейдж
   grouped?: boolean // часть серии того же автора — без аватара/шапки
   highlight?: boolean // подсветка при переходе из поиска/пинов
   canModerate?: boolean
@@ -58,7 +61,7 @@ interface Props {
   onMarkUnread?: () => void            // «Пометить непрочитанным отсюда» (ChatFeed знает предыдущее сообщение)
 }
 
-export function Message({ m, meId, meName, authorName: authorNameProp, authorAvatarUrl: authorAvatarProp, grouped, highlight, canModerate, onReact, onReply, onEdit, onDelete, onPin, onOpenDm, onMarkUnread }: Props) {
+export function Message({ m, meId, meName, authorName: authorNameProp, authorAvatarUrl: authorAvatarProp, nameColor, topRole, grouped, highlight, canModerate, onReact, onReply, onEdit, onDelete, onPin, onOpenDm, onMarkUnread }: Props) {
   // приоритет — свежий резолв из списка участников; запечённое в сообщении значение (часто UUID) как фолбэк
   const authorName = authorNameProp ?? m.authorName
   const authorAvatarUrl = authorAvatarProp !== undefined ? authorAvatarProp : m.authorAvatarUrl
@@ -146,10 +149,11 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
       <div style={{ minWidth: 0, flex: 1 }}>
         {!grouped && (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginBottom: 3 }}>
-            <span onClick={(e) => setPopover({ x: e.clientX, y: e.clientY })} style={{ fontWeight: 700, fontSize: 14.5, cursor: 'pointer' }}>{authorName}</span>
+            <span onClick={(e) => setPopover({ x: e.clientX, y: e.clientY })} style={{ fontWeight: 700, fontSize: 14.5, color: nameColor || undefined, cursor: 'pointer' }}>{authorName}</span>
             {m.authorRole && roleBadge[m.authorRole] && (
               <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>
             )}
+            {topRole && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', background: topRole.color ? hexA(topRole.color, 0.16) : 'var(--surface-3)', color: topRole.color || 'var(--text-2)' }}>{topRole.name}</span>}
             <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{hhmm(m.createdAt)}</span>
             {m.pinnedAt && <Pin size={11} style={{ color: 'var(--accent)' }} />}
           </div>
@@ -213,7 +217,7 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
         )}
       </div>
       {menu && <MsgMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
-      {popover && <UserPopover m={m} name={authorName} avatarUrl={authorAvatarUrl} isOwn={isOwn} x={popover.x} y={popover.y} onOpenDm={onOpenDm} onClose={() => setPopover(null)} />}
+      {popover && <UserPopover m={m} name={authorName} avatarUrl={authorAvatarUrl} nameColor={nameColor} topRole={topRole} isOwn={isOwn} x={popover.x} y={popover.y} onOpenDm={onOpenDm} onClose={() => setPopover(null)} />}
     </div>
   )
 }
@@ -236,7 +240,7 @@ function MsgMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuIt
 }
 
 const STATUS_SUB: Record<string, string> = { online: 'в сети', idle: 'отошёл', dnd: 'не беспокоить', offline: 'не в сети' }
-function UserPopover({ m, name, avatarUrl, isOwn, x, y, onOpenDm, onClose }: { m: Msg; name: string; avatarUrl?: string | null; isOwn: boolean; x: number; y: number; onOpenDm?: (id: string) => void; onClose: () => void }) {
+function UserPopover({ m, name, avatarUrl, nameColor, topRole, isOwn, x, y, onOpenDm, onClose }: { m: Msg; name: string; avatarUrl?: string | null; nameColor?: string | null; topRole?: { name: string; color: string | null } | null; isOwn: boolean; x: number; y: number; onOpenDm?: (id: string) => void; onClose: () => void }) {
   const status: Presence = MOCK ? 'online' : presence.statusOf(m.authorId)
   const top = Math.min(y, window.innerHeight - 230)
   const left = Math.min(x, window.innerWidth - 256)
@@ -247,9 +251,10 @@ function UserPopover({ m, name, avatarUrl, isOwn, x, y, onOpenDm, onClose }: { m
         <div style={{ height: 54, background: 'var(--accent-tint)' }} />
         <div style={{ padding: '0 16px 16px', marginTop: -28 }}>
           <Avatar name={name} src={avatarUrl} size={64} presence={status} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
-            <span style={{ fontWeight: 800, fontSize: 17, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 800, fontSize: 17, color: nameColor || undefined, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
             {m.authorRole && roleBadge[m.authorRole] && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', flex: 'none', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>}
+            {topRole && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', flex: 'none', background: topRole.color ? hexA(topRole.color, 0.16) : 'var(--surface-3)', color: topRole.color || 'var(--text-2)' }}>{topRole.name}</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: presenceColor(status), marginTop: 4 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: presenceColor(status) }} />{STATUS_SUB[status]}

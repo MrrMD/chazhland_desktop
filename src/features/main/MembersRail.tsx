@@ -4,12 +4,15 @@ import { Avatar, presenceColor } from '@/components/Avatar'
 import { Skeleton } from '@/components/Skeleton'
 import { presence } from '@/lib/presence'
 import { MOCK } from '@/lib/config'
-import type { Member, Presence } from '@/lib/types'
+import { roleColor, highestRole } from '@/lib/roles'
+import { hexA } from '@/theme/themes'
+import type { Member, Presence, ServerRole } from '@/lib/types'
 
 const SUB: Record<string, string> = { online: 'в сети', idle: 'отошёл', dnd: 'не беспокоить', offline: 'не в сети' }
 
-export function MembersRail({ members, loading, expanded, onToggle, meId, onOpenDm }: {
+export function MembersRail({ members, roles = [], loading, expanded, onToggle, meId, onOpenDm }: {
   members: Member[]
+  roles?: ServerRole[]
   loading?: boolean
   expanded: boolean
   onToggle: () => void
@@ -38,9 +41,9 @@ export function MembersRail({ members, loading, expanded, onToggle, meId, onOpen
           </div>
         ))}
         {online.length > 0 && <Group label={`В СЕТИ · ${online.length}`} show={expanded} />}
-        {online.map((m) => <Row key={m.userId} m={m} status={stat(m)} expanded={expanded} self={m.userId === meId} onOpenDm={onOpenDm} />)}
+        {online.map((m) => <Row key={m.userId} m={m} status={stat(m)} roles={roles} expanded={expanded} self={m.userId === meId} onOpenDm={onOpenDm} />)}
         {offline.length > 0 && <Group label={`НЕ В СЕТИ · ${offline.length}`} show={expanded} />}
-        {offline.map((m) => <Row key={m.userId} m={m} status="offline" expanded={expanded} dim self={m.userId === meId} onOpenDm={onOpenDm} />)}
+        {offline.map((m) => <Row key={m.userId} m={m} status="offline" roles={roles} expanded={expanded} dim self={m.userId === meId} onOpenDm={onOpenDm} />)}
       </div>
     </div>
   )
@@ -51,19 +54,22 @@ function Group({ label, show, color, icon }: { label: string; show: boolean; col
   return <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', color: color || 'var(--text-3)', padding: '11px 8px 7px', display: 'flex', alignItems: 'center', gap: 5 }}>{icon}{label}</div>
 }
 
-function Row({ m, status, expanded, dim, self, onOpenDm }: { m: Member; status: Presence; expanded: boolean; dim?: boolean; self?: boolean; onOpenDm?: (userId: string) => void }) {
+function Row({ m, status, roles, expanded, dim, self, onOpenDm }: { m: Member; status: Presence; roles: ServerRole[]; expanded: boolean; dim?: boolean; self?: boolean; onOpenDm?: (userId: string) => void }) {
+  const color = roleColor(m.roleIds, roles)      // цвет ника по высшей цветной роли
+  const top = highestRole(m.roleIds, roles)      // высшая кастомная роль — для бейджа
   return (
     <div className="member-row" onClick={() => { if (!self) onOpenDm?.(m.userId) }} title={self ? undefined : 'Личные сообщения'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 6, cursor: self ? 'default' : 'pointer' }}>
       <Avatar name={m.username} src={m.avatarUrl} size={38} presence={status} dim={dim} />
       {expanded && (
         <>
           <div style={{ lineHeight: 1.2, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.username}</div>
+            <div style={{ fontWeight: 600, fontSize: 13.5, color: color || undefined, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.username}</div>
             {/* кастомный статус «о себе» приоритетнее метки присутствия (если бэк его отдаёт) */}
             <div style={{ fontSize: 11, color: m.statusMessage?.trim() ? 'var(--text-3)' : presenceColor(status), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={m.statusMessage?.trim() || undefined}>{m.statusMessage?.trim() || SUB[status]}</div>
           </div>
-          {m.role === 'OWNER' && <span style={{ marginLeft: 'auto', color: 'var(--accent)', display: 'flex' }}><Crown size={13} /></span>}
-          {m.role === 'ADMIN' && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)' }}>admin</span>}
+          {m.role === 'OWNER' && <span style={{ marginLeft: 'auto', color: 'var(--accent)', display: 'flex', flex: 'none' }}><Crown size={13} /></span>}
+          {m.role !== 'OWNER' && top && <span style={{ marginLeft: 'auto', flex: 'none', fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', whiteSpace: 'nowrap', background: top.color ? hexA(top.color, 0.16) : 'var(--surface-3)', color: top.color || 'var(--text-2)' }}>{top.name}</span>}
+          {m.role === 'ADMIN' && !top && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>admin</span>}
         </>
       )}
     </div>

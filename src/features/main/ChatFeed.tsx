@@ -2,7 +2,8 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowDown } from 'lucide-react'
 import { Message } from './Message'
 import { Skeleton } from '@/components/Skeleton'
-import type { Member, Message as Msg, ReadState } from '@/lib/types'
+import { roleColor, highestRole } from '@/lib/roles'
+import type { Member, Message as Msg, ReadState, ServerRole } from '@/lib/types'
 
 const GROUP_GAP_MS = 5 * 60 * 1000 // серия одного автора рвётся после 5 минут паузы
 
@@ -29,10 +30,11 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })
 }
 
-export function ChatFeed({ messages, readState, membersById, onReact, meId, meName, canModerate, onReply, onEdit, onDelete, onPin, onOpenDm, onMarkUnread, onLoadOlder, hasMore, loadingOlder, loading, targetId, onTargetConsumed, detached, onJumpToPresent }: {
+export function ChatFeed({ messages, readState, membersById, roles, onReact, meId, meName, canModerate, onReply, onEdit, onDelete, onPin, onOpenDm, onMarkUnread, onLoadOlder, hasMore, loadingOlder, loading, targetId, onTargetConsumed, detached, onJumpToPresent }: {
   messages: Msg[]
   readState?: ReadState
   membersById?: Map<string, Member> // для резолва имени/аватара автора по authorId на момент рендера
+  roles?: ServerRole[] // кастомные роли — для цвета ника/бейджа автора
   onReact?: (messageId: string, emoji: string) => void
   meId?: string
   meName?: string
@@ -142,11 +144,14 @@ export function ChatFeed({ messages, readState, membersById, onReact, meId, meNa
         const grouped = !newDay && !isUnread && !!prev && prev.authorId === m.authorId && !prev.deleted && !m.deleted &&
           new Date(m.createdAt).getTime() - new Date(prev.createdAt).getTime() < GROUP_GAP_MS
         const author = membersById?.get(m.authorId)
+        const rl = roles ?? []
+        const nameColor = roleColor(author?.roleIds, rl)
+        const top = highestRole(author?.roleIds, rl)
         return (
           <Fragment key={m.id}>
             {newDay && <Divider label={dayLabel(m.createdAt)} />}
             {isUnread && <UnreadDivider />}
-            <Message m={m} authorName={author?.username} authorAvatarUrl={author ? author.avatarUrl : undefined} grouped={grouped} highlight={m.id === targetId} meId={meId} meName={meName} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} onPin={onPin} onOpenDm={onOpenDm} onMarkUnread={() => onMarkUnread?.(prev ? prev.id : null)} />
+            <Message m={m} authorName={author?.username} authorAvatarUrl={author ? author.avatarUrl : undefined} nameColor={nameColor} topRole={top ? { name: top.name, color: top.color } : null} grouped={grouped} highlight={m.id === targetId} meId={meId} meName={meName} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} onPin={onPin} onOpenDm={onOpenDm} onMarkUnread={() => onMarkUnread?.(prev ? prev.id : null)} />
           </Fragment>
         )
       })}
