@@ -130,6 +130,16 @@ export function RolesTab() {
                 {ROLE_COLORS.map((c) => (
                   <button key={c} onClick={() => setDraft((d) => ({ ...d!, color: c }))} className="no-drag" title={c} style={{ width: 26, height: 26, borderRadius: '50%', background: c, border: draft.color === c ? '2px solid var(--text)' : '2px solid transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{draft.color === c && <Check size={13} color="#fff" />}</button>
                 ))}
+                {/* произвольный HEX через нативный пикер; кружок показывает выбранный нестандартный цвет */}
+                {(() => {
+                  const custom = !!draft.color && !(ROLE_COLORS as readonly string[]).includes(draft.color)
+                  return (
+                    <label className="no-drag" title="Свой цвет" style={{ width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', position: 'relative', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: custom ? draft.color! : 'var(--win)', border: custom ? '2px solid var(--text)' : '2px dashed var(--border-2)' }}>
+                      <input type="color" value={draft.color || DEFAULT_ROLE_COLOR} onChange={(e) => setDraft((d) => ({ ...d!, color: e.target.value }))} style={{ position: 'absolute', inset: -4, width: '150%', height: '150%', opacity: 0, cursor: 'pointer' }} />
+                      {custom ? <Check size={13} color="#fff" /> : <Plus size={14} style={{ color: 'var(--text-3)' }} />}
+                    </label>
+                  )
+                })()}
               </div>
             </div>
 

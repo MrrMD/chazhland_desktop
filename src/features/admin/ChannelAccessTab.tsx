@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Hash, Volume2, Play, Lock, Globe, Check, Minus, X } from 'lucide-react'
+import { Hash, Volume2, Play, Lock, Globe, Check, Minus, X, Plus } from 'lucide-react'
 import { api } from '@/lib/api'
 import { toast } from '@/lib/toast'
+import { Avatar } from '@/components/Avatar'
 import { PERMISSIONS, DEFAULT_ROLE_COLOR } from '@/lib/permissions'
-import type { Channel, ChannelOverwrite, ChannelType, Permission, ServerRole } from '@/lib/types'
+import type { Channel, ChannelOverwrite, ChannelType, Member, OverwriteTarget, Permission, ServerRole } from '@/lib/types'
 
 type Tri = 'allow' | 'neutral' | 'deny'
 const labelOf = (p: Permission) => PERMISSIONS.find((x) => x.key === p)?.label ?? p
@@ -18,23 +19,26 @@ function permsForChannel(type: ChannelType): Permission[] {
 export function ChannelAccessTab() {
   const [channels, setChannels] = useState<Channel[] | null>(null)
   const [roles, setRoles] = useState<ServerRole[]>([])
+  const [members, setMembers] = useState<Member[]>([])
   const [selId, setSelId] = useState<string | null>(null)
   const [ows, setOws] = useState<ChannelOverwrite[]>([])
+  const [extraMembers, setExtraMembers] = useState<string[]>([]) // участники, добавленные в перекрытия, но пока без allow/deny
+  const [addOpen, setAddOpen] = useState(false)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     let a = true
-    Promise.all([api.serverTree(), api.roles()]).then(([t, r]) => {
+    Promise.all([api.serverTree(), api.roles(), api.members()]).then(([t, r, m]) => {
       if (!a) return
       const chs = t.channels.filter((c) => c.type !== 'DM')
-      setChannels(chs); setRoles(r)
+      setChannels(chs); setRoles(r); setMembers(m)
       if (chs[0]) select(chs[0].id)
     }).catch(() => { if (a) setChannels([]) })
     return () => { a = false }
   }, [])
 
   async function select(id: string) {
-    setSelId(id); setLoading(true)
+    setSelId(id); setLoading(true); setExtraMembers([]); setAddOpen(false)
     try { setOws(await api.channelPermissions(id)) } catch { setOws([]) } finally { setLoading(false) }
   }
 
@@ -55,30 +59,37 @@ export function ChannelAccessTab() {
     return 'neutral'
   }
 
-  async function setTri(roleId: string, p: Permission, next: Tri) {
+  async function setTri(targetType: OverwriteTarget, targetId: string, p: Permission, next: Tri) {
     if (!selId) return
-    const ow = owByTarget.get(roleId)
+    const ow = owByTarget.get(targetId)
     const allow = new Set(ow?.allow ?? []); const deny = new Set(ow?.deny ?? [])
     allow.delete(p); deny.delete(p)
     if (next === 'allow') allow.add(p); else if (next === 'deny') deny.add(p)
     const a = [...allow], d = [...deny]
     // оптимистично
     setOws((prev) => {
-      const others = prev.filter((o) => o.targetId !== roleId)
+      const others = prev.filter((o) => o.targetId !== targetId)
       if (!a.length && !d.length) return others
-      return [...others, { id: ow?.id ?? 'tmp', targetType: 'ROLE', targetId: roleId, allow: a, deny: d }]
+      return [...others, { id: ow?.id ?? 'tmp', targetType, targetId, allow: a, deny: d }]
     })
     try {
-      if (!a.length && !d.length) await api.clearChannelPermission(selId, 'ROLE', roleId)
-      else { const saved = await api.setChannelPermission(selId, { targetType: 'ROLE', targetId: roleId, allow: a, deny: d }); setOws((prev) => prev.map((o) => (o.targetId === roleId ? saved : o))) }
+      if (!a.length && !d.length) await api.clearChannelPermission(selId, targetType, targetId)
+      else { const saved = await api.setChannelPermission(selId, { targetType, targetId, allow: a, deny: d }); setOws((prev) => prev.map((o) => (o.targetId === targetId ? saved : o))) }
     } catch { toast.error('Не удалось сохранить доступ'); select(selId) }
   }
 
   const isPrivate = !!everyone && triOf(everyone.id, 'VIEW_CHANNEL') === 'deny'
   function togglePrivate() {
     if (!everyone) return
-    setTri(everyone.id, 'VIEW_CHANNEL', isPrivate ? 'neutral' : 'deny')
+    setTri('ROLE', everyone.id, 'VIEW_CHANNEL', isPrivate ? 'neutral' : 'deny')
   }
+  // участники с перекрытием = у кого уже есть MEMBER-overwrite + добавленные вручную (ещё без allow/deny)
+  const memberById = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
+  const memberTargets = useMemo(() => {
+    const ids = new Set<string>([...ows.filter((o) => o.targetType === 'MEMBER').map((o) => o.targetId), ...extraMembers])
+    return [...ids]
+  }, [ows, extraMembers])
+  const addable = members.filter((m) => !memberTargets.includes(m.userId))
 
   if (!channels) return <div style={{ color: 'var(--text-3)', padding: 20 }}>Загрузка каналов…</div>
 
@@ -124,12 +135,53 @@ export function ChannelAccessTab() {
                       {permsForChannel(sel.type).map((p) => (
                         <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                           <span style={{ flex: 1, fontSize: 13, color: 'var(--text)' }}>{labelOf(p)}</span>
-                          <TriToggle value={triOf(role.id, p)} onChange={(v) => setTri(role.id, p, v)} />
+                          <TriToggle value={triOf(role.id, p)} onChange={(v) => setTri('ROLE', role.id, p, v)} />
                         </div>
                       ))}
                     </div>
                   </div>
                 ))}
+
+                {/* перекрытия по конкретным участникам (поверх ролей) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 6 }}>
+                  <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-3)' }}>ДОСТУП ПО УЧАСТНИКАМ</div>
+                  <div style={{ position: 'relative', marginLeft: 'auto' }}>
+                    <button onClick={() => setAddOpen((v) => !v)} disabled={addable.length === 0} className="pill no-drag" style={{ padding: '6px 12px', fontWeight: 600, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6, opacity: addable.length === 0 ? 0.5 : 1 }}><Plus size={14} /> Участник</button>
+                    {addOpen && (
+                      <>
+                        <div onClick={() => setAddOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 41, width: 230, maxHeight: 280, overflow: 'auto', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12, boxShadow: '0 14px 34px -12px var(--shadow)', padding: 5 }}>
+                          {addable.map((m) => (
+                            <button key={m.userId} onClick={() => { setExtraMembers((x) => [...x, m.userId]); setAddOpen(false) }} className="chan-row no-drag" style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', borderRadius: 8, padding: '7px 9px', fontSize: 13, color: 'var(--text)' }}>
+                              <Avatar name={m.username} src={m.avatarUrl} size={24} /> {m.username}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {memberTargets.length === 0 && <div style={{ fontSize: 12.5, color: 'var(--text-3)', padding: '2px 2px 4px' }}>Перекрытий по участникам нет. Добавьте, чтобы разрешить/запретить доступ конкретному человеку поверх его ролей.</div>}
+                {memberTargets.map((uid) => {
+                  const mem = memberById.get(uid)
+                  return (
+                    <div key={uid} style={{ border: '1px solid var(--border)', borderRadius: 12, padding: '12px 14px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
+                        <Avatar name={mem?.username ?? uid} src={mem?.avatarUrl} size={22} />
+                        <span style={{ fontWeight: 700, fontSize: 13.5 }}>{mem?.username ?? uid}</span>
+                        <button onClick={() => { if (selId && ows.some((o) => o.targetId === uid)) api.clearChannelPermission(selId, 'MEMBER', uid).catch(() => {}); setOws((p) => p.filter((o) => o.targetId !== uid)); setExtraMembers((x) => x.filter((id) => id !== uid)) }} className="ib no-drag" title="Убрать перекрытие" style={{ marginLeft: 'auto', width: 26, height: 26, color: 'var(--text-3)' }}><X size={14} /></button>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                        {permsForChannel(sel.type).map((p) => (
+                          <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ flex: 1, fontSize: 13, color: 'var(--text)' }}>{labelOf(p)}</span>
+                            <TriToggle value={triOf(uid, p)} onChange={(v) => setTri('MEMBER', uid, p, v)} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             )}
           </div>
