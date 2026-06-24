@@ -1,7 +1,7 @@
 import { MOCK } from './config'
 import { http, delay, setTokens } from './http'
 import type {
-  AttachmentInput, AuditEntry, Channel, ChannelOverwrite, ChannelType, Category, Dm, Member, Message, OverwriteTarget, Permission, Presence, ReadState, Role, ServerRole, TokenResponse, User, WatchState, WatchSourceRequest, WatchSearchResult,
+  AttachmentInput, AuditEntry, Channel, ChannelOverwrite, ChannelType, Category, Dm, Member, Message, NotificationLevel, OverwriteTarget, Permission, Presence, ReadState, Role, ServerRole, TokenResponse, User, WatchState, WatchSourceRequest, WatchSearchResult,
 } from './types'
 import {
   MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_MEMBERS,
@@ -16,7 +16,7 @@ export interface SoundClip { id: string; name: string; url: string } // звук
 interface Page<T> { items: T[]; nextCursor: string | null; hasMore: boolean }
 interface UserDto { id: string; username: string; avatarUrl: string | null; status?: string; statusMessage?: string | null; role?: Role }
 interface MemberDto { userId: string; username: string; avatarUrl: string | null; role: Role; status: string; joinedAt: string; soundboardDisabled?: boolean; roleIds?: string[]; statusMessage?: string | null }
-interface ChannelDto { id: string; categoryId: string | null; name: string; type: Channel['type']; topic: string | null; position: number; userLimit: number | null; lastMessageId: string | null }
+interface ChannelDto { id: string; categoryId: string | null; name: string; type: Channel['type']; topic: string | null; position: number; userLimit: number | null; slowModeSeconds: number; lastMessageId: string | null }
 interface TreeDto { serverId: string; categories: Category[]; channels: ChannelDto[] }
 interface AttachmentDto { id: string; url: string; contentType: string; size: number | null; filename: string | null; width: number | null; height: number | null; thumbnailUrl: string | null }
 interface ReactionGroupDto { emoji: string; userIds: string[] }
@@ -39,7 +39,7 @@ function mapMember(d: MemberDto): Member {
   return { userId: d.userId, username: d.username, avatarUrl: d.avatarUrl, role: d.role, status: (d.status as Presence) || 'offline', joinedAt: d.joinedAt, soundboardDisabled: d.soundboardDisabled ?? false, roleIds: d.roleIds ?? [], statusMessage: d.statusMessage ?? null }
 }
 function mapChannel(d: ChannelDto): Channel {
-  return { id: d.id, name: d.name, type: d.type, categoryId: d.categoryId, topic: d.topic, position: d.position, userLimit: d.userLimit, lastMessageId: d.lastMessageId }
+  return { id: d.id, name: d.name, type: d.type, categoryId: d.categoryId, topic: d.topic, position: d.position, userLimit: d.userLimit, slowModeSeconds: d.slowModeSeconds ?? 0, lastMessageId: d.lastMessageId }
 }
 function mapMessage(d: MessageDto, idMap?: Map<string, MessageDto>): Message {
   const author = memberMap.get(d.authorId)
@@ -150,6 +150,26 @@ export const api = {
     if (MOCK) return { id: 'ch_' + crypto.randomUUID().slice(0, 8), name: p.name, type: p.type, categoryId: p.categoryId ?? null, topic: p.topic ?? null, position: 0, lastMessageId: null }
     const dto = await http<ChannelDto>('/channels', { method: 'POST', body: JSON.stringify({ name: p.name, type: p.type, categoryId: p.categoryId ?? null, topic: p.topic ?? null }) })
     return mapChannel(dto)
+  },
+  // PATCH /channels/{id}. ВАЖНО: categoryId=null на бэке = «без категории», поэтому всегда шлём текущий,
+  // чтобы правка имени/темы не выкинула канал из его категории.
+  async updateChannel(id: string, p: { name: string; categoryId?: string | null; topic?: string | null; userLimit?: number | null; slowModeSeconds?: number | null }): Promise<Channel> {
+    if (MOCK) { const cur = MOCK_CHANNELS.find((c) => c.id === id); return { ...(cur as Channel), name: p.name, categoryId: p.categoryId ?? null, topic: p.topic ?? null, userLimit: p.userLimit ?? null, slowModeSeconds: p.slowModeSeconds ?? 0 } }
+    const dto = await http<ChannelDto>(`/channels/${id}`, { method: 'PATCH', body: JSON.stringify(p) })
+    return mapChannel(dto)
+  },
+  async deleteChannel(id: string): Promise<void> {
+    if (MOCK) return
+    await http(`/channels/${id}`, { method: 'DELETE' })
+  },
+  // ---- уведомления по каналам (персональные, синкаются между устройствами) ----
+  async notificationSettings(): Promise<{ channelId: string; level: NotificationLevel }[]> {
+    if (MOCK) return []
+    return http<{ channelId: string; level: NotificationLevel }[]>('/notification-settings')
+  },
+  async setChannelNotification(channelId: string, level: NotificationLevel): Promise<void> {
+    if (MOCK) return
+    await http(`/channels/${channelId}/notification-setting`, { method: 'PUT', body: JSON.stringify({ level }) })
   },
 
   // ---- личные сообщения (DM = скрытый канал type=DM) ----

@@ -2,6 +2,7 @@
 export type Role = 'OWNER' | 'ADMIN' | 'MEMBER'
 export type Presence = 'online' | 'idle' | 'dnd' | 'offline'
 export type ChannelType = 'TEXT' | 'VOICE' | 'WATCH' | 'DM'
+export type NotificationLevel = 'ALL' | 'MENTIONS' | 'MUTED' // уровень уведомлений по каналу (бэк: NotificationLevel)
 
 // личный диалог (бэк: DmResponse) — channelId используется как обычный канал
 export interface Dm {
@@ -72,6 +73,7 @@ export interface Channel {
   topic: string | null
   position: number
   userLimit?: number | null
+  slowModeSeconds?: number // медленный режим в секундах (0 = выкл), только текстовые
   lastMessageId?: string | null
 }
 

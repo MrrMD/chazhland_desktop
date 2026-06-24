@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Hash, Volume2, Play, Plus, MicOff, HeadphoneOff, VolumeX, ChevronDown } from 'lucide-react'
-import type { Channel, ChannelType, Dm, Member, ReadState } from '@/lib/types'
+import { Hash, Volume2, Play, Plus, MicOff, HeadphoneOff, VolumeX, ChevronDown, Settings, Check, Link } from 'lucide-react'
+import type { Channel, ChannelType, Dm, Member, NotificationLevel, ReadState } from '@/lib/types'
 import { voice, type VoiceState } from '@/lib/voice'
 import { presence } from '@/lib/presence'
 import { Avatar } from '@/components/Avatar'
+import { toast } from '@/lib/toast'
 import { MOCK } from '@/lib/config'
 import { CreateChannelModal } from './CreateChannelModal'
 
@@ -15,7 +16,7 @@ interface Occupant { userId: string; name: string; avatarUrl: string | null; spe
 
 // Левый сайдбар каналов в стиле Discord: категории → каналы, под голосовыми — кто там сейчас.
 export function ChannelSidebar({
-  channels, dms, members, readStates, currentId, voiceState, unread, meId, onPick, onCreateChannel,
+  channels, dms, members, readStates, currentId, voiceState, unread, meId, canManage, notifLevels, onPick, onEditChannel, onMarkRead, onSetNotif, onCreateChannel,
 }: {
   channels: Channel[]
   dms: Dm[]
@@ -25,13 +26,19 @@ export function ChannelSidebar({
   voiceState: VoiceState
   unread: Set<string>
   meId: string
+  canManage: boolean // OWNER/ADMIN — показываем «Изменить/Удалить канал»
+  notifLevels: Map<string, NotificationLevel>
   onPick: (id: string) => void
+  onEditChannel: (c: Channel) => void
+  onMarkRead: (c: Channel) => void
+  onSetNotif: (channelId: string, level: NotificationLevel) => void
   onCreateChannel: (p: { name: string; type: ChannelType }) => Promise<void>
 }) {
   const [, setTick] = useState(0)
   useEffect(() => presence.subscribe(() => setTick((t) => t + 1)), []) // живой ростер голосовых (join/leave по WS)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [createOpen, setCreateOpen] = useState(false)
+  const [menu, setMenu] = useState<{ c: Channel; x: number; y: number } | null>(null) // ПКМ-контекст-меню канала
 
   const memberBy = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
   const rs = useMemo(() => Object.fromEntries(readStates.map((r) => [r.channelId, r])), [readStates])
@@ -63,8 +70,22 @@ export function ChannelSidebar({
   )
 
   const renderChannel = (c: Channel) => (
-    <ChannelRow key={c.id} c={c} rs={rs[c.id]} active={c.id === currentId} connected={c.id === voiceState.channelId} unread={unread.has(c.id)} occupants={occupantsOf(c)} onPick={onPick} />
+    <ChannelRow key={c.id} c={c} rs={rs[c.id]} active={c.id === currentId} connected={c.id === voiceState.channelId} unread={unread.has(c.id)} occupants={occupantsOf(c)} onPick={onPick} onMenu={(e) => { e.preventDefault(); setMenu({ c, x: e.clientX, y: e.clientY }) }} />
   )
+
+  const menuItems = (c: Channel): MenuAction[] => {
+    const items: MenuAction[] = []
+    if (canManage) items.push({ label: 'Изменить канал', icon: <Settings size={15} />, onClick: () => onEditChannel(c) })
+    if (c.type !== 'VOICE') items.push({ label: 'Отметить прочитанным', icon: <Check size={15} />, onClick: () => onMarkRead(c) })
+    items.push({ label: 'Копировать ссылку', icon: <Link size={15} />, onClick: () => navigator.clipboard?.writeText(`chazhland://channel/${c.id}`).then(() => toast.ok('Ссылка скопирована')).catch(() => {}) })
+    if (c.type !== 'VOICE') {
+      const lvl = notifLevels.get(c.id) ?? 'ALL'
+      items.push({ label: 'Уведомления', header: true })
+      ;([['ALL', 'Все сообщения'], ['MENTIONS', 'Только упоминания'], ['MUTED', 'Без звука']] as [NotificationLevel, string][]).forEach(([v, l]) =>
+        items.push({ label: l, icon: lvl === v ? <Check size={15} /> : <span style={{ width: 15, display: 'inline-block' }} />, onClick: () => onSetNotif(c.id, v) }))
+    }
+    return items
+  }
 
   return (
     <aside style={{ width: 250, flex: 'none', display: 'flex', flexDirection: 'column', background: 'var(--surface)', borderRight: '1px solid var(--border)', overflow: 'hidden' }}>
@@ -110,18 +131,38 @@ export function ChannelSidebar({
       </div>
 
       {createOpen && <CreateChannelModal onCreate={onCreateChannel} onClose={() => setCreateOpen(false)} />}
+      {menu && <ChannelMenu x={menu.x} y={menu.y} items={menuItems(menu.c)} onClose={() => setMenu(null)} />}
     </aside>
   )
 }
 
-function ChannelRow({ c, rs, active, connected, unread, occupants, onPick }: {
-  c: Channel; rs?: ReadState; active: boolean; connected: boolean; unread: boolean; occupants: Occupant[]; onPick: (id: string) => void
+interface MenuAction { label: string; icon?: React.ReactNode; danger?: boolean; header?: boolean; onClick?: () => void }
+function ChannelMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuAction[]; onClose: () => void }) {
+  const top = Math.min(y, window.innerHeight - (items.length * 36 + 24)) // не вылезать за нижний край
+  return (
+    <>
+      <div onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose() }} style={{ position: 'fixed', inset: 0, zIndex: 60 }} />
+      <div style={{ position: 'fixed', left: x, top, zIndex: 61, minWidth: 196, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 18px 40px -16px var(--shadow)', padding: 5 }}>
+        {items.map((it, i) => it.header ? (
+          <div key={i} style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.06em', color: 'var(--text-3)', textTransform: 'uppercase', padding: '8px 10px 4px', borderTop: i > 0 ? '1px solid var(--border)' : undefined, marginTop: i > 0 ? 4 : 0 }}>{it.label}</div>
+        ) : (
+          <button key={i} className="chan-row no-drag" onClick={() => { onClose(); it.onClick?.() }} style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', borderRadius: 7, padding: '8px 10px', fontSize: 13, fontWeight: 500, color: it.danger ? 'var(--danger)' : 'var(--text)' }}>
+            {it.icon && <span style={{ display: 'flex', color: it.danger ? 'var(--danger)' : 'var(--text-3)' }}>{it.icon}</span>}{it.label}
+          </button>
+        ))}
+      </div>
+    </>
+  )
+}
+
+function ChannelRow({ c, rs, active, connected, unread, occupants, onPick, onMenu }: {
+  c: Channel; rs?: ReadState; active: boolean; connected: boolean; unread: boolean; occupants: Occupant[]; onPick: (id: string) => void; onMenu: (e: React.MouseEvent) => void
 }) {
   const mentions = rs?.mentionCount ?? 0
   const hl = unread && !active // непрочитанные (но не открытый сейчас) — ярче
   return (
     <div>
-      <button className={`chan-row no-drag${active ? ' active' : ''}`} onClick={() => onPick(c.id)} style={rowStyle(active)}>
+      <button className={`chan-row no-drag${active ? ' active' : ''}`} onClick={() => onPick(c.id)} onContextMenu={onMenu} style={rowStyle(active)}>
         <span style={{ display: 'flex', flex: 'none', color: active ? 'var(--accent)' : connected ? 'var(--green)' : 'var(--text-3)' }}>{TYPE_ICON[c.type]}</span>
         <span style={nameStyle(active, hl)}>{c.name}</span>
         {mentions > 0 && !active && <span style={{ flex: 'none', background: 'var(--accent)', color: '#fff', borderRadius: 30, fontSize: 10, fontWeight: 700, padding: '0 6px', minWidth: 17, textAlign: 'center' }}>{mentions}</span>}

@@ -3,11 +3,12 @@ import { api, type ServerTree } from '@/lib/api'
 import { useAuth } from '@/store/auth'
 import { voice, type VoiceState } from '@/lib/voice'
 import { presence } from '@/lib/presence'
-import type { AttachmentInput, Channel, ChannelType, Dm, Member, Message, Presence, ReadState } from '@/lib/types'
+import type { AttachmentInput, Channel, ChannelType, Dm, Member, Message, NotificationLevel, Presence, ReadState } from '@/lib/types'
 import { ChatFeed } from './ChatFeed'
 import { Composer } from './Composer'
 import { MembersRail } from './MembersRail'
 import { ChannelSidebar } from './ChannelSidebar'
+import { ChannelSettingsModal } from './ChannelSettingsModal'
 import { BottomBar } from './BottomBar'
 import { WatchView } from './WatchView'
 import { ScreenSharePane } from './ScreenSharePane'
@@ -54,6 +55,7 @@ export function MainWindow() {
   const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [screenPickerOpen, setScreenPickerOpen] = useState(false)
+  const [channelEdit, setChannelEdit] = useState<Channel | null>(null) // открытая модалка настроек канала
   const [typing, setTyping] = useState<{ id: string; name: string }[]>([])
   const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const [panel, setPanel] = useState<null | 'search' | 'pins'>(null)
@@ -65,6 +67,7 @@ export function MainWindow() {
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [membersLoaded, setMembersLoaded] = useState(false)
   const [unread, setUnread] = useState<Set<string>>(new Set()) // каналы с непрочитанными (кроме открытого)
+  const [notifLevels, setNotifLevels] = useState<Map<string, NotificationLevel>>(new Map()) // персональный уровень уведомлений по каналу
 
   useEffect(() => voice.subscribe(setVs), [])
   // восстановленный статус (dnd/idle) — в presence ДО первого heartbeat, чтобы другие сразу видели его, а не «online»
@@ -106,6 +109,7 @@ export function MainWindow() {
   const dmsRef = useRef(dms); useEffect(() => { dmsRef.current = dms }, [dms])
   const userRef = useRef(user); useEffect(() => { userRef.current = user }, [user])
   const statusRef = useRef(status); useEffect(() => { statusRef.current = status }, [status]) // для DND-гейта в фоновых WS-колбэках
+  const notifLevelsRef = useRef(notifLevels); notifLevelsRef.current = notifLevels // свежие уровни уведомлений для фонового хэндлера
   const messagesRef = useRef(messages); messagesRef.current = messages // свежие сообщения для WS-колбэков (звук реакции)
 
   useEffect(() => {
@@ -117,6 +121,7 @@ export function MainWindow() {
     api.members().then(setMembers).catch(() => {}).finally(() => setMembersLoaded(true))
     api.readStates().then(setReadStates).catch(() => {})
     api.listDms().then(setDms).catch(() => {})
+    api.notificationSettings().then((list) => setNotifLevels(new Map(list.map((s) => [s.channelId, s.level])))).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -236,9 +241,12 @@ export function MainWindow() {
       const raw = e.message; if (!raw) return
       const m = api.mapIncoming(raw)
       if (m.authorId === userRef.current.id) return // своё
-      setUnread((u) => (u.has(id) ? u : new Set(u).add(id)))
+      const level = notifLevelsRef.current.get(id) ?? 'ALL'
+      if (level === 'MUTED') return // канал заглушён — ни бейджа, ни звука, ни всплывашки
       const isDm = dmsRef.current.some((d) => d.id === id)
-      if (isDm || mentionsUser(m.content, userRef.current.username)) {
+      const isMention = isDm || mentionsUser(m.content, userRef.current.username)
+      if (level === 'ALL' || isMention) setUnread((u) => (u.has(id) ? u : new Set(u).add(id))) // MENTIONS: точка только на упоминание/ЛС
+      if (isMention) {
         const np = notifyPrefs.get()
         const quiet = np.respectDnd && statusRef.current === 'dnd' // «Не беспокоить» → тихо
         if (np.sounds && !quiet) (isDm ? sfx.dm() : sfx.mention()) // фоновый канал/ЛС — звук-пинг
@@ -331,6 +339,29 @@ export function MainWindow() {
   }
   function ackAll() {
     api.ackAll().then(setReadStates).catch(() => {})
+  }
+  // отметить ОДИН канал прочитанным (из контекст-меню): берём последний id из дерева, гасим бейджи
+  function markReadChannel(c: Channel) {
+    setUnread((u) => { if (!u.has(c.id)) return u; const n = new Set(u); n.delete(c.id); return n })
+    setReadStates((rs) => rs.map((r) => (r.channelId === c.id ? { ...r, lastReadMessageId: c.lastMessageId ?? r.lastReadMessageId, mentionCount: 0 } : r)))
+    if (c.lastMessageId) api.markRead(c.id, c.lastMessageId).catch(() => {})
+  }
+  function setChannelNotif(channelId: string, level: NotificationLevel) {
+    setNotifLevels((m) => new Map(m).set(channelId, level)) // оптимистично
+    api.setChannelNotification(channelId, level).catch(() => toast.error('Не удалось изменить уведомления'))
+  }
+  async function saveChannel(patch: { name: string; categoryId?: string | null; topic?: string | null; userLimit?: number | null; slowModeSeconds?: number | null }) {
+    if (!channelEdit) return
+    await api.updateChannel(channelEdit.id, patch)
+    setTree(await api.serverTree())
+  }
+  async function deleteChannelNow() {
+    if (!channelEdit) return
+    const id = channelEdit.id
+    await api.deleteChannel(id)
+    const t = await api.serverTree()
+    setTree(t)
+    if (currentIdRef.current === id) setCurrentId(t.channels.find((c) => c.type === 'TEXT')?.id ?? t.channels[0]?.id ?? '')
   }
   function loadOlder() {
     const first = messages[0]
@@ -435,7 +466,12 @@ export function MainWindow() {
             voiceState={vs}
             unread={unread}
             meId={user.id}
+            canManage={canModerate}
+            notifLevels={notifLevels}
             onPick={pickChannel}
+            onEditChannel={setChannelEdit}
+            onMarkRead={markReadChannel}
+            onSetNotif={setChannelNotif}
             onCreateChannel={createChannel}
           />
           <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
@@ -516,6 +552,7 @@ export function MainWindow() {
       {voiceSettingsOpen && <VoiceSettingsModal onClose={() => setVoiceSettingsOpen(false)} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {screenPickerOpen && <ScreenPicker onClose={() => setScreenPickerOpen(false)} onPick={async (id) => { setScreenPickerOpen(false); await window.chazh?.pickScreenSource(id); voice.toggleScreen() }} />}
+      {channelEdit && <ChannelSettingsModal channel={channelEdit} onClose={() => setChannelEdit(null)} onSaved={saveChannel} onDeleted={deleteChannelNow} />}
     </div>
   )
 }
