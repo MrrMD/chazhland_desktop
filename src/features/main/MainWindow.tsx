@@ -16,13 +16,14 @@ import { ScreenPicker } from './ScreenPicker'
 import { VoiceSettingsModal } from './VoiceSettingsModal'
 import { SettingsModal } from './SettingsModal'
 import { ChatPanel } from './ChatPanel'
+import { StatsPanel } from './StatsPanel'
 import { AdminScreen } from '@/features/admin/AdminScreen'
 import { ws } from '@/lib/ws'
 import { toast } from '@/lib/toast'
 import { mentionsUser } from '@/lib/mentions'
 import { sfx } from '@/lib/sfx'
 import { notifyPrefs } from '@/lib/prefs'
-import { Search, Pin, Bell, Users, Hash, Volume2, Play, AtSign } from 'lucide-react'
+import { Search, Pin, Bell, Users, Hash, Volume2, Play, AtSign, BarChart3, Lock } from 'lucide-react'
 
 const TYPE_ICON: Record<ChannelType, React.ReactNode> = { TEXT: <Hash size={18} />, VOICE: <Volume2 size={18} />, WATCH: <Play size={18} />, DM: <AtSign size={18} /> }
 
@@ -59,7 +60,7 @@ export function MainWindow() {
   const [channelEdit, setChannelEdit] = useState<Channel | null>(null) // открытая модалка настроек канала
   const [typing, setTyping] = useState<{ id: string; name: string }[]>([])
   const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-  const [panel, setPanel] = useState<null | 'search' | 'pins'>(null)
+  const [panel, setPanel] = useState<null | 'search' | 'pins' | 'stats'>(null)
   const [pinsVersion, setPinsVersion] = useState(0)
   const [jumpTargetId, setJumpTargetId] = useState<string | null>(null) // переход к сообщению из поиска/пинов
   const [detached, setDetached] = useState(false) // лента показывает историческое окно (не «хвост») — live-сообщения не дописываем
@@ -519,6 +520,7 @@ export function MainWindow() {
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
               <button className="ib no-drag" onClick={() => setPanel((p) => (p === 'search' ? null : 'search'))} style={{ width: 38, height: 38, ...(panel === 'search' ? { background: 'var(--accent-tint)', color: 'var(--accent)' } : {}) }} title="Поиск"><Search size={16} /></button>
               <button className="ib no-drag" onClick={() => setPanel((p) => (p === 'pins' ? null : 'pins'))} style={{ width: 38, height: 38, ...(panel === 'pins' ? { background: 'var(--accent-tint)', color: 'var(--accent)' } : {}) }} title="Закреплённые"><Pin size={16} /></button>
+              <button className="ib no-drag" onClick={() => setPanel((p) => (p === 'stats' ? null : 'stats'))} style={{ width: 38, height: 38, ...(panel === 'stats' ? { background: 'var(--accent-tint)', color: 'var(--accent)' } : {}) }} title="Статистика · Wrapped"><BarChart3 size={16} /></button>
               <button className="ib no-drag" style={{ width: 38, height: 38 }} title="Уведомления"><Bell size={16} /></button>
               <button className="ib no-drag" onClick={() => setMembersExpanded((v) => !v)} style={{ width: 38, height: 38, background: 'var(--accent-tint)', color: 'var(--accent)' }} title="Участники"><Users size={16} /></button>
             </div>
@@ -538,11 +540,18 @@ export function MainWindow() {
                   <ChatFeed messages={messages} readState={readState} membersById={membersById} roles={roles} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onOpenDm={openDm} onMarkUnread={markChannelUnreadFrom} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
                 </div>
                 <TypingIndicator names={typing.map((t) => t.name)} />
-                <Composer channelName={channel?.name ?? ''} onSend={send} onType={() => ws.typing(currentId)} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
+                {channel?.system ? (
+                  <div style={{ flex: 'none', padding: '15px 18px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, color: 'var(--text-3)', fontSize: 13, borderTop: '1px solid var(--border)', background: 'var(--surface)' }}>
+                    <Lock size={15} /> Системный канал — писать может только система
+                  </div>
+                ) : (
+                  <Composer channelName={channel?.name ?? ''} onSend={send} onType={() => ws.typing(currentId)} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
+                )}
               </div>
             ))}
             {!screenFull && <MembersRail members={members} roles={roles} loading={!membersLoaded} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} meId={user.id} onOpenDm={openDm} />}
-            {panel && currentId && (
+            {panel === 'stats' && <StatsPanel onClose={() => setPanel(null)} />}
+            {(panel === 'search' || panel === 'pins') && currentId && (
               <ChatPanel mode={panel} channelId={currentId} channelName={channel?.name ?? ''} pinsVersion={pinsVersion} onClose={() => setPanel(null)} onUnpin={(id) => pinMsg(id, false)} onJump={jumpTo} />
             )}
           </div>

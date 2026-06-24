@@ -75,6 +75,7 @@ export interface Channel {
   userLimit?: number | null
   slowModeSeconds?: number // медленный режим в секундах (0 = выкл), только текстовые
   lastMessageId?: string | null
+  system?: boolean // системный канал «info»: read-only, писать может только система
 }
 
 export interface Attachment {
@@ -102,10 +103,13 @@ export interface Reaction {
   mine: boolean
 }
 
+export type MessageType = 'DEFAULT' | 'SYSTEM'
+
 export interface Message {
   id: string // ULID
   channelId: string
   authorId: string
+  type?: MessageType // SYSTEM — служебная карточка (дайджест и т.п.), рендерится отдельно
   authorName: string
   authorAvatarUrl?: string | null
   authorRole?: Role
@@ -186,12 +190,48 @@ export type ChatEventType =
   | 'MESSAGE_CREATED' | 'MESSAGE_EDITED' | 'MESSAGE_DELETED'
   | 'MESSAGE_PINNED' | 'MESSAGE_UNPINNED'
   | 'TYPING' | 'REACTION_ADDED' | 'REACTION_REMOVED'
+  | 'DIGEST_PUBLISHED' // опубликована карточка дайджеста (сама карточка приходит и как MESSAGE_CREATED)
 export interface ChatEvent {
   type: ChatEventType
   channelId: string
   message?: Message    // есть у MESSAGE_*/PINNED; у REACTION_*/TYPING = null
   userId?: string
   username?: string
-  messageId?: string   // у REACTION_*/PINNED — id целевого сообщения
+  messageId?: string   // у REACTION_*/PINNED — id целевого сообщения; у DIGEST_PUBLISHED — id карточки
   emoji?: string       // у REACTION_*
+  digestId?: string    // у DIGEST_PUBLISHED — id снапшота дайджеста
 }
+
+// ===== Дайджест активности «Чажленд Wrapped» (бэк: DigestData / DigestResponse) =====
+export type DigestKind = 'WEEKLY' | 'YEARLY' | 'CUSTOM'
+export interface DigestUserRef { userId: string; username: string; avatarUrl: string | null }
+export interface DigestNomination { user: DigestUserRef; value: number }
+export interface DigestDuo { first: DigestUserRef; second: DigestUserRef; minutes: number }
+export interface DigestMessageOfWeek {
+  messageId: string; channelId: string; author: DigestUserRef
+  excerpt: string | null; createdAt: string; reactionCount: number
+}
+export interface DigestEmojiStat { emoji: string; count: number }
+export interface DigestHourBucket { hour: number; count: number }
+export interface DigestTotals {
+  messages: number; messagesPrev: number; messagesDeltaPercent: number | null
+  activeUsers: number; newcomers: number; movieNights: number
+  reactions: number; voiceMinutes: number; peakHour: number | null
+}
+// номинации опциональны (@JsonInclude(NON_NULL) на бэке — пустые опускаются)
+export interface DigestData {
+  totals: DigestTotals
+  chatterboxes: DigestNomination[]
+  star?: DigestNomination | null
+  messageOfWeek?: DigestMessageOfWeek | null
+  topEmoji?: DigestEmojiStat | null
+  activityByHour: DigestHourBucket[]
+  newcomers: DigestUserRef[]
+  nightOwl?: DigestNomination | null
+  reactor?: DigestNomination | null
+  necroposter?: DigestNomination | null
+  voiceChampion?: DigestNomination | null
+  loyalFriends?: DigestDuo | null
+}
+export interface DigestSummary { id: string; kind: DigestKind; periodStart: string; periodEnd: string; generatedAt: string }
+export interface DigestFull extends DigestSummary { data: DigestData }

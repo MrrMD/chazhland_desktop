@@ -1,7 +1,7 @@
 import { MOCK } from './config'
 import { http, delay, setTokens } from './http'
 import type {
-  AttachmentInput, AuditEntry, Channel, ChannelOverwrite, ChannelType, Category, Dm, Member, Message, NotificationLevel, OverwriteTarget, Permission, Presence, ReadState, Role, ServerRole, TokenResponse, User, WatchState, WatchSourceRequest, WatchSearchResult,
+  AttachmentInput, AuditEntry, Channel, ChannelOverwrite, ChannelType, Category, DigestFull, DigestSummary, Dm, Member, Message, MessageType, NotificationLevel, OverwriteTarget, Permission, Presence, ReadState, Role, ServerRole, TokenResponse, User, WatchState, WatchSourceRequest, WatchSearchResult,
 } from './types'
 import {
   MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_MEMBERS,
@@ -16,12 +16,13 @@ export interface SoundClip { id: string; name: string; url: string } // звук
 interface Page<T> { items: T[]; nextCursor: string | null; hasMore: boolean }
 interface UserDto { id: string; username: string; avatarUrl: string | null; status?: string; statusMessage?: string | null; role?: Role }
 interface MemberDto { userId: string; username: string; avatarUrl: string | null; role: Role; status: string; joinedAt: string; soundboardDisabled?: boolean; roleIds?: string[]; statusMessage?: string | null }
-interface ChannelDto { id: string; categoryId: string | null; name: string; type: Channel['type']; topic: string | null; position: number; userLimit: number | null; slowModeSeconds: number; lastMessageId: string | null }
+interface ChannelDto { id: string; categoryId: string | null; name: string; type: Channel['type']; topic: string | null; position: number; userLimit: number | null; slowModeSeconds: number; lastMessageId: string | null; system?: boolean }
 interface TreeDto { serverId: string; categories: Category[]; channels: ChannelDto[] }
 interface AttachmentDto { id: string; url: string; contentType: string; size: number | null; filename: string | null; width: number | null; height: number | null; thumbnailUrl: string | null }
 interface ReactionGroupDto { emoji: string; userIds: string[] }
 interface MessageDto {
   id: string; channelId: string; authorId: string; content: string | null; replyToId: string | null
+  type?: MessageType
   createdAt: string; editedAt: string | null; deleted: boolean; pinnedAt: string | null
   attachments: AttachmentDto[]; reactions: ReactionGroupDto[]
 }
@@ -39,13 +40,13 @@ function mapMember(d: MemberDto): Member {
   return { userId: d.userId, username: d.username, avatarUrl: d.avatarUrl, role: d.role, status: (d.status as Presence) || 'offline', joinedAt: d.joinedAt, soundboardDisabled: d.soundboardDisabled ?? false, roleIds: d.roleIds ?? [], statusMessage: d.statusMessage ?? null }
 }
 function mapChannel(d: ChannelDto): Channel {
-  return { id: d.id, name: d.name, type: d.type, categoryId: d.categoryId, topic: d.topic, position: d.position, userLimit: d.userLimit, slowModeSeconds: d.slowModeSeconds ?? 0, lastMessageId: d.lastMessageId }
+  return { id: d.id, name: d.name, type: d.type, categoryId: d.categoryId, topic: d.topic, position: d.position, userLimit: d.userLimit, slowModeSeconds: d.slowModeSeconds ?? 0, lastMessageId: d.lastMessageId, system: d.system ?? false }
 }
 function mapMessage(d: MessageDto, idMap?: Map<string, MessageDto>): Message {
   const author = memberMap.get(d.authorId)
   const reply = d.replyToId && idMap?.get(d.replyToId)
   return {
-    id: d.id, channelId: d.channelId, authorId: d.authorId,
+    id: d.id, channelId: d.channelId, authorId: d.authorId, type: d.type,
     authorName: author?.username ?? d.authorId, authorAvatarUrl: author?.avatarUrl ?? null, authorRole: author?.role,
     content: d.content, deleted: d.deleted, editedAt: d.editedAt, pinnedAt: d.pinnedAt, createdAt: d.createdAt, replyToId: d.replyToId,
     replyPreview: reply ? { authorName: resolveName(reply.authorId), content: (reply.content ?? '').slice(0, 60) } : null,
@@ -396,6 +397,15 @@ export const api = {
       meta: `${d.action}${d.targetType ? ' · ' + d.targetType : ''}${d.targetId ? ':' + d.targetId : ''}`,
       createdAt: fmtDateTime(d.createdAt),
     }))
+  },
+
+  // ---- дайджест «Чажленд Wrapped» ----
+  async digests(): Promise<DigestSummary[]> {
+    if (MOCK) return []
+    return http<DigestSummary[]>('/server/digests')
+  },
+  async digest(id: string): Promise<DigestFull> {
+    return http<DigestFull>(`/digests/${id}`)
   },
 
   // ---- actions ----

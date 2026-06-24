@@ -99,6 +99,24 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
     )
   }
 
+  // Системная карточка (дайджест «Чажленд Wrapped» и пр.) — без шапки автора/тулбара, отдельным боксом.
+  if (m.type === 'SYSTEM') {
+    return (
+      <div data-mid={m.id} style={{ padding: '10px 8px', display: 'flex', justifyContent: 'center', animation: 'fadeIn .26s ease' }}>
+        <div style={{ maxWidth: 560, width: '100%', background: 'var(--accent-tint)', border: '1px solid var(--accent)', borderRadius: 14, padding: '14px 18px', fontSize: 14, lineHeight: 1.6, color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', boxShadow: '0 10px 28px -18px var(--shadow)' }}>
+          {m.content ? renderRichText(m.content) : 'Системное сообщение'}
+          {m.reactions.length > 0 && (
+            <div style={{ marginTop: 10, display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+              {m.reactions.map((r) => (
+                <div key={r.emoji} onClick={() => onReact?.(r.emoji)} className={'reaction' + (r.mine ? ' mine' : '')} style={{ padding: '3px 11px', fontSize: 13, fontWeight: 600, color: r.mine ? undefined : 'var(--text-2)' }}>{r.emoji} {r.count}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   function startEdit() { setVal(m.content ?? ''); setEditing(true) }
   function saveEdit() {
     const v = val.trim()
