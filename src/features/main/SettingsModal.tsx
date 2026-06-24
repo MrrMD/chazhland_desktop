@@ -5,6 +5,9 @@ import { Avatar } from '@/components/Avatar'
 import { api } from '@/lib/api'
 import { toast } from '@/lib/toast'
 import { useAuth } from '@/store/auth'
+import { useTheme } from '@/theme/ThemeProvider'
+import { ACCENTS, type ThemeName } from '@/theme/themes'
+import { notifyPrefs } from '@/lib/prefs'
 
 const lbl: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }
 const fieldS: React.CSSProperties = { padding: '11px 13px', marginBottom: 13 }
@@ -12,6 +15,9 @@ const fieldS: React.CSSProperties = { padding: '11px 13px', marginBottom: 13 }
 export function SettingsModal({ onClose }: { onClose: () => void }) {
   const { session, updateUser, logout } = useAuth()
   const user = session!.user
+  const { theme, accent, setTheme, setAccent } = useTheme()
+  const [np, setNp] = useState(notifyPrefs.get())
+  function updNp(p: Partial<typeof np>) { notifyPrefs.set(p); setNp(notifyPrefs.get()) }
   const [username, setUsername] = useState(user.username)
   const [statusMsg, setStatusMsg] = useState(user.statusMessage ?? '')
   const [savingProfile, setSavingProfile] = useState(false)
@@ -91,6 +97,30 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
       <div style={{ height: 1, background: 'var(--border)', margin: '18px 0' }} />
 
+      <SectionTitle>Внешний вид</SectionTitle>
+      <label style={lbl}>Тема</label>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        {(['light', 'dark'] as ThemeName[]).map((t) => (
+          <button key={t} type="button" onClick={() => setTheme(t)} className="no-drag" style={{ flex: 1, padding: '10px 0', borderRadius: 11, border: `1.5px solid ${theme === t ? 'var(--accent)' : 'var(--border)'}`, background: theme === t ? 'var(--accent-tint)' : 'var(--surface)', color: theme === t ? 'var(--accent)' : 'var(--text)', fontWeight: 600, fontSize: 13.5, cursor: 'pointer' }}>{t === 'light' ? 'Светлая' : 'Тёмная'}</button>
+        ))}
+      </div>
+      <label style={lbl}>Акцент</label>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 4 }}>
+        {ACCENTS.map((c) => {
+          const sel = accent.toLowerCase() === c.toLowerCase()
+          return <button key={c} type="button" onClick={() => setAccent(c)} aria-label={`акцент ${c}`} className="no-drag" style={{ width: 28, height: 28, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer', outline: sel ? '2px solid var(--text)' : '1px solid var(--border-2)', outlineOffset: 2 }} />
+        })}
+      </div>
+
+      <div style={{ height: 1, background: 'var(--border)', margin: '18px 0' }} />
+
+      <SectionTitle>Уведомления</SectionTitle>
+      <ToggleRow label="Десктоп-уведомления" hint="всплывающие окна о сообщениях" on={np.desktop} onChange={(v) => updNp({ desktop: v })} />
+      <ToggleRow label="Звуки уведомлений" hint="пинг при упоминании, ЛС и реакции" on={np.sounds} onChange={(v) => updNp({ sounds: v })} />
+      <ToggleRow label="Тихо в режиме «Не беспокоить»" hint="без всплывашек и звука при статусе dnd" on={np.respectDnd} onChange={(v) => updNp({ respectDnd: v })} />
+
+      <div style={{ height: 1, background: 'var(--border)', margin: '18px 0' }} />
+
       <SectionTitle>Безопасность</SectionTitle>
       <label style={lbl}>Текущий пароль</label>
       <div className="field" style={fieldS}><input type="password" value={curPw} onChange={(e) => setCurPw(e.target.value)} placeholder="••••••••" /></div>
@@ -110,6 +140,20 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.07em', color: 'var(--text-3)', marginBottom: 12 }}>{children}</div>
+}
+
+function ToggleRow({ label, hint, on, onChange }: { label: string; hint?: string; on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>{label}</div>
+        {hint && <div style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{hint}</div>}
+      </div>
+      <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className="no-drag" style={{ flex: 'none', width: 42, height: 24, borderRadius: 20, border: 'none', cursor: 'pointer', background: on ? 'var(--accent)' : 'var(--surface-3)', position: 'relative', transition: 'background .2s' }}>
+        <span style={{ position: 'absolute', top: 3, left: on ? 21 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
+      </button>
+    </div>
+  )
 }
 
 function Spinner() {

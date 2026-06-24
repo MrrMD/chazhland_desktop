@@ -4,7 +4,7 @@ import { api } from '@/lib/api'
 import { toast } from '@/lib/toast'
 import { Avatar, presenceColor } from '@/components/Avatar'
 import { Skeleton } from '@/components/Skeleton'
-import { ConfirmModal, ChangeRoleModal } from './modals'
+import { ConfirmModal, ChangeRoleModal, TempPasswordModal } from './modals'
 import { RolesTab } from './RolesTab'
 import { ChannelAccessTab } from './ChannelAccessTab'
 import type { AuditEntry, Member } from '@/lib/types'
@@ -43,6 +43,8 @@ function MembersTab() {
   const [rows, setRows] = useState<Member[] | null>(null)
   const [kickT, setKickT] = useState<Member | null>(null)
   const [roleT, setRoleT] = useState<Member | null>(null)
+  const [resetT, setResetT] = useState<Member | null>(null)
+  const [tempPw, setTempPw] = useState<{ name: string; pw: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   useEffect(() => { let a = true; api.members().then((r) => { if (a) setRows(r) }); return () => { a = false } }, [])
@@ -85,7 +87,7 @@ function MembersTab() {
                 ? <span style={{ color: 'var(--border-2)', fontSize: 15 }}>——</span>
                 : <div style={{ display: 'flex', gap: 7, color: 'var(--text-2)' }}>
                     <span onClick={() => toggleSb(m)} className="ib no-drag" style={{ width: 30, height: 30, color: m.soundboardDisabled ? 'var(--danger)' : 'var(--text-2)' }} title={m.soundboardDisabled ? 'Саундпад выключен — включить' : 'Выключить саундпад участнику'}><Music size={15} /></span>
-                    <span className="ib no-drag" style={{ width: 30, height: 30 }} title="Сбросить пароль"><Key size={15} /></span>
+                    <span onClick={() => setResetT(m)} className="ib no-drag" style={{ width: 30, height: 30 }} title="Сбросить пароль"><Key size={15} /></span>
                     <span onClick={() => setKickT(m)} className="ib no-drag" style={{ width: 30, height: 30, color: 'var(--danger)' }} title="Исключить"><X size={15} /></span>
                   </div>}
             </div>
@@ -113,6 +115,16 @@ function MembersTab() {
           finally { setBusy(false) }
         }}
         onClose={() => { setRoleT(null); setErr('') }} />}
+      {resetT && <ConfirmModal title="Сбросить пароль" message={`Сбросить пароль ${resetT.username}? Будет выдан одноразовый временный пароль, текущий перестанет работать.`} confirmLabel="Сбросить" busy={busy} error={err}
+        onConfirm={async () => {
+          const m = resetT
+          setBusy(true); setErr('')
+          try { const pw = await api.resetMemberPassword(m.userId); setTempPw({ name: m.username, pw }); setResetT(null) }
+          catch { setErr('Не удалось сбросить пароль. Попробуйте ещё раз.') }
+          finally { setBusy(false) }
+        }}
+        onClose={() => { setResetT(null); setErr('') }} />}
+      {tempPw && <TempPasswordModal username={tempPw.name} password={tempPw.pw} onClose={() => setTempPw(null)} />}
     </div>
   )
 }

@@ -20,6 +20,7 @@ import { ws } from '@/lib/ws'
 import { toast } from '@/lib/toast'
 import { mentionsUser } from '@/lib/mentions'
 import { sfx } from '@/lib/sfx'
+import { notifyPrefs } from '@/lib/prefs'
 import { Search, Pin, Bell, Users, Hash, Volume2, Play, AtSign } from 'lucide-react'
 
 const TYPE_ICON: Record<ChannelType, React.ReactNode> = { TEXT: <Hash size={18} />, VOICE: <Volume2 size={18} />, WATCH: <Play size={18} />, DM: <AtSign size={18} /> }
@@ -45,7 +46,7 @@ export function MainWindow() {
 
   const [view, setView] = useState<'chat' | 'admin'>('chat')
   const [membersExpanded, setMembersExpanded] = useState(true)
-  const [status, setStatus] = useState<Presence>('online')
+  const [status, setStatus] = useState<Presence>(() => (localStorage.getItem('chazh.status') as Presence) || 'online')
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [vs, setVs] = useState<VoiceState>(voice.state)
   const [screenFull, setScreenFull] = useState(false)
@@ -66,7 +67,9 @@ export function MainWindow() {
   const [unread, setUnread] = useState<Set<string>>(new Set()) // каналы с непрочитанными (кроме открытого)
 
   useEffect(() => voice.subscribe(setVs), [])
-  useEffect(() => { presence.start(); return () => presence.stop() }, [])
+  // восстановленный статус (dnd/idle) — в presence ДО первого heartbeat, чтобы другие сразу видели его, а не «online»
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { presence.start(); presence.setStatus(status); return () => presence.stop() }, [])
   useEffect(() => { if (!vs.screenTrack && screenFull) setScreenFull(false) }, [vs.screenTrack, screenFull])
   useEffect(() => { if (!vs.screenTrack && screenCollapsed) setScreenCollapsed(false) }, [vs.screenTrack, screenCollapsed])
 
@@ -102,6 +105,7 @@ export function MainWindow() {
   const treeRef = useRef(tree); useEffect(() => { treeRef.current = tree }, [tree])
   const dmsRef = useRef(dms); useEffect(() => { dmsRef.current = dms }, [dms])
   const userRef = useRef(user); useEffect(() => { userRef.current = user }, [user])
+  const statusRef = useRef(status); useEffect(() => { statusRef.current = status }, [status]) // для DND-гейта в фоновых WS-колбэках
   const messagesRef = useRef(messages); messagesRef.current = messages // свежие сообщения для WS-колбэков (звук реакции)
 
   useEffect(() => {
@@ -159,7 +163,8 @@ export function MainWindow() {
         const mid = e.messageId, emoji = e.emoji
         if (!mid || !emoji || e.userId === user.id) return // своё уже учтено оптимистично (см. react())
         const add = e.type === 'REACTION_ADDED'
-        if (add && messagesRef.current.find((x) => x.id === mid)?.authorId === user.id) sfx.reaction() // отреагировали на твоё сообщение
+        const np = notifyPrefs.get()
+        if (add && np.sounds && !(np.respectDnd && statusRef.current === 'dnd') && messagesRef.current.find((x) => x.id === mid)?.authorId === user.id) sfx.reaction() // отреагировали на твоё сообщение
         setMessages((ms) => ms.map((m) => {
           if (m.id !== mid) return m
           const rs = m.reactions.slice()
@@ -191,7 +196,8 @@ export function MainWindow() {
       // Но упоминание учитываем (бейдж), чтобы не потерять его: сбросится, когда вернёмся к «хвосту».
       if (e.type === 'MESSAGE_CREATED' && detachedRef.current) {
         if (m.authorId !== userRef.current.id && mentionsUser(m.content, userRef.current.username)) {
-          sfx.mention() // упомянули, пока мы листаем историю этого же канала
+          const np = notifyPrefs.get()
+          if (np.sounds && !(np.respectDnd && statusRef.current === 'dnd')) sfx.mention() // упомянули, пока листаем историю
           setReadStates((rs) => rs.map((r) => (r.channelId === currentId ? { ...r, mentionCount: r.mentionCount + 1 } : r)))
         }
         return
@@ -233,15 +239,20 @@ export function MainWindow() {
       setUnread((u) => (u.has(id) ? u : new Set(u).add(id)))
       const isDm = dmsRef.current.some((d) => d.id === id)
       if (isDm || mentionsUser(m.content, userRef.current.username)) {
-        isDm ? sfx.dm() : sfx.mention() // фоновый канал/ЛС — звук-пинг (в дополнение к нативному уведомлению)
+        const np = notifyPrefs.get()
+        const quiet = np.respectDnd && statusRef.current === 'dnd' // «Не беспокоить» → тихо
+        if (np.sounds && !quiet) (isDm ? sfx.dm() : sfx.mention()) // фоновый канал/ЛС — звук-пинг
         setReadStates((rs) => {
+          // бейдж непрочитанного ведём всегда — DND/тумблер глушат только звук и всплывашку, не счётчик
           const i = rs.findIndex((r) => r.channelId === id)
           if (i >= 0) return rs.map((r, j) => (j === i ? { ...r, mentionCount: r.mentionCount + 1 } : r))
           return [...rs, { channelId: id, lastReadMessageId: null, mentionCount: 1 }]
         })
-        const name = isDm ? (dmsRef.current.find((d) => d.id === id)?.name ?? m.authorName) : (treeRef.current.channels.find((c) => c.id === id)?.name ?? 'канал')
-        const body = m.content || (m.attachments.length ? 'вложение' : 'новое сообщение')
-        window.chazh?.notify({ title: isDm ? m.authorName : `${m.authorName} · #${name}`, body, channelId: id })
+        if (np.desktop && !quiet) {
+          const name = isDm ? (dmsRef.current.find((d) => d.id === id)?.name ?? m.authorName) : (treeRef.current.channels.find((c) => c.id === id)?.name ?? 'канал')
+          const body = m.content || (m.attachments.length ? 'вложение' : 'новое сообщение')
+          window.chazh?.notify({ title: isDm ? m.authorName : `${m.authorName} · #${name}`, body, channelId: id })
+        }
       }
     }))
     return () => offs.forEach((off) => off())
@@ -484,7 +495,7 @@ export function MainWindow() {
       <BottomBar
         user={user}
         status={status}
-        onStatus={(st) => { setStatus(st); presence.setStatus(st) }}
+        onStatus={(st) => { setStatus(st); presence.setStatus(st); localStorage.setItem('chazh.status', st) }}
         muted={!vs.micOn}
         onMute={() => voice.toggleMic()}
         deafened={vs.deafened}

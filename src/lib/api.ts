@@ -399,6 +399,12 @@ export const api = {
     if (MOCK) return
     await http(`/members/${userId}`, { method: 'PATCH', body: JSON.stringify({ role }) })
   },
+  // админ сбрасывает пароль участнику → бэк возвращает одноразовый временный пароль (показать один раз)
+  async resetMemberPassword(userId: string): Promise<string> {
+    if (MOCK) return 'Tmp-' + userId.slice(0, 4) + '-9F3kQ'
+    const r = await http<{ temporaryPassword: string }>(`/admin/users/${userId}/reset-password`, { method: 'POST' })
+    return r.temporaryPassword
+  },
 
   // ---- voice (LiveKit) ----
   async livekitToken(channelId: string): Promise<{ token: string; url: string; room: string }> {

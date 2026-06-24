@@ -17,6 +17,26 @@ export function ConfirmModal({ title, message, confirmLabel, danger, onConfirm, 
   )
 }
 
+// Показ одноразового временного пароля после админ-сброса — с копированием.
+export function TempPasswordModal({ username, password, onClose }: { username: string; password: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false)
+  function copy() {
+    navigator.clipboard?.writeText(password).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }).catch(() => {})
+  }
+  return (
+    <Modal title={`Пароль сброшен · ${username}`} onClose={onClose}>
+      <div style={{ fontSize: 14, color: 'var(--text-2)', lineHeight: 1.6, marginBottom: 14 }}>Временный пароль показывается один раз. Передайте его участнику лично — после входа пусть сменит в настройках.</div>
+      <div className="field" style={{ padding: '10px 13px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <code style={{ flex: 1, fontFamily: 'ui-monospace,monospace', fontSize: 15, color: 'var(--text)', userSelect: 'all', wordBreak: 'break-all' }}>{password}</code>
+        <button type="button" className="pill no-drag" onClick={copy} style={{ flex: 'none', padding: '6px 12px', fontWeight: 600, fontSize: 12.5 }}>{copied ? 'Скопировано' : 'Копировать'}</button>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button type="button" className="accent-btn no-drag" onClick={onClose} style={{ borderRadius: 12, padding: '10px 18px', fontWeight: 700 }}>Готово</button>
+      </div>
+    </Modal>
+  )
+}
+
 const ROLES: Role[] = ['OWNER', 'ADMIN', 'MEMBER']
 
 export function ChangeRoleModal({ member, onSelect, onClose, error, busy }: { member: Member; onSelect: (r: Role) => void; onClose: () => void; error?: string; busy?: boolean }) {
