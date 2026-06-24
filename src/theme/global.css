@@ -64,6 +64,11 @@ button { font-family: inherit; }
 .member-row { transition: background .15s; border-radius: 11px; }
 .member-row:hover { background: var(--surface-2); }
 
+/* строка канала в левом сайдбаре (фон/ховер/активность — классом, иначе инлайн-фон у button перебил бы :hover) */
+.chan-row { border: none; background: transparent; cursor: pointer; transition: background .14s; }
+.chan-row:hover { background: var(--surface-2); }
+.chan-row.active, .chan-row.active:hover { background: var(--accent-tint); }
+
 .tile { transition: transform .15s, border-color .15s; }
 .tile:hover { transform: translateY(-2px); border-color: var(--accent); }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { LayoutGrid, Settings, Check, Mic, MicOff, Shield, LogOut, Volume2, VolumeX, Headphones, HeadphoneOff, MonitorUp, ChevronUp, PhoneOff, UserRound, Music, Plus, X } from 'lucide-react'
+import { Settings, Check, Mic, MicOff, Shield, LogOut, Volume2, VolumeX, Headphones, HeadphoneOff, MonitorUp, ChevronUp, PhoneOff, UserRound, Music, Plus, X } from 'lucide-react'
 import { Avatar, presenceColor } from '@/components/Avatar'
 import { voice, SCREEN_QUALITY_LABELS, SCREEN_QUALITY_ORDER, type ScreenQuality } from '@/lib/voice'
 import { soundboard } from '@/lib/soundboard'
@@ -21,8 +21,6 @@ interface Props {
   streamOn: boolean
   onGoLive: () => void
   voiceChannelName: string | null
-  onOpenChannels: () => void
-  unreadTotal: number
   onAckAll: () => void
   onOpenVoiceSettings: () => void
   onOpenSettings: () => void
@@ -41,10 +39,6 @@ export function BottomBar(p: Props) {
     <div style={{ height: 74, flex: 'none', background: 'var(--surface)', borderTop: '1px solid var(--border)', display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', padding: '0 18px', gap: 12 }}>
       {/* left */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, justifySelf: 'start', position: 'relative' }}>
-        <button className="pill no-drag" onClick={p.onOpenChannels} style={{ padding: '10px 15px', fontWeight: 600, fontSize: 13.5, position: 'relative' }}>
-          <LayoutGrid size={16} /> Сменить канал
-          {p.unreadTotal > 0 && <span key={p.unreadTotal} style={{ position: 'absolute', top: -7, right: -7, background: 'var(--danger)', color: '#fff', borderRadius: 30, fontSize: 10, fontWeight: 700, padding: '1px 6px', border: '2px solid var(--surface)', animation: 'badgePop .3s ease' }}>{p.unreadTotal}</span>}
-        </button>
         <button className="pill no-drag" onClick={() => setMenuOpen((v) => !v)} title="Настройки" style={{ width: 46, height: 46, justifyContent: 'center', color: 'var(--text-2)' }}><Settings size={18} /></button>
         {menuOpen && (
           <Popover onClose={() => setMenuOpen(false)} style={{ left: 0 }}>

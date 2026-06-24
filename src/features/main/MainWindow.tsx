@@ -7,7 +7,7 @@ import type { AttachmentInput, Channel, ChannelType, Dm, Member, Message, Presen
 import { ChatFeed } from './ChatFeed'
 import { Composer } from './Composer'
 import { MembersRail } from './MembersRail'
-import { ChannelSwitcher } from './ChannelSwitcher'
+import { ChannelSidebar } from './ChannelSidebar'
 import { BottomBar } from './BottomBar'
 import { WatchView } from './WatchView'
 import { ScreenSharePane } from './ScreenSharePane'
@@ -44,7 +44,6 @@ export function MainWindow() {
   const [currentId, setCurrentId] = useState('')
 
   const [view, setView] = useState<'chat' | 'admin'>('chat')
-  const [channelsOpen, setChannelsOpen] = useState(false)
   const [membersExpanded, setMembersExpanded] = useState(true)
   const [status, setStatus] = useState<Presence>('online')
   const [replyTo, setReplyTo] = useState<Message | null>(null)
@@ -385,7 +384,6 @@ export function MainWindow() {
 
   function pickChannel(id: string) {
     const ch = tree.channels.find((c) => c.id === id)
-    setChannelsOpen(false)
     if (ch?.type === 'VOICE') {
       voice.join(id, ch.name) // в голосовой — заходим, не меняя открытый текст/watch-канал
     } else {
@@ -401,7 +399,6 @@ export function MainWindow() {
       setDms((d) => (d.some((x) => x.id === dm.id) ? d : [...d, dm]))
       setCurrentId(dm.id)
       setView('chat')
-      setChannelsOpen(false)
       setPanel(null)
     } catch { toast.error('Не удалось открыть личные сообщения') }
   }
@@ -417,7 +414,20 @@ export function MainWindow() {
       {view === 'admin' && canModerate ? (
         <AdminScreen onClose={() => setView('chat')} />
       ) : (
-        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
+        <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+          <ChannelSidebar
+            channels={tree.channels}
+            dms={dms}
+            members={members}
+            readStates={readStates}
+            currentId={currentId}
+            voiceState={vs}
+            unread={unread}
+            meId={user.id}
+            onPick={pickChannel}
+            onCreateChannel={createChannel}
+          />
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
           {/* header */}
           <div style={{ height: 62, flex: 'none', display: 'flex', alignItems: 'center', gap: 13, padding: '0 22px', borderBottom: '1px solid var(--border)', background: 'var(--surface)' }}>
             <div style={{ width: 36, height: 36, borderRadius: 10, background: 'var(--accent-tint)', color: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 18, flex: 'none' }}>
@@ -462,10 +472,11 @@ export function MainWindow() {
                 <Composer channelName={channel?.name ?? ''} onSend={send} onType={() => ws.typing(currentId)} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />
               </div>
             ))}
-            {!screenFull && <MembersRail members={members} loading={!membersLoaded} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} voiceParticipants={vs.participants} voiceChannelName={vs.channelName} meId={user.id} onOpenDm={openDm} />}
+            {!screenFull && <MembersRail members={members} loading={!membersLoaded} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} meId={user.id} onOpenDm={openDm} />}
             {panel && currentId && (
               <ChatPanel mode={panel} channelId={currentId} channelName={channel?.name ?? ''} pinsVersion={pinsVersion} onClose={() => setPanel(null)} onUnpin={(id) => pinMsg(id, false)} onJump={jumpTo} />
             )}
+          </div>
           </div>
         </div>
       )}
@@ -481,8 +492,6 @@ export function MainWindow() {
         streamOn={vs.screenOn}
         onGoLive={() => { if (vs.screenOn) voice.toggleScreen(); else if (window.chazh?.getScreenSources) setScreenPickerOpen(true); else voice.toggleScreen() }}
         voiceChannelName={vs.channelName}
-        onOpenChannels={() => setChannelsOpen(true)}
-        unreadTotal={unreadTotal}
         onAckAll={ackAll}
         onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -492,21 +501,6 @@ export function MainWindow() {
         onLeaveVoice={() => voice.leave()}
         soundboardDisabled={membersById.get(user.id)?.soundboardDisabled}
       />
-
-      {channelsOpen && (
-        <ChannelSwitcher
-          channels={tree.channels}
-          dms={dms}
-          members={members}
-          readStates={readStates}
-          currentId={currentId}
-          activeVoiceChannelId={vs.channelId}
-          unread={unread}
-          onPick={pickChannel}
-          onClose={() => setChannelsOpen(false)}
-          onCreateChannel={createChannel}
-        />
-      )}
 
       {voiceSettingsOpen && <VoiceSettingsModal onClose={() => setVoiceSettingsOpen(false)} />}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
