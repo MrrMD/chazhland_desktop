@@ -350,6 +350,13 @@ export function MainWindow() {
     setNotifLevels((m) => new Map(m).set(channelId, level)) // оптимистично
     api.setChannelNotification(channelId, level).catch(() => toast.error('Не удалось изменить уведомления'))
   }
+  // «пометить непрочитанным отсюда»: ставим lastRead на сообщение ПЕРЕД выбранным (null = с начала канала)
+  function markChannelUnreadFrom(beforeMessageId: string | null) {
+    const ch = currentIdRef.current
+    setReadStates((rs) => rs.map((r) => (r.channelId === ch ? { ...r, lastReadMessageId: beforeMessageId } : r)))
+    setUnread((u) => (u.has(ch) ? u : new Set(u).add(ch)))
+    if (beforeMessageId) api.markRead(ch, beforeMessageId).catch(() => {})
+  }
   async function saveChannel(patch: { name: string; categoryId?: string | null; topic?: string | null; userLimit?: number | null; slowModeSeconds?: number | null }) {
     if (!channelEdit) return
     await api.updateChannel(channelEdit.id, patch)
@@ -513,7 +520,7 @@ export function MainWindow() {
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
                 {/* key={currentId} — перезапускает fadeIn при смене канала; Composer вне обёртки, чтобы сохранить черновик */}
                 <div key={currentId} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', animation: 'fadeIn .26s ease' }}>
-                  <ChatFeed messages={messages} readState={readState} membersById={membersById} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
+                  <ChatFeed messages={messages} readState={readState} membersById={membersById} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onOpenDm={openDm} onMarkUnread={markChannelUnreadFrom} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
                 </div>
                 <TypingIndicator names={typing.map((t) => t.name)} />
                 <Composer channelName={channel?.name ?? ''} onSend={send} onType={() => ws.typing(currentId)} replyToName={replyTo?.authorName} onCancelReply={() => setReplyTo(null)} />

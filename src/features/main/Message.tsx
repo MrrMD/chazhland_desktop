@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import { Reply, SmilePlus, Pencil, Ban, Download, X, Pin, File as FileIcon } from 'lucide-react'
-import { Avatar } from '@/components/Avatar'
+import { Reply, SmilePlus, Pencil, Ban, Download, X, Pin, File as FileIcon, Trash2, Copy, Mail, UserRound, MessageSquare } from 'lucide-react'
+import { Avatar, presenceColor } from '@/components/Avatar'
 import { toast } from '@/lib/toast'
 import { useEscape } from '@/lib/useEscape'
+import { presence } from '@/lib/presence'
+import { MOCK } from '@/lib/config'
 import { renderRichText } from '@/lib/markdown'
 import { EMOJIS } from '@/lib/emojis'
-import type { Attachment, Message as Msg } from '@/lib/types'
+import type { Attachment, Message as Msg, Presence } from '@/lib/types'
 
 // скачивание через blob: cross-origin download-атрибут Chromium игнорирует (навигация → блок navigation-guard)
 async function downloadAttachment(url: string, filename?: string | null) {
@@ -52,9 +54,11 @@ interface Props {
   onEdit?: (id: string, content: string) => void
   onDelete?: (id: string) => void
   onPin?: (id: string, pinned: boolean) => void
+  onOpenDm?: (userId: string) => void  // «Написать в ЛС» из профиля/меню
+  onMarkUnread?: () => void            // «Пометить непрочитанным отсюда» (ChatFeed знает предыдущее сообщение)
 }
 
-export function Message({ m, meId, meName, authorName: authorNameProp, authorAvatarUrl: authorAvatarProp, grouped, highlight, canModerate, onReact, onReply, onEdit, onDelete, onPin }: Props) {
+export function Message({ m, meId, meName, authorName: authorNameProp, authorAvatarUrl: authorAvatarProp, grouped, highlight, canModerate, onReact, onReply, onEdit, onDelete, onPin, onOpenDm, onMarkUnread }: Props) {
   // приоритет — свежий резолв из списка участников; запечённое в сообщении значение (часто UUID) как фолбэк
   const authorName = authorNameProp ?? m.authorName
   const authorAvatarUrl = authorAvatarProp !== undefined ? authorAvatarProp : m.authorAvatarUrl
@@ -65,8 +69,12 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
   const [popEmoji, setPopEmoji] = useState<string | null>(null) // эмодзи, по которому только что кликнули — для pop-анимации
   const [popNonce, setPopNonce] = useState(0)                   // меняем ключ пилюли, чтобы анимация перезапускалась на повторный клик
   const [lightbox, setLightbox] = useState<string | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null)       // ПКМ-контекст-меню
+  const [popover, setPopover] = useState<{ x: number; y: number } | null>(null)  // карточка профиля автора
   useEscape(() => setLightbox(null), !!lightbox)
   useEscape(() => setPicker(null), !!picker)
+  useEscape(() => setMenu(null), !!menu)
+  useEscape(() => setPopover(null), !!popover)
 
   const mention = !!m.content && isMentioningMe(m.content, meName)
   const isOwn = !!meId && m.authorId === meId
@@ -88,12 +96,23 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
   function react(emoji: string) { setPopEmoji(emoji); setPopNonce((n) => n + 1); onReact?.(emoji) }
   function pick(emoji: string) { react(emoji); setPicker(null) }
 
+  const menuItems: MenuItem[] = [
+    { label: 'Ответить', icon: <Reply size={15} />, onClick: () => onReply?.(m) },
+    ...(m.content ? [{ label: 'Копировать текст', icon: <Copy size={15} />, onClick: () => navigator.clipboard?.writeText(m.content!).then(() => toast.ok('Скопировано')).catch(() => {}) }] : []),
+    { label: m.pinnedAt ? 'Открепить' : 'Закрепить', icon: <Pin size={15} />, onClick: () => onPin?.(m.id, !m.pinnedAt) },
+    { label: 'Пометить непрочитанным', icon: <Mail size={15} />, onClick: () => onMarkUnread?.() },
+    { label: 'Профиль автора', icon: <UserRound size={15} />, onClick: () => setPopover(menu) },
+    ...(isOwn ? [{ label: 'Изменить', icon: <Pencil size={15} />, onClick: startEdit }] : []),
+    ...((isOwn || canModerate) ? [{ label: 'Удалить', icon: <Trash2 size={15} />, danger: true, onClick: () => onDelete?.(m.id) }] : []),
+  ]
+
   return (
     <div
       data-mid={m.id}
       className={mention || highlight ? undefined : 'msg-row'}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      onContextMenu={(e) => { if (editing) return; e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY }) }}
       style={{ display: 'flex', gap: 13, padding: mention ? '9px 8px' : grouped ? '1px 8px' : '7px 8px', borderRadius: 12, position: 'relative', background: highlight ? 'var(--accent-tint)' : mention ? 'var(--accent-tint)' : undefined, boxShadow: highlight ? 'inset 0 0 0 2px var(--accent)' : undefined, transition: 'background .35s, box-shadow .35s' }}
     >
       {mention && <div style={{ position: 'absolute', left: 0, top: 9, bottom: 9, width: 3, borderRadius: 3, background: 'var(--accent)' }} />}
@@ -104,6 +123,7 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
           <ToolBtn title="Реакция" onClick={() => setPicker((p) => (p === 'top' ? null : 'top'))}><SmilePlus size={15} /></ToolBtn>
           <ToolBtn title={m.pinnedAt ? 'Открепить' : 'Закрепить'} onClick={() => onPin?.(m.id, !m.pinnedAt)}><Pin size={14} style={m.pinnedAt ? { color: 'var(--accent)' } : undefined} /></ToolBtn>
           {isOwn && <ToolBtn title="Изменить" onClick={startEdit}><Pencil size={14} /></ToolBtn>}
+          {(isOwn || canModerate) && <ToolBtn title="Удалить" danger onClick={() => onDelete?.(m.id)}><Trash2 size={14} /></ToolBtn>}
         </div>
       )}
 
@@ -112,12 +132,12 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
       {grouped ? (
         <span style={{ width: 42, flex: 'none', fontSize: 10, color: 'var(--text-3)', textAlign: 'right', paddingTop: 3, opacity: hover ? 1 : 0, transition: 'opacity .12s' }}>{hhmm(m.createdAt)}</span>
       ) : (
-        <Avatar name={authorName} src={authorAvatarUrl} size={42} />
+        <span onClick={(e) => setPopover({ x: e.clientX, y: e.clientY })} style={{ flex: 'none', cursor: 'pointer' }} title="Профиль"><Avatar name={authorName} src={authorAvatarUrl} size={42} /></span>
       )}
       <div style={{ minWidth: 0, flex: 1 }}>
         {!grouped && (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginBottom: 3 }}>
-            <span style={{ fontWeight: 700, fontSize: 14.5 }}>{authorName}</span>
+            <span onClick={(e) => setPopover({ x: e.clientX, y: e.clientY })} style={{ fontWeight: 700, fontSize: 14.5, cursor: 'pointer' }}>{authorName}</span>
             {m.authorRole && roleBadge[m.authorRole] && (
               <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>
             )}
@@ -176,7 +196,54 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
           </div>
         )}
       </div>
+      {menu && <MsgMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
+      {popover && <UserPopover m={m} name={authorName} avatarUrl={authorAvatarUrl} isOwn={isOwn} x={popover.x} y={popover.y} onOpenDm={onOpenDm} onClose={() => setPopover(null)} />}
     </div>
+  )
+}
+
+interface MenuItem { label: string; icon: React.ReactNode; danger?: boolean; onClick: () => void }
+function MsgMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
+  const top = Math.min(y, window.innerHeight - (items.length * 36 + 20))
+  return (
+    <>
+      <div onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose() }} style={{ position: 'fixed', inset: 0, zIndex: 50 }} />
+      <div style={{ position: 'fixed', left: Math.min(x, window.innerWidth - 210), top, zIndex: 51, minWidth: 196, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 18px 40px -16px var(--shadow)', padding: 5 }}>
+        {items.map((it, i) => (
+          <button key={i} className="chan-row no-drag" onClick={() => { onClose(); it.onClick() }} style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', borderRadius: 7, padding: '8px 10px', fontSize: 13, fontWeight: 500, color: it.danger ? 'var(--danger)' : 'var(--text)' }}>
+            <span style={{ display: 'flex', color: it.danger ? 'var(--danger)' : 'var(--text-3)' }}>{it.icon}</span>{it.label}
+          </button>
+        ))}
+      </div>
+    </>
+  )
+}
+
+const STATUS_SUB: Record<string, string> = { online: 'в сети', idle: 'отошёл', dnd: 'не беспокоить', offline: 'не в сети' }
+function UserPopover({ m, name, avatarUrl, isOwn, x, y, onOpenDm, onClose }: { m: Msg; name: string; avatarUrl?: string | null; isOwn: boolean; x: number; y: number; onOpenDm?: (id: string) => void; onClose: () => void }) {
+  const status: Presence = MOCK ? 'online' : presence.statusOf(m.authorId)
+  const top = Math.min(y, window.innerHeight - 230)
+  const left = Math.min(x, window.innerWidth - 256)
+  return (
+    <>
+      <div onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose() }} style={{ position: 'fixed', inset: 0, zIndex: 50 }} />
+      <div style={{ position: 'fixed', left, top, zIndex: 51, width: 240, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 22px 50px -18px var(--shadow)', overflow: 'hidden', animation: 'popIn .14s ease' }}>
+        <div style={{ height: 54, background: 'var(--accent-tint)' }} />
+        <div style={{ padding: '0 16px 16px', marginTop: -28 }}>
+          <Avatar name={name} src={avatarUrl} size={64} presence={status} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+            <span style={{ fontWeight: 800, fontSize: 17, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+            {m.authorRole && roleBadge[m.authorRole] && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', flex: 'none', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: presenceColor(status), marginTop: 4 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: presenceColor(status) }} />{STATUS_SUB[status]}
+          </div>
+          {!isOwn && onOpenDm && (
+            <button className="accent-btn no-drag" onClick={() => { onClose(); onOpenDm(m.authorId) }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', marginTop: 14, borderRadius: 11, padding: '9px 0', fontWeight: 700, fontSize: 13.5 }}><MessageSquare size={15} /> Написать в ЛС</button>
+          )}
+        </div>
+      </div>
+    </>
   )
 }
 

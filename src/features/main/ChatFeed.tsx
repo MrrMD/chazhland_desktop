@@ -1,10 +1,18 @@
-import { Fragment, useEffect, useLayoutEffect, useRef } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowDown } from 'lucide-react'
 import { Message } from './Message'
 import { Skeleton } from '@/components/Skeleton'
 import type { Member, Message as Msg, ReadState } from '@/lib/types'
 
 const GROUP_GAP_MS = 5 * 60 * 1000 // серия одного автора рвётся после 5 минут паузы
+
+function pluralNew(n: number): string {
+  const a = n % 100, b = n % 10
+  if (a > 10 && a < 20) return 'новых сообщений'
+  if (b === 1) return 'новое сообщение'
+  if (b >= 2 && b <= 4) return 'новых сообщения'
+  return 'новых сообщений'
+}
 
 function dayKey(iso: string) {
   const d = new Date(iso)
@@ -21,7 +29,7 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })
 }
 
-export function ChatFeed({ messages, readState, membersById, onReact, meId, meName, canModerate, onReply, onEdit, onDelete, onPin, onLoadOlder, hasMore, loadingOlder, loading, targetId, onTargetConsumed, detached, onJumpToPresent }: {
+export function ChatFeed({ messages, readState, membersById, onReact, meId, meName, canModerate, onReply, onEdit, onDelete, onPin, onOpenDm, onMarkUnread, onLoadOlder, hasMore, loadingOlder, loading, targetId, onTargetConsumed, detached, onJumpToPresent }: {
   messages: Msg[]
   readState?: ReadState
   membersById?: Map<string, Member> // для резолва имени/аватара автора по authorId на момент рендера
@@ -33,6 +41,8 @@ export function ChatFeed({ messages, readState, membersById, onReact, meId, meNa
   onEdit?: (id: string, content: string) => void
   onDelete?: (id: string) => void
   onPin?: (id: string, pinned: boolean) => void
+  onOpenDm?: (userId: string) => void
+  onMarkUnread?: (beforeMessageId: string | null) => void
   onLoadOlder?: () => void
   hasMore?: boolean
   loadingOlder?: boolean
@@ -49,13 +59,17 @@ export function ChatFeed({ messages, readState, membersById, onReact, meId, meNa
   const scrolledFor = useRef<string | null>(null)
   const onConsumeRef = useRef(onTargetConsumed)
   onConsumeRef.current = onTargetConsumed
+  const atBottomRef = useRef(true) // был ли пользователь у низа ленты перед новым сообщением
+  const [showJump, setShowJump] = useState(false) // прокрутил вверх — показать кнопку «вниз»
+  const [newCount, setNewCount] = useState(0)      // сколько новых сообщений пришло, пока листал вверх
   const lastId = messages[messages.length - 1]?.id
-  // авто-низ только при новом последнем сообщении/смене канала (не при подгрузке старых сверху
-  // и не во время перехода к найденному сообщению — иначе прыжок вниз перебьёт скролл к цели)
+  function scrollToBottom() { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight; atBottomRef.current = true; setShowJump(false); setNewCount(0) }
+  // новое последнее сообщение/смена канала: если пользователь у низа — доскроллить; если листает вверх —
+  // НЕ дёргать ленту, а копить счётчик и показать кнопку «вниз». (Не при подгрузке старых и не при переходе к цели.)
   useEffect(() => {
     if (anchorRef.current || targetRef.current) return
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (atBottomRef.current) { const el = scrollRef.current; if (el) el.scrollTop = el.scrollHeight }
+    else { setNewCount((c) => c + 1); setShowJump(true) }
   }, [lastId])
   // переход к сообщению: ждём, пока узел появится в DOM (окно контекста уже загружено), скроллим к центру.
   // Зависит от messages (узел может отрендериться на следующий тик), но скроллим один раз на цель.
@@ -84,8 +98,12 @@ export function ChatFeed({ messages, readState, membersById, onReact, meId, meNa
   }, [messages])
   function onScroll() {
     const el = scrollRef.current
-    if (!el || !hasMore || loadingOlder) return
-    if (el.scrollTop < 80) { anchorRef.current = { h: el.scrollHeight, t: el.scrollTop }; onLoadOlder?.() }
+    if (!el) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 120
+    atBottomRef.current = atBottom
+    if (atBottom) { if (showJump) setShowJump(false); if (newCount) setNewCount(0) }
+    else if (!showJump && !detached) setShowJump(true) // прокрутил вверх вручную
+    if (hasMore && !loadingOlder && el.scrollTop < 80) { anchorRef.current = { h: el.scrollHeight, t: el.scrollTop }; onLoadOlder?.() }
   }
 
   // индекс первого непрочитанного (после lastReadMessageId)
@@ -128,10 +146,15 @@ export function ChatFeed({ messages, readState, membersById, onReact, meId, meNa
           <Fragment key={m.id}>
             {newDay && <Divider label={dayLabel(m.createdAt)} />}
             {isUnread && <UnreadDivider />}
-            <Message m={m} authorName={author?.username} authorAvatarUrl={author ? author.avatarUrl : undefined} grouped={grouped} highlight={m.id === targetId} meId={meId} meName={meName} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} onPin={onPin} />
+            <Message m={m} authorName={author?.username} authorAvatarUrl={author ? author.avatarUrl : undefined} grouped={grouped} highlight={m.id === targetId} meId={meId} meName={meName} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} onPin={onPin} onOpenDm={onOpenDm} onMarkUnread={() => onMarkUnread?.(prev ? prev.id : null)} />
           </Fragment>
         )
       })}
+      {showJump && !detached && (
+        <button onClick={scrollToBottom} className="no-drag" style={{ position: 'sticky', bottom: 8, alignSelf: 'center', marginTop: 6, display: 'flex', alignItems: 'center', gap: 7, background: newCount > 0 ? 'var(--accent)' : 'var(--surface-3)', color: newCount > 0 ? '#fff' : 'var(--text)', border: newCount > 0 ? 'none' : '1px solid var(--border)', borderRadius: 30, padding: '7px 15px', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 8px 22px -8px var(--shadow)' }}>
+          {newCount > 0 ? `${newCount} ${pluralNew(newCount)}` : 'Вниз'} <ArrowDown size={15} />
+        </button>
+      )}
       {detached && (
         <button onClick={onJumpToPresent} className="no-drag" style={{ position: 'sticky', bottom: 8, alignSelf: 'center', marginTop: 6, display: 'flex', alignItems: 'center', gap: 7, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 30, padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 8px 22px -6px var(--accent)' }}>
           К последним сообщениям <ArrowDown size={15} />
