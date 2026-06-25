@@ -3,6 +3,7 @@ import { Settings, Check, Mic, MicOff, Shield, LogOut, Volume2, VolumeX, Headpho
 import { Avatar, presenceColor } from '@/components/Avatar'
 import { voice, SCREEN_QUALITY_LABELS, SCREEN_QUALITY_ORDER, type ScreenQuality } from '@/lib/voice'
 import { soundboard } from '@/lib/soundboard'
+import { nameStyle } from '@/lib/cosmetics'
 import { toast } from '@/lib/toast'
 import type { SoundClip } from '@/lib/api'
 import type { Presence, User } from '@/lib/types'
@@ -29,6 +30,7 @@ interface Props {
   onLogout: () => void
   onLeaveVoice: () => void
   soundboardDisabled?: boolean // саундпад выключен этому пользователю — прячем кнопку
+  equipped?: Record<string, string> // надетая косметика (рамка/свечение/эффект ника) — мой мини-профиль
 }
 
 export function BottomBar(p: Props) {
@@ -54,9 +56,9 @@ export function BottomBar(p: Props) {
       {/* center profile + status switcher */}
       <div style={{ justifySelf: 'center', position: 'relative' }}>
         <button onClick={() => setStatusOpen((v) => !v)} className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 11, background: 'var(--win)', border: '1px solid var(--border)', borderRadius: 15, padding: '7px 18px 7px 9px', cursor: 'pointer', color: 'var(--text)' }}>
-          <Avatar name={p.user.username} src={p.user.avatarUrl} size={40} presence={p.status} />
+          <Avatar name={p.user.username} src={p.user.avatarUrl} size={40} presence={p.status} frame={p.equipped?.frame} glow={p.equipped?.glow} />
           <div style={{ lineHeight: 1.2, textAlign: 'left', minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>{p.user.username}</div>
+            <div style={{ fontWeight: 700, fontSize: 14, ...(nameStyle(p.equipped?.nameEffect) ?? {}) }}>{p.user.username}</div>
             {(() => {
               // приоритет: в голосовом → статус «о себе» → пресенс-метка (онлайн/отошёл/dnd)
               const custom = !p.voiceChannelName && !!p.user.statusMessage?.trim()

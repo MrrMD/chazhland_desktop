@@ -161,6 +161,7 @@ function CosmeticsSection({ meName, meAvatar, onEquipChange }: { meName: string;
 
   async function equip(slot: string, cosmeticId: string | null) {
     const key = cosmeticId ?? `none:${slot}`
+    const prev = equipped // состояние ИМЕННО перед этим вызовом (не снимок монтирования)
     setBusy(key)
     const next = { ...equipped }
     if (cosmeticId) next[slot] = cosmeticId; else delete next[slot]
@@ -170,7 +171,8 @@ function CosmeticsSection({ meName, meAvatar, onEquipChange }: { meName: string;
       setEquipped(saved)
       onEquipChange?.(saved)
     } catch {
-      setEquipped({ ...(mine?.equipped ?? {}) }) // откат
+      setEquipped(prev) // откат только этого изменения — прежние удачные экипировки сохраняются
+      onEquipChange?.(prev) // держим родителя (рейл/чат/мини-профиль) в синхроне с откатом
       toast.error('Не удалось применить')
     } finally { setBusy(null) }
   }

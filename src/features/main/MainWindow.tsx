@@ -637,6 +637,7 @@ export function MainWindow() {
         onLogout={logout}
         onLeaveVoice={() => voice.leave()}
         soundboardDisabled={membersById.get(user.id)?.soundboardDisabled}
+        equipped={myRank?.equipped}
       />
 
       {voiceSettingsOpen && <VoiceSettingsModal onClose={() => setVoiceSettingsOpen(false)} />}
