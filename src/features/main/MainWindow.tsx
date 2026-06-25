@@ -165,16 +165,18 @@ export function MainWindow() {
   // RANK_UP по WS: свой апгрейд → праздничный тост; любой апгрейд на этом сервере → обновить чипы
   useEffect(() => {
     if (!currentServerId) return
+    let alive = true
     const off = ws.onServerRank(currentServerId, (e: RankEvent) => {
       if (e.type !== 'RANK_UP') return
       if (e.userId === user.id) {
         sfx.mention()
         toast.info(`🎉 Новый уровень${e.level ? ' ' + e.level : ''}!${e.unlocked?.length ? ` Открыта косметика: ${e.unlocked.length}` : ''}`)
-        api.myRank().then(setMyRank).catch(() => {})
+        api.myRank().then((r) => { if (alive) setMyRank(r) }).catch(() => {})
       }
-      api.memberRanks(currentServerId).then((rs) => setMemberRanks(new Map(rs.map((r) => [r.userId, r])))).catch(() => {})
+      // guard: пользователь мог сменить сервер, пока летел refetch — не затирать чипы чужого сервера
+      api.memberRanks(currentServerId).then((rs) => { if (alive) setMemberRanks(new Map(rs.map((r) => [r.userId, r]))) }).catch(() => {})
     })
-    return off
+    return () => { alive = false; off() }
   }, [currentServerId, user.id])
 
   useEffect(() => {
