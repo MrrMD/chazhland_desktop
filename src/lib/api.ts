@@ -533,8 +533,9 @@ export const api = {
       }
       return eq
     }
+    // слот бэк выводит из каталога по cosmeticId; для снятия слот идёт в пути
     if (cosmeticId) {
-      return http<Record<string, string>>('/me/rank/equip', { method: 'PUT', body: JSON.stringify({ slot, cosmeticId }) })
+      return http<Record<string, string>>('/me/rank/equip', { method: 'PUT', body: JSON.stringify({ cosmeticId }) })
     }
     return http<Record<string, string>>(`/me/rank/equip/${slot}`, { method: 'DELETE' })
   },
