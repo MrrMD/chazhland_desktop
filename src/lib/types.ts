@@ -74,9 +74,10 @@ export interface ServerRankInfo {
 export interface MyRank {
   peakLevel: number; peakTitle: string | null
   servers: ServerRankInfo[]; unlockedCosmeticIds: string[]
+  equipped?: Record<string, string> // слот → cosmeticId (аккаунт-уровень)
 }
-/** Ранг участника для чипа у ника. */
-export interface MemberRank { userId: string; level: number; title: string | null }
+/** Ранг участника для чипа у ника + экипированная косметика (рамка/свечение на аватаре). */
+export interface MemberRank { userId: string; level: number; title: string | null; equipped?: Record<string, string> }
 
 // права как имена битов (бэк: Permission enum)
 export type Permission =

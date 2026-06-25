@@ -61,7 +61,7 @@ function Row({ m, status, roles, rank, expanded, dim, self, onOpenDm }: { m: Mem
   const top = highestRole(m.roleIds, roles)      // высшая кастомная роль — для бейджа
   return (
     <div className="member-row" onClick={() => { if (!self) onOpenDm?.(m.userId) }} title={self ? undefined : 'Личные сообщения'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 6, cursor: self ? 'default' : 'pointer' }}>
-      <Avatar name={m.username} src={m.avatarUrl} size={38} presence={status} dim={dim} />
+      <Avatar name={m.username} src={m.avatarUrl} size={38} presence={status} dim={dim} frame={rank?.equipped?.frame} glow={rank?.equipped?.glow} />
       {expanded && (
         <>
           <div style={{ lineHeight: 1.2, minWidth: 0 }}>

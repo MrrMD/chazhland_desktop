@@ -39,15 +39,15 @@ export const MOCK_MEMBERS: Member[] = [
 // --- Ранги (mock для превью UI) ---
 export const MOCK_MEMBER_RANKS: Record<string, MemberRank[]> = {
   s_home: [
-    { userId: 'u_anya', level: 200, title: 'Вершина Чажленда' },
-    { userId: 'u_mark', level: 140, title: 'Легенда поколения' },
-    { userId: 'u_kostya', level: 95, title: 'Мастер своего дела' },
-    { userId: 'u_me', level: 58, title: 'Ветеран' },
-    { userId: 'u_lena', level: 22, title: 'Свой человек' },
+    { userId: 'u_anya', level: 200, title: 'Вершина Чажленда', equipped: { frame: 'frame.anim.spin', glow: 'glow.aura.rainbow' } },
+    { userId: 'u_mark', level: 140, title: 'Легенда поколения', equipped: { frame: 'frame.anim.shimmerGold', glow: 'glow.pulse.breath' } },
+    { userId: 'u_kostya', level: 95, title: 'Мастер своего дела', equipped: { frame: 'frame.ring.gold', glow: 'glow.warm.ember' } },
+    { userId: 'u_me', level: 58, title: 'Ветеран', equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent' } },
+    { userId: 'u_lena', level: 22, title: 'Свой человек', equipped: { frame: 'frame.ring.bronze' } },
     { userId: 'u_dmitry', level: 7, title: 'Прохожий' },
   ],
   s_squad: [
-    { userId: 'u_me', level: 31, title: 'Старожил' },
+    { userId: 'u_me', level: 31, title: 'Старожил', equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent' } },
     { userId: 'u_anya', level: 12, title: 'Прохожий' },
   ],
 }
@@ -60,6 +60,7 @@ export const MOCK_MY_RANK: MyRank = {
     { serverId: 's_squad', level: 31, xp: 6300, title: 'Старожил', tier: 'Старожил', levelStartXp: 6010, nextLevelXp: 6700 },
   ],
   unlockedCosmeticIds: ['name.color.ember', 'frame.ring.gold', 'glow.soft.accent', 'frame.anim.spin', 'banner.gradient.dawn'],
+  equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent' },
 }
 
 export const MOCK_RANK_CATALOG: RankCatalog = {

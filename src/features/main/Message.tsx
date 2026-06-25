@@ -166,7 +166,7 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
       {grouped ? (
         <span style={{ width: 42, flex: 'none', fontSize: 10, color: 'var(--text-3)', textAlign: 'right', paddingTop: 3, opacity: hover ? 1 : 0, transition: 'opacity .12s' }}>{hhmm(m.createdAt)}</span>
       ) : (
-        <span onClick={(e) => setPopover({ x: e.clientX, y: e.clientY })} style={{ flex: 'none', cursor: 'pointer' }} title="Профиль"><Avatar name={authorName} src={authorAvatarUrl} size={42} /></span>
+        <span onClick={(e) => setPopover({ x: e.clientX, y: e.clientY })} style={{ flex: 'none', cursor: 'pointer' }} title="Профиль"><Avatar name={authorName} src={authorAvatarUrl} size={42} frame={rank?.equipped?.frame} glow={rank?.equipped?.glow} /></span>
       )}
       <div style={{ minWidth: 0, flex: 1 }}>
         {!grouped && (
@@ -292,7 +292,7 @@ function UserPopover({ m, name, avatarUrl, nameColor, topRole, rank, myServerRan
       <div style={{ position: 'fixed', left, top, zIndex: 51, width: 240, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 22px 50px -18px var(--shadow)', overflow: 'hidden', animation: 'popIn .14s ease' }}>
         <div style={{ height: 54, background: 'var(--accent-tint)' }} />
         <div style={{ padding: '0 16px 16px', marginTop: -28 }}>
-          <Avatar name={name} src={avatarUrl} size={64} presence={status} />
+          <Avatar name={name} src={avatarUrl} size={64} presence={status} frame={rank?.equipped?.frame} glow={rank?.equipped?.glow} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <span style={{ fontWeight: 800, fontSize: 17, color: nameColor || undefined, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
             {m.authorRole && roleBadge[m.authorRole] && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', flex: 'none', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>}

@@ -1,4 +1,5 @@
 import type { Presence } from '@/lib/types'
+import { frameLayer, glowLayer } from '@/lib/cosmetics'
 
 const GRADS = [
   'linear-gradient(135deg,#f0a23a,#e0457b)',
@@ -25,7 +26,7 @@ export function presenceColor(s: Presence): string {
 }
 
 export function Avatar({
-  name, src, size = 40, presence, dim = false, ringColor, speaking = false,
+  name, src, size = 40, presence, dim = false, ringColor, speaking = false, frame, glow,
 }: {
   name: string
   src?: string | null
@@ -34,12 +35,19 @@ export function Avatar({
   dim?: boolean
   ringColor?: string
   speaking?: boolean // активный спикер — пульсирующее зелёное кольцо (keyframe ring)
+  frame?: string     // косметика-рамка (id из каталога рангов)
+  glow?: string      // косметика-свечение (id из каталога рангов)
 }) {
   const dot = Math.max(10, Math.round(size * 0.3))
+  const frameStyle = frameLayer(frame)
+  const glowStyle = glowLayer(glow)
   return (
     <div style={{ position: 'relative', width: size, height: size, flex: 'none', opacity: dim ? 0.45 : 1 }}>
+      {glowStyle && <div style={glowStyle} />}
+      {frameStyle && <div style={frameStyle} />}
       <div
         style={{
+          position: 'relative', zIndex: 1,
           width: size, height: size, borderRadius: '50%', background: gradFor(name),
           color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontWeight: 700, fontSize: Math.round(size * 0.38), overflow: 'hidden',
@@ -55,7 +63,7 @@ export function Avatar({
       {presence && presence !== 'offline' && (
         <div
           style={{
-            position: 'absolute', right: -1, bottom: -1, width: dot, height: dot, borderRadius: '50%',
+            position: 'absolute', zIndex: 2, right: -1, bottom: -1, width: dot, height: dot, borderRadius: '50%',
             background: presenceColor(presence), border: '2.5px solid var(--surface)',
             transition: 'background .3s ease', // плавная смена цвета статуса (online↔idle↔dnd)
           }}
