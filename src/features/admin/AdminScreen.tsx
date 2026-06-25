@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useState } from 'react'
-import { ChevronLeft, ChevronDown, Lock, Key, X, UserMinus, ArrowLeftRight, Plus, Volume2, Music, AlertTriangle } from 'lucide-react'
+import { ChevronLeft, ChevronDown, Lock, Key, X, UserMinus, ArrowLeftRight, Plus, Volume2, Music, AlertTriangle, Copy, Link2, Check, LogOut } from 'lucide-react'
 import { api } from '@/lib/api'
 import { toast } from '@/lib/toast'
 import { Avatar, presenceColor } from '@/components/Avatar'
@@ -7,20 +7,33 @@ import { Skeleton } from '@/components/Skeleton'
 import { ConfirmModal, ChangeRoleModal, TempPasswordModal } from './modals'
 import { RolesTab } from './RolesTab'
 import { ChannelAccessTab } from './ChannelAccessTab'
-import type { AuditEntry, Member } from '@/lib/types'
+import type { AuditEntry, InviteCreated, InviteSummary, Member, ServerSummary } from '@/lib/types'
 
-type Tab = 'members' | 'roles' | 'channels' | 'audit'
-const TAB_LABEL: Record<Tab, string> = { members: 'Участники', roles: 'Роли', channels: 'Каналы', audit: 'Аудит' }
+type Tab = 'members' | 'roles' | 'channels' | 'invites' | 'server' | 'audit'
+const TAB_LABEL: Record<Tab, string> = { members: 'Участники', roles: 'Роли', channels: 'Каналы', invites: 'Приглашения', server: 'Сервер', audit: 'Аудит' }
 
-export function AdminScreen({ onClose }: { onClose: () => void }) {
+function fmtShort(iso: string): string {
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? iso : d.toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+}
+
+export function AdminScreen({ serverId, isHome, onClose, onRenamed, onLeft }: {
+  serverId?: string
+  isHome: boolean
+  onClose: () => void
+  onRenamed: (s: ServerSummary) => void
+  onLeft: (serverId: string) => void
+}) {
   const [tab, setTab] = useState<Tab>('members')
+  // аудит и сброс пароля — операции уровня инсталляции (домашний сервер); на остальных серверах прячем
+  const tabs: Tab[] = ['members', 'roles', 'channels', 'invites', 'server', ...(isHome ? (['audit'] as Tab[]) : [])]
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
       <div style={{ height: 52, flex: 'none', display: 'flex', alignItems: 'center', gap: 12, padding: '0 22px', borderBottom: '1px solid var(--border)' }}>
         <button className="ib no-drag" onClick={onClose} title="Назад" style={{ width: 34, height: 30 }}><ChevronLeft size={18} /></button>
         <span style={{ fontWeight: 800, fontSize: 17 }}>Админка</span>
         <div style={{ marginLeft: 'auto', display: 'flex', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 11, padding: 3 }}>
-          {(['members', 'roles', 'channels', 'audit'] as Tab[]).map((t) => (
+          {tabs.map((t) => (
             <button key={t} className={'seg-btn no-drag' + (tab === t ? ' on' : '')} onClick={() => setTab(t)} style={{ fontSize: 13, padding: '6px 13px' }}>
               {TAB_LABEL[t]}
             </button>
@@ -28,10 +41,12 @@ export function AdminScreen({ onClose }: { onClose: () => void }) {
         </div>
       </div>
       <div style={{ flex: 1, overflow: 'auto', padding: '26px 30px' }}>
-        {tab === 'members' && <MembersTab />}
-        {tab === 'roles' && <RolesTab />}
-        {tab === 'channels' && <ChannelAccessTab />}
-        {tab === 'audit' && <AuditTab />}
+        {tab === 'members' && <MembersTab serverId={serverId} isHome={isHome} />}
+        {tab === 'roles' && <RolesTab serverId={serverId} />}
+        {tab === 'channels' && <ChannelAccessTab serverId={serverId} />}
+        {tab === 'invites' && <InvitesTab serverId={serverId} />}
+        {tab === 'server' && <ServerTab serverId={serverId} onRenamed={onRenamed} onLeft={onLeft} />}
+        {tab === 'audit' && isHome && <AuditTab />}
       </div>
     </div>
   )
@@ -39,7 +54,7 @@ export function AdminScreen({ onClose }: { onClose: () => void }) {
 
 const STATUS_TXT: Record<string, string> = { online: '● онлайн', idle: '● отошёл', dnd: '● не беспокоить', offline: '○ оффлайн' }
 
-function MembersTab() {
+function MembersTab({ serverId, isHome }: { serverId?: string; isHome: boolean }) {
   const [rows, setRows] = useState<Member[] | null>(null)
   const [kickT, setKickT] = useState<Member | null>(null)
   const [roleT, setRoleT] = useState<Member | null>(null)
@@ -47,11 +62,11 @@ function MembersTab() {
   const [tempPw, setTempPw] = useState<{ name: string; pw: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  useEffect(() => { let a = true; api.members().then((r) => { if (a) setRows(r) }); return () => { a = false } }, [])
+  useEffect(() => { let a = true; api.members(serverId).then((r) => { if (a) setRows(r) }); return () => { a = false } }, [serverId])
   async function toggleSb(m: Member) {
     const dis = !m.soundboardDisabled
     setRows((rs) => (rs ? rs.map((x) => (x.userId === m.userId ? { ...x, soundboardDisabled: dis } : x)) : rs))
-    try { await api.setMemberSoundboard(m.userId, dis); toast.ok(dis ? 'Саундпад выключен участнику' : 'Саундпад включён') }
+    try { await api.setMemberSoundboard(m.userId, dis, serverId); toast.ok(dis ? 'Саундпад выключен участнику' : 'Саундпад включён') }
     catch {
       toast.error('Не удалось изменить доступ к саундпаду')
       setRows((rs) => (rs ? rs.map((x) => (x.userId === m.userId ? { ...x, soundboardDisabled: !dis } : x)) : rs))
@@ -87,7 +102,7 @@ function MembersTab() {
                 ? <span style={{ color: 'var(--border-2)', fontSize: 15 }}>——</span>
                 : <div style={{ display: 'flex', gap: 7, color: 'var(--text-2)' }}>
                     <span onClick={() => toggleSb(m)} className="ib no-drag" style={{ width: 30, height: 30, color: m.soundboardDisabled ? 'var(--danger)' : 'var(--text-2)' }} title={m.soundboardDisabled ? 'Саундпад выключен — включить' : 'Выключить саундпад участнику'}><Music size={15} /></span>
-                    <span onClick={() => setResetT(m)} className="ib no-drag" style={{ width: 30, height: 30 }} title="Сбросить пароль"><Key size={15} /></span>
+                    {isHome && <span onClick={() => setResetT(m)} className="ib no-drag" style={{ width: 30, height: 30 }} title="Сбросить пароль"><Key size={15} /></span>}
                     <span onClick={() => setKickT(m)} className="ib no-drag" style={{ width: 30, height: 30, color: 'var(--danger)' }} title="Исключить"><X size={15} /></span>
                   </div>}
             </div>
@@ -101,7 +116,7 @@ function MembersTab() {
         onConfirm={async () => {
           const id = kickT.userId
           setBusy(true); setErr('')
-          try { await api.kick(id); setRows((rs) => (rs ? rs.filter((x) => x.userId !== id) : rs)); setKickT(null) }
+          try { await api.kick(id, serverId); setRows((rs) => (rs ? rs.filter((x) => x.userId !== id) : rs)); setKickT(null) }
           catch { setErr('Не удалось исключить участника. Попробуйте ещё раз.') }
           finally { setBusy(false) }
         }}
@@ -110,7 +125,7 @@ function MembersTab() {
         onSelect={async (role) => {
           const id = roleT.userId
           setBusy(true); setErr('')
-          try { await api.changeRole(id, role); setRows((rs) => (rs ? rs.map((x) => (x.userId === id ? { ...x, role } : x)) : rs)); setRoleT(null) }
+          try { await api.changeRole(id, role, serverId); setRows((rs) => (rs ? rs.map((x) => (x.userId === id ? { ...x, role } : x)) : rs)); setRoleT(null) }
           catch { setErr('Не удалось изменить роль. Попробуйте ещё раз.') }
           finally { setBusy(false) }
         }}
@@ -196,6 +211,106 @@ function Loading() {
           <Skeleton w="14%" h={12} style={{ marginLeft: 'auto' }} />
         </div>
       ))}
+    </div>
+  )
+}
+
+function InvitesTab({ serverId }: { serverId?: string }) {
+  const [rows, setRows] = useState<InviteSummary[] | null>(null)
+  const [created, setCreated] = useState<InviteCreated | null>(null)
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    let a = true
+    if (!serverId) { setRows([]); return }
+    api.listInvites(serverId).then((r) => { if (a) setRows(r) }).catch(() => { if (a) setRows([]) })
+    return () => { a = false }
+  }, [serverId])
+  async function create() {
+    if (!serverId) return
+    setBusy(true)
+    try {
+      const inv = await api.createInvite(serverId)
+      setCreated(inv)
+      api.listInvites(serverId).then(setRows).catch(() => {})
+    } catch { toast.error('Не удалось создать приглашение — нужно право «Создавать приглашения»') }
+    finally { setBusy(false) }
+  }
+  async function revoke(id: string) {
+    if (!serverId) return
+    setRows((rs) => rs?.map((r) => (r.id === id ? { ...r, revoked: true } : r)) ?? rs)
+    try { await api.revokeInvite(serverId, id) } catch { toast.error('Не удалось отозвать'); api.listInvites(serverId).then(setRows).catch(() => {}) }
+  }
+  if (!rows) return <Loading />
+  return (
+    <div style={{ animation: 'fadeIn .35s ease', maxWidth: 720 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+        <div style={{ fontWeight: 800, fontSize: 24, letterSpacing: '-.02em' }}>Приглашения</div>
+        <button onClick={create} disabled={busy} className="accent-btn no-drag" style={{ marginLeft: 'auto', borderRadius: 11, padding: '9px 16px', fontWeight: 700, fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 8, opacity: busy ? 0.6 : 1 }}><Plus size={16} /> Создать код</button>
+      </div>
+      {created && <CreatedInvite inv={created} onClose={() => setCreated(null)} />}
+      {rows.length === 0 ? (
+        <div style={{ color: 'var(--text-3)', fontSize: 13.5, padding: '24px 4px' }}>Активных приглашений нет. Создайте код и поделитесь им — по нему вступят в этот сервер.</div>
+      ) : (
+        <Card>
+          {rows.map((r, i) => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 18px', borderBottom: i < rows.length - 1 ? '1px solid var(--surface-2)' : undefined, opacity: r.revoked ? 0.5 : 1 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 11, background: r.revoked ? 'var(--surface-2)' : 'var(--green-tint)', color: r.revoked ? 'var(--text-3)' : 'var(--green)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}><Link2 size={16} /></div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 600 }}>{r.revoked ? 'Отозвано' : 'Активно'} · {r.uses}{r.maxUses ? ` / ${r.maxUses}` : ''} использований</div>
+                <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 2 }}>{r.expiresAt ? `действует до ${fmtShort(r.expiresAt)}` : 'бессрочно'} · создано {fmtShort(r.createdAt)}</div>
+              </div>
+              {!r.revoked && <button onClick={() => revoke(r.id)} className="ib no-drag" title="Отозвать" style={{ width: 30, height: 30, color: 'var(--danger)', flex: 'none' }}><X size={15} /></button>}
+            </div>
+          ))}
+        </Card>
+      )}
+    </div>
+  )
+}
+
+function CreatedInvite({ inv, onClose }: { inv: InviteCreated; onClose: () => void }) {
+  const [copied, setCopied] = useState(false)
+  function copy() { navigator.clipboard?.writeText(inv.code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }).catch(() => {}) }
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--green-tint)', border: '1px solid rgba(46,160,67,.3)', borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
+      <Link2 size={18} style={{ color: 'var(--green)', flex: 'none' }} />
+      <code style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 700, fontFamily: 'ui-monospace,monospace', userSelect: 'all', wordBreak: 'break-all' }}>{inv.code}</code>
+      <button onClick={copy} className="pill no-drag" style={{ flex: 'none', padding: '7px 13px', fontWeight: 600, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 6 }}>{copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Скопировано' : 'Копировать'}</button>
+      <button onClick={onClose} className="ib no-drag" style={{ flex: 'none', width: 28, height: 28 }}><X size={14} /></button>
+    </div>
+  )
+}
+
+function ServerTab({ serverId, onRenamed, onLeft }: { serverId?: string; onRenamed: (s: ServerSummary) => void; onLeft: (id: string) => void }) {
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [leaveOpen, setLeaveOpen] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+  async function save() {
+    if (!serverId || !name.trim()) return
+    setSaving(true)
+    try { const s = await api.renameServer(serverId, name.trim()); onRenamed(s); setName(''); toast.ok('Сервер переименован') }
+    catch { toast.error('Не удалось переименовать — нужно право «Управление сервером»') }
+    finally { setSaving(false) }
+  }
+  return (
+    <div style={{ animation: 'fadeIn .35s ease', maxWidth: 560 }}>
+      <div style={{ fontWeight: 800, fontSize: 24, letterSpacing: '-.02em', marginBottom: 18 }}>Сервер</div>
+      <Card>
+        <div style={{ padding: '18px 20px' }}>
+          <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>Название сервера</label>
+          <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="новое название" maxLength={100} className="no-drag" style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border-2)', background: 'var(--win)', color: 'var(--text)', outline: 'none' }} onKeyDown={(e) => { if (e.key === 'Enter') save() }} />
+            <button onClick={save} disabled={saving || !name.trim()} className="accent-btn no-drag" style={{ borderRadius: 10, padding: '10px 18px', fontWeight: 700, fontSize: 13.5, opacity: saving || !name.trim() ? 0.5 : 1 }}>Сохранить</button>
+          </div>
+        </div>
+      </Card>
+      <div style={{ marginTop: 16 }}>
+        <button onClick={() => setLeaveOpen(true)} className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'var(--danger-tint)', border: '1px solid rgba(224,57,47,.3)', color: 'var(--danger)', borderRadius: 12, padding: '11px 16px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}><LogOut size={16} /> Покинуть сервер</button>
+      </div>
+      {leaveOpen && <ConfirmModal title="Покинуть сервер" message="Вы выйдете из этого сервера и перестанете видеть его каналы. Владелец выйти не может — сначала передайте владение." confirmLabel="Покинуть" danger busy={leaving}
+        onConfirm={async () => { if (!serverId) return; setLeaving(true); try { await api.leaveServer(serverId); onLeft(serverId) } catch { toast.error('Не удалось выйти (владелец не может покинуть сервер)'); setLeaving(false) } }}
+        onClose={() => setLeaveOpen(false)} />}
     </div>
   )
 }

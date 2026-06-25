@@ -16,7 +16,7 @@ function permsForChannel(type: ChannelType): Permission[] {
   return ['VIEW_CHANNEL', 'SEND_MESSAGES', 'MANAGE_MESSAGES', 'MENTION_EVERYONE']
 }
 
-export function ChannelAccessTab() {
+export function ChannelAccessTab({ serverId }: { serverId?: string }) {
   const [channels, setChannels] = useState<Channel[] | null>(null)
   const [roles, setRoles] = useState<ServerRole[]>([])
   const [members, setMembers] = useState<Member[]>([])
@@ -28,14 +28,15 @@ export function ChannelAccessTab() {
 
   useEffect(() => {
     let a = true
-    Promise.all([api.serverTree(), api.roles(), api.members()]).then(([t, r, m]) => {
+    Promise.all([api.serverTree(serverId), api.roles(serverId), api.members(serverId)]).then(([t, r, m]) => {
       if (!a) return
       const chs = t.channels.filter((c) => c.type !== 'DM')
       setChannels(chs); setRoles(r); setMembers(m)
       if (chs[0]) select(chs[0].id)
     }).catch(() => { if (a) setChannels([]) })
     return () => { a = false }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverId])
 
   async function select(id: string) {
     setSelId(id); setLoading(true); setExtraMembers([]); setAddOpen(false)

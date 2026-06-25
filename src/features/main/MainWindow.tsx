@@ -3,11 +3,13 @@ import { api, type ServerTree } from '@/lib/api'
 import { useAuth } from '@/store/auth'
 import { voice, type VoiceState } from '@/lib/voice'
 import { presence } from '@/lib/presence'
-import type { AttachmentInput, Channel, ChannelType, Dm, Member, Message, NotificationLevel, Presence, ReadState, ServerRole } from '@/lib/types'
+import type { AttachmentInput, Channel, ChannelType, Dm, Member, Message, NotificationLevel, Presence, ReadState, ServerRole, ServerSummary } from '@/lib/types'
 import { ChatFeed } from './ChatFeed'
 import { Composer } from './Composer'
 import { MembersRail } from './MembersRail'
 import { ChannelSidebar } from './ChannelSidebar'
+import { GuildRail } from './GuildRail'
+import { ServerActionsModal } from './ServerActionsModal'
 import { ChannelSettingsModal } from './ChannelSettingsModal'
 import { BottomBar } from './BottomBar'
 import { WatchView } from './WatchView'
@@ -46,6 +48,12 @@ export function MainWindow() {
   const [readStates, setReadStates] = useState<ReadState[]>([])
   const [messages, setMessages] = useState<Message[]>([])
   const [currentId, setCurrentId] = useState('')
+
+  const [servers, setServers] = useState<ServerSummary[]>([])
+  const [currentServerId, setCurrentServerId] = useState('')
+  const [serverActionsOpen, setServerActionsOpen] = useState(false)
+  const currentServerIdRef = useRef(currentServerId)
+  useEffect(() => { currentServerIdRef.current = currentServerId }, [currentServerId])
 
   const [view, setView] = useState<'chat' | 'admin'>('chat')
   const [membersExpanded, setMembersExpanded] = useState(true)
@@ -86,7 +94,7 @@ export function MainWindow() {
     if (avatarRef.current === user.avatarUrl) return
     avatarRef.current = user.avatarUrl
     setMembers((ms) => ms.map((m) => (m.userId === user.id ? { ...m, avatarUrl: user.avatarUrl } : m))) // мгновенно
-    api.members().then(setMembers).catch(() => {}) // авторитетно (+ обновляет кэш авторов сообщений)
+    api.members(currentServerIdRef.current).then(setMembers).catch(() => {}) // авторитетно (+ обновляет кэш авторов сообщений)
   }, [user.avatarUrl, user.id])
 
   const membersById = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
@@ -98,7 +106,7 @@ export function MainWindow() {
     const unknown = messages.find((m) => m.authorId && !membersById.has(m.authorId) && !refetchedAuthorsRef.current.has(m.authorId))
     if (!unknown) return
     refetchedAuthorsRef.current.add(unknown.authorId)
-    api.members().then(setMembers).catch(() => {})
+    api.members(currentServerIdRef.current).then(setMembers).catch(() => {})
   }, [messages, membersById])
 
   // актуальный канал для асинхронных колбэков (откат реакции и т.п.), чтобы не затирать чужую ленту
@@ -115,18 +123,32 @@ export function MainWindow() {
   const autoIdleRef = useRef(false) // авто-idle активен → вернём online при активности (если не сменили статус вручную)
   const messagesRef = useRef(messages); messagesRef.current = messages // свежие сообщения для WS-колбэков (звук реакции)
 
+  // серверо-независимое — один раз: список серверов (рейл), DM, прочитанность, уровни уведомлений
   useEffect(() => {
-    api.serverTree().then((t) => {
-      setTree(t)
-      // первый открытый канал — первый текстовый (или любой), а не захардкоженный id
-      setCurrentId((cur) => (cur && t.channels.some((c) => c.id === cur) ? cur : (t.channels.find((c) => c.type === 'TEXT')?.id ?? t.channels[0]?.id ?? '')))
+    api.servers().then((list) => {
+      setServers(list)
+      setCurrentServerId((cur) => (cur && list.some((s) => s.id === cur) ? cur : (list[0]?.id ?? '')))
     }).catch(() => {})
-    api.members().then(setMembers).catch(() => {}).finally(() => setMembersLoaded(true))
     api.readStates().then(setReadStates).catch(() => {})
     api.listDms().then(setDms).catch(() => {})
     api.notificationSettings().then((list) => setNotifLevels(new Map(list.map((s) => [s.channelId, s.level])))).catch(() => {})
-    api.roles().then(setRoles).catch(() => {})
   }, [])
+
+  // контекст выбранного сервера — перезагрузка дерева/участников/ролей при переключении
+  useEffect(() => {
+    if (!currentServerId) return
+    let alive = true
+    setMembersLoaded(false)
+    api.serverTree(currentServerId).then((t) => {
+      if (!alive) return
+      setTree(t)
+      // первый открытый канал — первый текстовый (или любой) этого сервера
+      setCurrentId((cur) => (cur && t.channels.some((c) => c.id === cur) ? cur : (t.channels.find((c) => c.type === 'TEXT')?.id ?? t.channels[0]?.id ?? '')))
+    }).catch(() => {})
+    api.members(currentServerId).then((ms) => { if (alive) setMembers(ms) }).catch(() => {}).finally(() => { if (alive) setMembersLoaded(true) })
+    api.roles(currentServerId).then((r) => { if (alive) setRoles(r) }).catch(() => {})
+    return () => { alive = false }
+  }, [currentServerId])
 
   useEffect(() => {
     if (!currentId) return
@@ -376,13 +398,13 @@ export function MainWindow() {
   async function saveChannel(patch: { name: string; categoryId?: string | null; topic?: string | null; userLimit?: number | null; slowModeSeconds?: number | null }) {
     if (!channelEdit) return
     await api.updateChannel(channelEdit.id, patch)
-    setTree(await api.serverTree())
+    setTree(await api.serverTree(currentServerIdRef.current))
   }
   async function deleteChannelNow() {
     if (!channelEdit) return
     const id = channelEdit.id
     await api.deleteChannel(id)
-    const t = await api.serverTree()
+    const t = await api.serverTree(currentServerIdRef.current)
     setTree(t)
     if (currentIdRef.current === id) setCurrentId(t.channels.find((c) => c.type === 'TEXT')?.id ?? t.channels[0]?.id ?? '')
   }
@@ -468,16 +490,43 @@ export function MainWindow() {
     } catch { toast.error('Не удалось открыть личные сообщения') }
   }
 
+  function switchServer(id: string) {
+    if (id === currentServerId) return
+    setCurrentServerId(id)
+    setCurrentId('')   // канал прошлого сервера сбрасываем — новый выберется при загрузке его дерева
+    setMessages([])
+    setView('chat')
+    setPanel(null)
+  }
+  function onServerJoined(s: ServerSummary) {
+    setServers((list) => (list.some((x) => x.id === s.id) ? list.map((x) => (x.id === s.id ? s : x)) : [...list, s]))
+    switchServer(s.id)
+  }
+  function onServerRenamed(s: ServerSummary) {
+    setServers((list) => list.map((x) => (x.id === s.id ? s : x)))
+  }
+  function onServerLeft(id: string) {
+    const remaining = servers.filter((x) => x.id !== id)
+    setServers(remaining)
+    const home = remaining[0]
+    if (home) switchServer(home.id)
+    else { setCurrentServerId(''); setView('chat') }
+  }
+
   async function createChannel(p: { name: string; type: ChannelType }) {
-    const ch = await api.createChannel(p)
-    setTree(await api.serverTree())
+    const sid = currentServerIdRef.current
+    const ch = await api.createChannel(p, sid)
+    setTree(await api.serverTree(sid))
     if (ch.type !== 'VOICE') { setCurrentId(ch.id); setView('chat') } // сразу открыть новый канал
   }
 
   return (
     <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <GuildRail servers={servers} currentId={currentServerId} onSwitch={switchServer} onAdd={() => setServerActionsOpen(true)} />
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       {view === 'admin' && canModerate ? (
-        <AdminScreen onClose={() => setView('chat')} />
+        <AdminScreen serverId={currentServerId} isHome={servers.length > 0 && currentServerId === servers[0]?.id} onClose={() => setView('chat')} onRenamed={onServerRenamed} onLeft={onServerLeft} />
       ) : (
         <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
           <ChannelSidebar
@@ -558,6 +607,8 @@ export function MainWindow() {
           </div>
         </div>
       )}
+        </div>
+      </div>
 
       <BottomBar
         user={user}
@@ -584,6 +635,7 @@ export function MainWindow() {
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
       {screenPickerOpen && <ScreenPicker onClose={() => setScreenPickerOpen(false)} onPick={async (id) => { setScreenPickerOpen(false); await window.chazh?.pickScreenSource(id); voice.toggleScreen() }} />}
       {channelEdit && <ChannelSettingsModal channel={channelEdit} onClose={() => setChannelEdit(null)} onSaved={saveChannel} onDeleted={deleteChannelNow} />}
+      {serverActionsOpen && <ServerActionsModal onClose={() => setServerActionsOpen(false)} onDone={onServerJoined} />}
     </div>
   )
 }

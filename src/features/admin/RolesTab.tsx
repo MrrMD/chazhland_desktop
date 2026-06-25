@@ -13,7 +13,7 @@ function sortRoles(rs: ServerRole[]): ServerRole[] {
   return [...rs].sort((a, b) => (a.isDefault ? 1 : b.isDefault ? -1 : b.position - a.position))
 }
 
-export function RolesTab() {
+export function RolesTab({ serverId }: { serverId?: string }) {
   const [roles, setRoles] = useState<ServerRole[] | null>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [selId, setSelId] = useState<string | null>(null)
@@ -24,14 +24,15 @@ export function RolesTab() {
 
   useEffect(() => {
     let a = true
-    Promise.all([api.roles(), api.members()]).then(([r, m]) => {
+    Promise.all([api.roles(serverId), api.members(serverId)]).then(([r, m]) => {
       if (!a) return
       setRoles(r); setMembers(m)
       const first = sortRoles(r)[0]
       if (first) select(first)
     }).catch(() => { if (a) setRoles([]) })
     return () => { a = false }
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverId])
 
   const sel = roles?.find((r) => r.id === selId) ?? null
   const ordered = useMemo(() => (roles ? sortRoles(roles) : []), [roles])
@@ -53,7 +54,7 @@ export function RolesTab() {
   async function create() {
     setCreating(true)
     try {
-      const r = await api.createRole({ name: 'Новая роль', color: ROLE_COLORS[0], permissions: ['VIEW_CHANNEL', 'SEND_MESSAGES', 'CONNECT'] })
+      const r = await api.createRole({ name: 'Новая роль', color: ROLE_COLORS[0], permissions: ['VIEW_CHANNEL', 'SEND_MESSAGES', 'CONNECT'] }, serverId)
       setRoles((rs) => [...(rs ?? []), r]); select(r)
     } catch { toast.error('Не удалось создать роль') }
     finally { setCreating(false) }

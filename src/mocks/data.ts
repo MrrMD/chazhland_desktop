@@ -1,8 +1,13 @@
 import type {
-  AuditEntry, Category, Channel, Member, Message, ReadState, User,
+  AuditEntry, Category, Channel, Member, Message, ReadState, ServerSummary, User,
 } from '@/lib/types'
 
 export const MOCK_USER: User = { id: 'u_me', username: 'я_дизайнер', avatarUrl: null }
+
+export const MOCK_SERVERS: ServerSummary[] = [
+  { id: 's_home', name: 'Чажленд', iconUrl: null, ownerId: 'u_anya', myRole: 'MEMBER', memberCount: 8 },
+  { id: 's_squad', name: 'Сквад', iconUrl: null, ownerId: 'u_me', myRole: 'OWNER', memberCount: 3 },
+]
 
 export const MOCK_CATEGORIES: Category[] = [
   { id: 'c_text', name: 'Текстовые', position: 0 },

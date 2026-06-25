@@ -1,11 +1,11 @@
 import { MOCK } from './config'
 import { http, delay, setTokens } from './http'
 import type {
-  AttachmentInput, AuditEntry, Channel, ChannelOverwrite, ChannelType, Category, DigestFull, DigestSummary, Dm, Member, Message, MessageType, NotificationLevel, OverwriteTarget, Permission, Presence, ReadState, Role, ServerRole, TokenResponse, User, WatchState, WatchSourceRequest, WatchSearchResult,
+  AttachmentInput, AuditEntry, Channel, ChannelOverwrite, ChannelType, Category, DigestFull, DigestSummary, Dm, Member, Message, MessageType, NotificationLevel, OverwriteTarget, Permission, Presence, ReadState, Role, ServerRole, ServerSummary, InviteSummary, InviteCreated, TokenResponse, User, WatchState, WatchSourceRequest, WatchSearchResult,
 } from './types'
 import {
   MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_MEMBERS,
-  MOCK_MESSAGES, MOCK_READ_STATES, MOCK_USER,
+  MOCK_MESSAGES, MOCK_READ_STATES, MOCK_SERVERS, MOCK_USER,
 } from '@/mocks/data'
 
 export interface ServerTree { categories: Category[]; channels: Channel[] }
@@ -141,15 +141,58 @@ export const api = {
     await http('/users/me/logout-all', { method: 'POST' })
   },
 
-  async serverTree(): Promise<ServerTree> {
+  // ---- серверы (мульти-тенант, гилд-рейл) ----
+  async servers(): Promise<ServerSummary[]> {
+    if (MOCK) { await delay(120); return MOCK_SERVERS }
+    return http<ServerSummary[]>('/servers')
+  },
+  async createServer(name: string, iconObjectKey?: string): Promise<ServerSummary> {
+    if (MOCK) { await delay(250); return { id: 's_' + crypto.randomUUID().slice(0, 8), name, iconUrl: null, ownerId: meId || MOCK_USER.id, myRole: 'OWNER', memberCount: 1 } }
+    return http<ServerSummary>('/servers', { method: 'POST', body: JSON.stringify({ name, iconObjectKey: iconObjectKey ?? null }) })
+  },
+  // вступить в сервер по коду инвайта → карточка сервера (добавляем в рейл)
+  async joinServer(code: string): Promise<ServerSummary> {
+    if (MOCK) { await delay(250); return MOCK_SERVERS[0] }
+    return http<ServerSummary>(`/invites/${encodeURIComponent(code)}`, { method: 'POST' })
+  },
+  async leaveServer(serverId: string): Promise<void> {
+    if (MOCK) return
+    await http(`/servers/${serverId}/members/me`, { method: 'DELETE' })
+  },
+  async renameServer(serverId: string, name: string): Promise<ServerSummary> {
+    if (MOCK) { await delay(200); return { ...MOCK_SERVERS[0], id: serverId, name } }
+    return http<ServerSummary>(`/servers/${serverId}`, { method: 'PATCH', body: JSON.stringify({ name }) })
+  },
+
+  // ---- инвайты сервера (CREATE_INVITE) ----
+  async listInvites(serverId: string): Promise<InviteSummary[]> {
+    if (MOCK) return []
+    return http<InviteSummary[]>(`/servers/${serverId}/invites`)
+  },
+  async createInvite(serverId: string, opts?: { expiresInHours?: number | null; maxUses?: number | null }): Promise<InviteCreated> {
+    if (MOCK) { await delay(200); return { code: 'mock-' + crypto.randomUUID().slice(0, 6), expiresAt: null, maxUses: opts?.maxUses ?? null } }
+    return http<InviteCreated>(`/servers/${serverId}/invites`, { method: 'POST', body: JSON.stringify({ expiresInHours: opts?.expiresInHours ?? null, maxUses: opts?.maxUses ?? null }) })
+  },
+  async revokeInvite(serverId: string, inviteId: string): Promise<void> {
+    if (MOCK) return
+    await http(`/servers/${serverId}/invites/${inviteId}`, { method: 'DELETE' })
+  },
+
+  // дерево сервера: с serverId → серверный роут; без → домашний (легаси для одно-серверного клиента)
+  async serverTree(serverId?: string): Promise<ServerTree> {
     if (MOCK) { await delay(150); return { categories: MOCK_CATEGORIES, channels: MOCK_CHANNELS } }
+    if (serverId) {
+      const t = await http<{ server: ServerSummary; categories: Category[]; channels: ChannelDto[] }>(`/servers/${serverId}/tree`)
+      return { categories: t.categories, channels: t.channels.map(mapChannel) }
+    }
     const t = await http<TreeDto>('/server/tree')
     return { categories: t.categories, channels: t.channels.map(mapChannel) }
   },
 
-  async createChannel(p: { name: string; type: ChannelType; categoryId?: string | null; topic?: string | null }): Promise<Channel> {
+  async createChannel(p: { name: string; type: ChannelType; categoryId?: string | null; topic?: string | null }, serverId?: string): Promise<Channel> {
     if (MOCK) return { id: 'ch_' + crypto.randomUUID().slice(0, 8), name: p.name, type: p.type, categoryId: p.categoryId ?? null, topic: p.topic ?? null, position: 0, lastMessageId: null }
-    const dto = await http<ChannelDto>('/channels', { method: 'POST', body: JSON.stringify({ name: p.name, type: p.type, categoryId: p.categoryId ?? null, topic: p.topic ?? null }) })
+    const path = serverId ? `/servers/${serverId}/channels` : '/channels'
+    const dto = await http<ChannelDto>(path, { method: 'POST', body: JSON.stringify({ name: p.name, type: p.type, categoryId: p.categoryId ?? null, topic: p.topic ?? null }) })
     return mapChannel(dto)
   },
   // PATCH /channels/{id}. ВАЖНО: categoryId=null на бэке = «без категории», поэтому всегда шлём текущий,
@@ -185,9 +228,9 @@ export const api = {
     return list.map((d) => ({ id: d.channelId, name: d.otherUsername, avatarUrl: d.otherAvatarUrl, otherUserId: d.otherUserId }))
   },
 
-  async members(): Promise<Member[]> {
+  async members(serverId?: string): Promise<Member[]> {
     if (MOCK) { await delay(150); MOCK_MEMBERS.forEach((m) => memberMap.set(m.userId, m)); return MOCK_MEMBERS }
-    const list = await http<MemberDto[]>('/server/members')
+    const list = await http<MemberDto[]>(serverId ? `/servers/${serverId}/members` : '/server/members')
     const mapped = list.map(mapMember)
     memberMap.clear()
     mapped.forEach((m) => memberMap.set(m.userId, m))
@@ -208,19 +251,19 @@ export const api = {
     await http(`/soundboard/${id}`, { method: 'DELETE' })
   },
   // включить/выключить саундпад участнику (admin/owner; даже на админов)
-  async setMemberSoundboard(userId: string, disabled: boolean): Promise<void> {
+  async setMemberSoundboard(userId: string, disabled: boolean, serverId?: string): Promise<void> {
     if (MOCK) return
-    await http(`/members/${userId}/soundboard`, { method: 'PUT', body: JSON.stringify({ disabled }) })
+    await http(serverId ? `/servers/${serverId}/members/${userId}/soundboard` : `/members/${userId}/soundboard`, { method: 'PUT', body: JSON.stringify({ disabled }) })
   },
 
   // ---- кастомные роли ----
-  async roles(): Promise<ServerRole[]> {
+  async roles(serverId?: string): Promise<ServerRole[]> {
     if (MOCK) return []
-    return http<ServerRole[]>('/roles')
+    return http<ServerRole[]>(serverId ? `/servers/${serverId}/roles` : '/roles')
   },
-  async createRole(p: { name: string; color?: string | null; permissions: Permission[] }): Promise<ServerRole> {
+  async createRole(p: { name: string; color?: string | null; permissions: Permission[] }, serverId?: string): Promise<ServerRole> {
     if (MOCK) return { id: 'r_' + crypto.randomUUID().slice(0, 8), name: p.name, color: p.color ?? null, position: 1, permissions: p.permissions, isDefault: false }
-    return http<ServerRole>('/roles', { method: 'POST', body: JSON.stringify(p) })
+    return http<ServerRole>(serverId ? `/servers/${serverId}/roles` : '/roles', { method: 'POST', body: JSON.stringify(p) })
   },
   async updateRole(id: string, p: { name: string; color?: string | null; permissions: Permission[] }): Promise<ServerRole> {
     if (MOCK) return { id, name: p.name, color: p.color ?? null, position: 1, permissions: p.permissions, isDefault: false }
@@ -421,13 +464,13 @@ export const api = {
     if (MOCK) return
     await http(`/channels/${channelId}/read-state`, { method: 'PUT', body: JSON.stringify({ lastReadMessageId }) })
   },
-  async kick(userId: string): Promise<void> {
+  async kick(userId: string, serverId?: string): Promise<void> {
     if (MOCK) return
-    await http(`/members/${userId}`, { method: 'DELETE' })
+    await http(serverId ? `/servers/${serverId}/members/${userId}` : `/members/${userId}`, { method: 'DELETE' })
   },
-  async changeRole(userId: string, role: Role): Promise<void> {
+  async changeRole(userId: string, role: Role, serverId?: string): Promise<void> {
     if (MOCK) return
-    await http(`/members/${userId}`, { method: 'PATCH', body: JSON.stringify({ role }) })
+    await http(serverId ? `/servers/${serverId}/members/${userId}` : `/members/${userId}`, { method: 'PATCH', body: JSON.stringify({ role }) })
   },
   // админ сбрасывает пароль участнику → бэк возвращает одноразовый временный пароль (показать один раз)
   async resetMemberPassword(userId: string): Promise<string> {

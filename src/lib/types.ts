@@ -19,6 +19,33 @@ export interface User {
   statusMessage?: string | null
 }
 
+// сервер в гилд-рейле (бэк: ServerSummaryResponse)
+export interface ServerSummary {
+  id: string
+  name: string
+  iconUrl: string | null
+  ownerId: string
+  myRole: Role
+  memberCount: number
+}
+
+// инвайт в списке управления (бэк: InviteResponse) — без сырого кода
+export interface InviteSummary {
+  id: string
+  createdBy: string
+  expiresAt: string | null
+  maxUses: number | null
+  uses: number
+  revoked: boolean
+  createdAt: string
+}
+// ответ на создание инвайта (бэк: InviteCreateResponse) — сырой код показывается один раз
+export interface InviteCreated {
+  code: string
+  expiresAt: string | null
+  maxUses: number | null
+}
+
 export interface Member {
   userId: string
   username: string
