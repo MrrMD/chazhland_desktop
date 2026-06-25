@@ -640,7 +640,14 @@ export function MainWindow() {
       />
 
       {voiceSettingsOpen && <VoiceSettingsModal onClose={() => setVoiceSettingsOpen(false)} />}
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} onEquipChange={(eq) => {
+        setMyRank((r) => (r ? { ...r, equipped: eq } : r))
+        // обновить мою экипировку в списке участников, чтобы рамка/свечение/ник обновились живьём
+        setMemberRanks((prev) => {
+          const me = prev.get(user.id); if (!me) return prev
+          const next = new Map(prev); next.set(user.id, { ...me, equipped: eq }); return next
+        })
+      }} />}
       {screenPickerOpen && <ScreenPicker onClose={() => setScreenPickerOpen(false)} onPick={async (id) => { setScreenPickerOpen(false); await window.chazh?.pickScreenSource(id); voice.toggleScreen() }} />}
       {channelEdit && <ChannelSettingsModal channel={channelEdit} onClose={() => setChannelEdit(null)} onSaved={saveChannel} onDeleted={deleteChannelNow} />}
       {serverActionsOpen && <ServerActionsModal onClose={() => setServerActionsOpen(false)} onDone={onServerJoined} />}

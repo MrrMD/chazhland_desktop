@@ -25,6 +25,45 @@ export function frameLayer(id?: string): CSSProperties | null {
   }
 }
 
+/**
+ * Косметика-эффект ника: стиль для текста имени (цвет / градиент / анимированный градиент).
+ * Градиентные варианты используют background-clip:text. Возвращает стиль или null.
+ */
+export function nameStyle(id?: string): CSSProperties | null {
+  if (!id) return null
+  const grad = (background: string, animation?: string): CSSProperties => ({
+    background, WebkitBackgroundClip: 'text', backgroundClip: 'text', WebkitTextFillColor: 'transparent', color: 'transparent',
+    ...(animation ? { backgroundSize: '420px 100%', animation } : {}),
+  })
+  switch (id) {
+    case 'name.color.ember': return { color: '#f0a23a' }
+    case 'name.color.rose': return { color: '#e0457b' }
+    case 'name.color.azure': return { color: '#2bb3ff' }
+    case 'name.gradient.sunset': return grad('linear-gradient(90deg,#ff8a3a,#e0457b,#a855f7)')
+    case 'name.anim.shimmer': return grad('linear-gradient(90deg,#a06a14,#fff3c0,#e7c14b,#a06a14)', 'shimmer 2.6s linear infinite')
+    case 'name.anim.liquid': return grad('linear-gradient(90deg,#9aa3ad,#fff,#9aa3ad,#5b6470)', 'shimmer 3.4s linear infinite')
+    case 'name.anim.holo': return grad('linear-gradient(90deg,#5b6cff,#13b886,#e0457b,#e7c14b,#5b6cff)', 'shimmer 3s linear infinite')
+    default:
+      if (id.startsWith('name.anim')) return grad('linear-gradient(90deg,#5b6cff,#e0457b,#e7c14b,#5b6cff)', 'shimmer 3s linear infinite')
+      if (id.startsWith('name.gradient')) return grad('linear-gradient(90deg,#ff8a3a,#e0457b,#a855f7)')
+      if (id.startsWith('name.color')) return { color: 'var(--accent)' }
+      return null
+  }
+}
+
+/** Человекочитаемые названия слотов косметики (для группировки в экипировке). */
+export const SLOT_LABELS: Record<string, string> = {
+  frame: 'Рамка аватара',
+  glow: 'Свечение',
+  nameEffect: 'Эффект ника',
+  badge: 'Бейдж',
+  banner: 'Баннер профиля',
+  profileBg: 'Фон профиля',
+  msgAccent: 'Акцент сообщений',
+}
+/** Порядок отображения слотов в экипировке (сначала то, что видно на аватаре/нике). */
+export const SLOT_ORDER = ['frame', 'glow', 'nameEffect', 'badge', 'banner', 'profileBg', 'msgAccent']
+
 /** Косметика-свечение: ореол/аура под аватаром (box-shadow или размытый conic-halo). */
 export function glowLayer(id?: string): CSSProperties | null {
   if (!id) return null

@@ -39,15 +39,15 @@ export const MOCK_MEMBERS: Member[] = [
 // --- Ранги (mock для превью UI) ---
 export const MOCK_MEMBER_RANKS: Record<string, MemberRank[]> = {
   s_home: [
-    { userId: 'u_anya', level: 200, title: 'Вершина Чажленда', equipped: { frame: 'frame.anim.spin', glow: 'glow.aura.rainbow' } },
-    { userId: 'u_mark', level: 140, title: 'Легенда поколения', equipped: { frame: 'frame.anim.shimmerGold', glow: 'glow.pulse.breath' } },
-    { userId: 'u_kostya', level: 95, title: 'Мастер своего дела', equipped: { frame: 'frame.ring.gold', glow: 'glow.warm.ember' } },
-    { userId: 'u_me', level: 58, title: 'Ветеран', equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent' } },
-    { userId: 'u_lena', level: 22, title: 'Свой человек', equipped: { frame: 'frame.ring.bronze' } },
+    { userId: 'u_anya', level: 200, title: 'Вершина Чажленда', equipped: { frame: 'frame.anim.spin', glow: 'glow.aura.rainbow', nameEffect: 'name.anim.holo' } },
+    { userId: 'u_mark', level: 140, title: 'Легенда поколения', equipped: { frame: 'frame.anim.shimmerGold', glow: 'glow.pulse.breath', nameEffect: 'name.anim.shimmer' } },
+    { userId: 'u_kostya', level: 95, title: 'Мастер своего дела', equipped: { frame: 'frame.ring.gold', glow: 'glow.warm.ember', nameEffect: 'name.gradient.sunset' } },
+    { userId: 'u_me', level: 58, title: 'Ветеран', equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent', nameEffect: 'name.gradient.sunset' } },
+    { userId: 'u_lena', level: 22, title: 'Свой человек', equipped: { frame: 'frame.ring.bronze', nameEffect: 'name.color.azure' } },
     { userId: 'u_dmitry', level: 7, title: 'Прохожий' },
   ],
   s_squad: [
-    { userId: 'u_me', level: 31, title: 'Старожил', equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent' } },
+    { userId: 'u_me', level: 31, title: 'Старожил', equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent', nameEffect: 'name.gradient.sunset' } },
     { userId: 'u_anya', level: 12, title: 'Прохожий' },
   ],
 }
@@ -59,8 +59,14 @@ export const MOCK_MY_RANK: MyRank = {
     { serverId: 's_home', level: 58, xp: 24700, title: 'Ветеран', tier: 'Ветеран', levelStartXp: 23980, nextLevelXp: 25910 },
     { serverId: 's_squad', level: 31, xp: 6300, title: 'Старожил', tier: 'Старожил', levelStartXp: 6010, nextLevelXp: 6700 },
   ],
-  unlockedCosmeticIds: ['name.color.ember', 'frame.ring.gold', 'glow.soft.accent', 'frame.anim.spin', 'banner.gradient.dawn'],
-  equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent' },
+  // всё, что открыто на пике 58 (unlockLevel ≤ 58); остальное в каталоге — заблокировано
+  unlockedCosmeticIds: [
+    'name.color.ember', 'name.color.rose', 'name.color.azure', 'name.gradient.sunset',
+    'frame.ring.bronze', 'frame.ring.silver', 'frame.ring.gold', 'frame.gradient.aurora', 'frame.anim.spin',
+    'glow.soft.accent', 'glow.warm.ember', 'glow.pulse.breath',
+    'badge.founder',
+  ],
+  equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent', nameEffect: 'name.gradient.sunset' },
 }
 
 export const MOCK_RANK_CATALOG: RankCatalog = {
@@ -80,10 +86,29 @@ export const MOCK_RANK_CATALOG: RankCatalog = {
     { index: 6, name: 'Ветеран', levelFrom: 49, levelTo: 64 },
     { index: 16, name: 'Запределье', levelFrom: 201, levelTo: 220 },
   ],
+  // подмножество каталога бэка (ranks.json) — достаточно для витрины экипировки
   cosmetics: [
+    // эффект ника
     { id: 'name.color.ember', slot: 'nameEffect', unlockLevel: 1, kind: 'css', name: 'Цвет ника — уголёк' },
+    { id: 'name.color.rose', slot: 'nameEffect', unlockLevel: 2, kind: 'css', name: 'Цвет ника — роза' },
+    { id: 'name.color.azure', slot: 'nameEffect', unlockLevel: 3, kind: 'css', name: 'Цвет ника — лазурь' },
+    { id: 'name.gradient.sunset', slot: 'nameEffect', unlockLevel: 23, kind: 'css', name: 'Градиентный ник — закат' },
+    { id: 'name.anim.shimmer', slot: 'nameEffect', unlockLevel: 65, kind: 'css', name: 'Мерцающий ник' },
+    { id: 'name.anim.holo', slot: 'nameEffect', unlockLevel: 185, kind: 'css', name: 'Голографический ник' },
+    // рамка аватара
+    { id: 'frame.ring.bronze', slot: 'frame', unlockLevel: 6, kind: 'css', name: 'Бронзовая рамка' },
+    { id: 'frame.ring.silver', slot: 'frame', unlockLevel: 9, kind: 'css', name: 'Серебряная рамка' },
     { id: 'frame.ring.gold', slot: 'frame', unlockLevel: 13, kind: 'css', name: 'Золотая рамка' },
+    { id: 'frame.gradient.aurora', slot: 'frame', unlockLevel: 35, kind: 'css', name: 'Градиентная рамка «аврора»' },
     { id: 'frame.anim.spin', slot: 'frame', unlockLevel: 49, kind: 'css', name: 'Вращающаяся рамка' },
+    { id: 'frame.anim.shimmerGold', slot: 'frame', unlockLevel: 83, kind: 'css', name: 'Мерцающая золотая рамка' },
+    // свечение
+    { id: 'glow.soft.accent', slot: 'glow', unlockLevel: 6, kind: 'css', name: 'Мягкое свечение (акцент)' },
+    { id: 'glow.warm.ember', slot: 'glow', unlockLevel: 23, kind: 'css', name: 'Тёплое свечение' },
+    { id: 'glow.pulse.breath', slot: 'glow', unlockLevel: 49, kind: 'css', name: 'Дышащая аура' },
+    { id: 'glow.aura.rainbow', slot: 'glow', unlockLevel: 155, kind: 'css', name: 'Радужная аура' },
+    // фон профиля (витрина «потолка»)
+    { id: 'profbg.gradient.flow', slot: 'profileBg', unlockLevel: 65, kind: 'css', name: 'Фон профиля — анимированный градиент' },
     { id: 'profbg.upload.animated', slot: 'profileBg', unlockLevel: 200, kind: 'userUpload', name: 'Свой анимированный фон профиля' },
   ],
 }

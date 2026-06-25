@@ -3,6 +3,7 @@ import { Reply, SmilePlus, Pencil, Ban, Download, X, Pin, File as FileIcon, Tras
 import { Avatar, presenceColor } from '@/components/Avatar'
 import { RankChip } from '@/components/RankChip'
 import { rankColor } from '@/lib/ranks'
+import { nameStyle } from '@/lib/cosmetics'
 import { toast } from '@/lib/toast'
 import { useEscape } from '@/lib/useEscape'
 import { presence } from '@/lib/presence'
@@ -171,7 +172,7 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
       <div style={{ minWidth: 0, flex: 1 }}>
         {!grouped && (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginBottom: 3 }}>
-            <span onClick={(e) => setPopover({ x: e.clientX, y: e.clientY })} style={{ fontWeight: 700, fontSize: 14.5, color: nameColor || undefined, cursor: 'pointer' }}>{authorName}</span>
+            <span onClick={(e) => setPopover({ x: e.clientX, y: e.clientY })} style={{ fontWeight: 700, fontSize: 14.5, color: nameColor || undefined, cursor: 'pointer', ...(nameStyle(rank?.equipped?.nameEffect) ?? {}) }}>{authorName}</span>
             {m.authorRole && roleBadge[m.authorRole] && (
               <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>
             )}
@@ -294,7 +295,7 @@ function UserPopover({ m, name, avatarUrl, nameColor, topRole, rank, myServerRan
         <div style={{ padding: '0 16px 16px', marginTop: -28 }}>
           <Avatar name={name} src={avatarUrl} size={64} presence={status} frame={rank?.equipped?.frame} glow={rank?.equipped?.glow} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 800, fontSize: 17, color: nameColor || undefined, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
+            <span style={{ fontWeight: 800, fontSize: 17, color: nameColor || undefined, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...(nameStyle(rank?.equipped?.nameEffect) ?? {}) }}>{name}</span>
             {m.authorRole && roleBadge[m.authorRole] && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', flex: 'none', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>}
             {topRole && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', flex: 'none', background: topRole.color ? hexA(topRole.color, 0.16) : 'var(--surface-3)', color: topRole.color || 'var(--text-2)' }}>{topRole.name}</span>}
             {rank && <RankChip level={rank.level} title={rank.title} />}

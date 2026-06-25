@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { Camera, LogOut } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Camera, Lock, LogOut } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { Avatar } from '@/components/Avatar'
 import { api } from '@/lib/api'
@@ -8,11 +8,13 @@ import { useAuth } from '@/store/auth'
 import { useTheme } from '@/theme/ThemeProvider'
 import { ACCENTS, type ThemeName } from '@/theme/themes'
 import { notifyPrefs } from '@/lib/prefs'
+import { nameStyle, SLOT_LABELS, SLOT_ORDER } from '@/lib/cosmetics'
+import type { MyRank, RankCatalog, RankCosmetic } from '@/lib/types'
 
 const lbl: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }
 const fieldS: React.CSSProperties = { padding: '11px 13px', marginBottom: 13 }
 
-export function SettingsModal({ onClose }: { onClose: () => void }) {
+export function SettingsModal({ onClose, onEquipChange }: { onClose: () => void; onEquipChange?: (equipped: Record<string, string>) => void }) {
   const { session, updateUser, logout } = useAuth()
   const user = session!.user
   const { theme, accent, setTheme, setAccent } = useTheme()
@@ -114,6 +116,11 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
 
       <div style={{ height: 1, background: 'var(--border)', margin: '18px 0' }} />
 
+      <SectionTitle>Награды · косметика</SectionTitle>
+      <CosmeticsSection meName={username.trim() || user.username} meAvatar={user.avatarUrl} onEquipChange={onEquipChange} />
+
+      <div style={{ height: 1, background: 'var(--border)', margin: '18px 0' }} />
+
       <SectionTitle>Уведомления</SectionTitle>
       <ToggleRow label="Десктоп-уведомления" hint="всплывающие окна о сообщениях" on={np.desktop} onChange={(v) => updNp({ desktop: v })} />
       <ToggleRow label="Звуки уведомлений" hint="пинг при упоминании, ЛС и реакции" on={np.sounds} onChange={(v) => updNp({ sounds: v })} />
@@ -136,6 +143,112 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       <button type="button" className="danger-btn no-drag" onClick={doLogoutAll} style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 11, padding: '10px 16px', fontWeight: 600, fontSize: 13 }}><LogOut size={15} /> Выйти со всех устройств</button>
     </Modal>
   )
+}
+
+function CosmeticsSection({ meName, meAvatar, onEquipChange }: { meName: string; meAvatar: string | null; onEquipChange?: (equipped: Record<string, string>) => void }) {
+  const [catalog, setCatalog] = useState<RankCatalog | null>(null)
+  const [mine, setMine] = useState<MyRank | null>(null)
+  const [equipped, setEquipped] = useState<Record<string, string>>({})
+  const [busy, setBusy] = useState<string | null>(null) // cosmeticId/slot в процессе
+
+  useEffect(() => {
+    let alive = true
+    Promise.all([api.rankCatalog(), api.myRank()])
+      .then(([c, m]) => { if (!alive) return; setCatalog(c); setMine(m); setEquipped({ ...(m.equipped ?? {}) }) })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
+
+  async function equip(slot: string, cosmeticId: string | null) {
+    const key = cosmeticId ?? `none:${slot}`
+    setBusy(key)
+    const next = { ...equipped }
+    if (cosmeticId) next[slot] = cosmeticId; else delete next[slot]
+    setEquipped(next) // оптимистично
+    try {
+      const saved = await api.equipCosmetic(slot, cosmeticId)
+      setEquipped(saved)
+      onEquipChange?.(saved)
+    } catch {
+      setEquipped({ ...(mine?.equipped ?? {}) }) // откат
+      toast.error('Не удалось применить')
+    } finally { setBusy(null) }
+  }
+
+  if (!catalog || !mine) {
+    return <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>{[0, 1, 2].map((i) => <div key={i} style={{ width: 56, height: 56, borderRadius: 12, background: 'var(--surface-2)', animation: 'live 1.4s ease-in-out infinite' }} />)}</div>
+  }
+
+  const unlocked = new Set(mine.unlockedCosmeticIds)
+  const slots = SLOT_ORDER.filter((s) => catalog.cosmetics.some((c) => c.slot === s))
+  const unlockedCount = catalog.cosmetics.filter((c) => unlocked.has(c.id)).length
+
+  return (
+    <div>
+      {/* живое превью: аватар с рамкой/свечением + ник с эффектом + пик-титул */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 14px', marginBottom: 14, borderRadius: 14, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
+        <Avatar name={meName} src={meAvatar} size={56} frame={equipped.frame} glow={equipped.glow} />
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.2, ...(nameStyle(equipped.nameEffect) ?? { color: 'var(--text)' }) }}>{meName}</div>
+          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>пик: ур.{mine.peakLevel}{mine.peakTitle ? ` · ${mine.peakTitle}` : ''} · открыто {unlockedCount} из {catalog.cosmetics.length}</div>
+        </div>
+      </div>
+
+      {slots.map((slot) => {
+        const items = catalog.cosmetics.filter((c) => c.slot === slot).sort((a, b) => a.unlockLevel - b.unlockLevel)
+        return (
+          <div key={slot} style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>{SLOT_LABELS[slot] ?? slot}</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <NoneCard active={!equipped[slot]} busy={busy === `none:${slot}`} onClick={() => equip(slot, null)} />
+              {items.map((c) => (
+                <CosmeticCard key={c.id} c={c} meName={meName} meAvatar={meAvatar}
+                  locked={!unlocked.has(c.id)} active={equipped[slot] === c.id} busy={busy === c.id}
+                  onClick={() => unlocked.has(c.id) && equip(slot, c.id)} />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+const CARD = 72
+function cardShell(active: boolean, locked?: boolean): React.CSSProperties {
+  return {
+    width: CARD, flex: 'none', borderRadius: 13, padding: 7, cursor: locked ? 'not-allowed' : 'pointer', position: 'relative',
+    border: `1.5px solid ${active ? 'var(--accent)' : 'var(--border)'}`, background: active ? 'var(--accent-tint)' : 'var(--surface)',
+    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, opacity: locked ? 0.5 : 1, transition: 'border-color .15s, background .15s',
+  }
+}
+
+function NoneCard({ active, busy, onClick }: { active: boolean; busy: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="no-drag" onClick={onClick} disabled={busy} style={{ ...cardShell(active), justifyContent: 'center' }} title="Снять">
+      <div style={{ width: 40, height: 40, borderRadius: '50%', border: '1.5px dashed var(--border-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-3)', fontSize: 18 }}>∅</div>
+      <span style={{ fontSize: 10.5, color: 'var(--text-3)', fontWeight: 600 }}>без</span>
+    </button>
+  )
+}
+
+function CosmeticCard({ c, meName, meAvatar, locked, active, busy, onClick }: { c: RankCosmetic; meName: string; meAvatar: string | null; locked: boolean; active: boolean; busy: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="no-drag" onClick={onClick} disabled={locked || busy} style={cardShell(active, locked)} title={c.name + (locked ? ` · откроется на ур.${c.unlockLevel}` : '')}>
+      <CosmeticSwatch c={c} meName={meName} meAvatar={meAvatar} />
+      <span style={{ fontSize: 10, color: active ? 'var(--accent)' : 'var(--text-3)', fontWeight: 600, lineHeight: 1.15, textAlign: 'center', maxWidth: '100%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.name.replace(/^[^—]*— /, '')}</span>
+      {locked && <span style={{ position: 'absolute', top: 5, right: 5, display: 'flex', alignItems: 'center', gap: 2, fontSize: 9, fontWeight: 700, color: 'var(--text-3)', background: 'var(--surface-3)', borderRadius: 6, padding: '1px 4px' }}><Lock size={9} />{c.unlockLevel}</span>}
+    </button>
+  )
+}
+
+/** Мини-витрина одной косметики: рамка/свечение — на аватаре, эффект ника — текстом, прочее — плашкой. */
+function CosmeticSwatch({ c, meName, meAvatar }: { c: RankCosmetic; meName: string; meAvatar: string | null }) {
+  if (c.slot === 'frame') return <Avatar name={meName} src={meAvatar} size={40} frame={c.id} />
+  if (c.slot === 'glow') return <Avatar name={meName} src={meAvatar} size={40} glow={c.id} />
+  if (c.slot === 'nameEffect') return <div style={{ width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 22, ...(nameStyle(c.id) ?? { color: 'var(--text)' }) }}>Аб</div>
+  // banner/profileBg/прочее — обобщённая градиентная плашка
+  return <div style={{ width: 40, height: 40, borderRadius: 9, background: 'linear-gradient(135deg,var(--accent),#13b886)', opacity: 0.85 }} />
 }
 
 function SectionTitle({ children }: { children: React.ReactNode }) {

@@ -519,4 +519,23 @@ export const api = {
     if (MOCK) { await delay(150); return MOCK_MEMBER_RANKS[serverId] ?? [] }
     return http<MemberRank[]>(`/servers/${serverId}/members/ranks`)
   },
+  /** Надеть/снять косметику в слоте (cosmeticId=null → снять). Возвращает новую карту экипировки. */
+  async equipCosmetic(slot: string, cosmeticId: string | null): Promise<Record<string, string>> {
+    if (MOCK) {
+      await delay(120)
+      const eq = { ...(MOCK_MY_RANK.equipped ?? {}) }
+      if (cosmeticId) eq[slot] = cosmeticId; else delete eq[slot]
+      MOCK_MY_RANK.equipped = eq
+      // отразить на «себе» в списках участников всех серверов, чтобы аватар/ник обновились живьём
+      for (const list of Object.values(MOCK_MEMBER_RANKS)) {
+        const me = list.find((r) => r.userId === MOCK_USER.id)
+        if (me) me.equipped = { ...eq }
+      }
+      return eq
+    }
+    if (cosmeticId) {
+      return http<Record<string, string>>('/me/rank/equip', { method: 'PUT', body: JSON.stringify({ slot, cosmeticId }) })
+    }
+    return http<Record<string, string>>(`/me/rank/equip/${slot}`, { method: 'DELETE' })
+  },
 }
