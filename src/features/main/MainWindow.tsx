@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, type ServerTree } from '@/lib/api'
 import { useAuth } from '@/store/auth'
 import { voice, type VoiceState } from '@/lib/voice'
+import { talkHeartbeat } from '@/lib/talkHeartbeat'
 import { presence } from '@/lib/presence'
-import type { AttachmentInput, Channel, ChannelType, Dm, Member, MemberRank, Message, MyRank, NotificationLevel, Presence, ReadState, ServerRankInfo, ServerRole, ServerSummary } from '@/lib/types'
+import type { AttachmentInput, Channel, ChannelType, Dm, Member, MemberRank, Message, MyRank, NotificationLevel, Presence, RankEvent, ReadState, ServerRankInfo, ServerRole, ServerSummary } from '@/lib/types'
 import { ChatFeed } from './ChatFeed'
 import { Composer } from './Composer'
 import { MembersRail } from './MembersRail'
@@ -157,6 +158,24 @@ export function MainWindow() {
     api.myRank().then((r) => { if (alive) setMyRank(r) }).catch(() => {})
     return () => { alive = false }
   }, [currentServerId])
+
+  // считаем время РЕЧИ в голосе и шлём talk-хартбит (talk-XP); серверный кап режет накрутку
+  useEffect(() => { talkHeartbeat.start(user.id); return () => talkHeartbeat.stop() }, [user.id])
+
+  // RANK_UP по WS: свой апгрейд → праздничный тост; любой апгрейд на этом сервере → обновить чипы
+  useEffect(() => {
+    if (!currentServerId) return
+    const off = ws.onServerRank(currentServerId, (e: RankEvent) => {
+      if (e.type !== 'RANK_UP') return
+      if (e.userId === user.id) {
+        sfx.mention()
+        toast.info(`🎉 Новый уровень${e.level ? ' ' + e.level : ''}!${e.unlocked?.length ? ` Открыта косметика: ${e.unlocked.length}` : ''}`)
+        api.myRank().then(setMyRank).catch(() => {})
+      }
+      api.memberRanks(currentServerId).then((rs) => setMemberRanks(new Map(rs.map((r) => [r.userId, r])))).catch(() => {})
+    })
+    return off
+  }, [currentServerId, user.id])
 
   useEffect(() => {
     if (!currentId) return
@@ -594,7 +613,7 @@ export function MainWindow() {
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
                 {/* key={currentId} — перезапускает fadeIn при смене канала; Composer вне обёртки, чтобы сохранить черновик */}
                 <div key={currentId} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', animation: 'fadeIn .26s ease' }}>
-                  <ChatFeed messages={messages} readState={readState} membersById={membersById} roles={roles} ranks={memberRanks} myServerRank={myServerRank} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onOpenDm={openDm} onMarkUnread={markChannelUnreadFrom} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
+                  <ChatFeed messages={messages} readState={readState} membersById={membersById} roles={roles} ranks={memberRanks} myServerRank={myServerRank} myProfileBgUrl={myRank?.profileBackgroundUrl ?? null} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onOpenDm={openDm} onMarkUnread={markChannelUnreadFrom} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
                 </div>
                 <TypingIndicator names={typing.map((t) => t.name)} />
                 {channel?.system ? (
@@ -648,7 +667,7 @@ export function MainWindow() {
           const me = prev.get(user.id); if (!me) return prev
           const next = new Map(prev); next.set(user.id, { ...me, equipped: eq }); return next
         })
-      }} />}
+      }} onProfileBgChange={(url) => setMyRank((r) => (r ? { ...r, profileBackgroundUrl: url } : r))} />}
       {screenPickerOpen && <ScreenPicker onClose={() => setScreenPickerOpen(false)} onPick={async (id) => { setScreenPickerOpen(false); await window.chazh?.pickScreenSource(id); voice.toggleScreen() }} />}
       {channelEdit && <ChannelSettingsModal channel={channelEdit} onClose={() => setChannelEdit(null)} onSaved={saveChannel} onDeleted={deleteChannelNow} />}
       {serverActionsOpen && <ServerActionsModal onClose={() => setServerActionsOpen(false)} onDone={onServerJoined} />}

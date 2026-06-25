@@ -75,6 +75,17 @@ export interface MyRank {
   peakLevel: number; peakTitle: string | null
   servers: ServerRankInfo[]; unlockedCosmeticIds: string[]
   equipped?: Record<string, string> // слот → cosmeticId (аккаунт-уровень)
+  profileBackgroundUrl?: string | null // загруженная картинка фона профиля (если открыта и задана)
+}
+
+/** Событие рангов из /topic/server.{id}.rank (бэк: RankEvent). RANK_UP — апа уровня/пика/анлок. */
+export interface RankEvent {
+  type: 'RANK_UP'
+  userId: string
+  serverId: string
+  level?: number
+  peak?: number
+  unlocked?: string[]
 }
 /** Ранг участника для чипа у ника + экипированная косметика (рамка/свечение на аватаре). */
 export interface MemberRank { userId: string; level: number; title: string | null; equipped?: Record<string, string> }

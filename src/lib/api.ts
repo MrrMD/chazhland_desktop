@@ -519,6 +519,22 @@ export const api = {
     if (MOCK) { await delay(150); return MOCK_MEMBER_RANKS[serverId] ?? [] }
     return http<MemberRank[]>(`/servers/${serverId}/members/ranks`)
   },
+  /** Хартбит времени РАЗГОВОРА (active-speaker): накопленные секунды речи в канале → talk-XP. */
+  async talkHeartbeat(channelId: string, deltaSeconds: number): Promise<void> {
+    if (MOCK) return
+    await http('/voice/talk-heartbeat', { method: 'POST', body: JSON.stringify({ channelId, deltaSeconds }) })
+  },
+  /** Поставить загруженную картинку фоном профиля. Возвращает её публичный URL. */
+  async setProfileBackground(objectKey: string): Promise<string> {
+    if (MOCK) { await delay(250); const u = 'mock://' + objectKey; MOCK_MY_RANK.profileBackgroundUrl = u; return u }
+    const r = await http<{ profileBackgroundUrl: string }>('/me/rank/profile-background', { method: 'PUT', body: JSON.stringify({ objectKey }) })
+    return r.profileBackgroundUrl
+  },
+  /** Снять загруженный фон профиля. */
+  async clearProfileBackground(): Promise<void> {
+    if (MOCK) { await delay(150); MOCK_MY_RANK.profileBackgroundUrl = null; return }
+    await http('/me/rank/profile-background', { method: 'DELETE' })
+  },
   /** Надеть/снять косметику в слоте (cosmeticId=null → снять). Возвращает новую карту экипировки. */
   async equipCosmetic(slot: string, cosmeticId: string | null): Promise<Record<string, string>> {
     if (MOCK) {

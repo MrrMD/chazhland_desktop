@@ -1,6 +1,6 @@
 import { Client, type IMessage, type StompSubscription } from '@stomp/stompjs'
 import { MOCK, WS_URL } from './config'
-import type { WatchAction, WatchState } from './types'
+import type { RankEvent, WatchAction, WatchState } from './types'
 
 export interface WsEvent { type: string; channelId?: string; message?: unknown; userId?: string; username?: string; messageId?: string; emoji?: string }
 export type WsStatus = 'online' | 'connecting'
@@ -69,6 +69,10 @@ class Ws {
   /** Сообщения канала: /topic/channel.{id} */
   onChannel(channelId: string, cb: (e: WsEvent) => void): () => void {
     return this.subscribeTopic(`/topic/channel.${channelId}`, cb as (b: any) => void)
+  }
+  /** События рангов сервера: /topic/server.{id}.rank (RANK_UP) */
+  onServerRank(serverId: string, cb: (e: RankEvent) => void): () => void {
+    return this.subscribeTopic(`/topic/server.${serverId}.rank`, cb as (b: any) => void)
   }
   typing(channelId: string) {
     if (MOCK || !this.client?.connected) return

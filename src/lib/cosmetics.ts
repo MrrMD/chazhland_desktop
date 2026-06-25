@@ -51,6 +51,25 @@ export function nameStyle(id?: string): CSSProperties | null {
   }
 }
 
+/**
+ * Косметика-фон профиля (слот profileBg, kind css/particle/canvas/holo): стиль фоновой плашки баннера.
+ * Загружаемые картинки (kind userUpload) идут не сюда, а отдельным URL (MyRank.profileBackgroundUrl).
+ */
+export function profileBgLayer(id?: string): CSSProperties | null {
+  if (!id || id.startsWith('profbg.upload')) return null
+  switch (id) {
+    case 'profbg.gradient.flow':
+      return { background: 'linear-gradient(90deg,#5b6cff,#13b886,#e0457b,#e7c14b,#5b6cff)', backgroundSize: '420px 100%', animation: 'shimmer 9s linear infinite' }
+    case 'profbg.particle.snow': return { background: 'linear-gradient(160deg,#1b2a4a,#33507f)' }
+    case 'profbg.particle.sakura': return { background: 'linear-gradient(160deg,#5a2540,#a35a7f)' }
+    default:
+      if (id.startsWith('profbg.holo') || id.startsWith('profbg.canvas') || id.startsWith('profbg.parallax'))
+        return { background: 'linear-gradient(135deg,#2a2150,#5b6cff,#13b886)' }
+      if (id.startsWith('profbg')) return { background: 'linear-gradient(135deg,var(--accent),#13b886)' }
+      return null
+  }
+}
+
 /** Человекочитаемые названия слотов косметики (для группировки в экипировке). */
 export const SLOT_LABELS: Record<string, string> = {
   frame: 'Рамка аватара',

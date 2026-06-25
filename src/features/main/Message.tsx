@@ -3,7 +3,7 @@ import { Reply, SmilePlus, Pencil, Ban, Download, X, Pin, File as FileIcon, Tras
 import { Avatar, presenceColor } from '@/components/Avatar'
 import { RankChip } from '@/components/RankChip'
 import { rankColor } from '@/lib/ranks'
-import { nameStyle } from '@/lib/cosmetics'
+import { nameStyle, profileBgLayer } from '@/lib/cosmetics'
 import { toast } from '@/lib/toast'
 import { useEscape } from '@/lib/useEscape'
 import { presence } from '@/lib/presence'
@@ -54,6 +54,7 @@ interface Props {
   topRole?: { name: string; color: string | null } | null // высшая кастомная роль — бейдж
   rank?: MemberRank               // ранг автора — чип у имени
   myServerRank?: ServerRankInfo   // мой прогресс на сервере — XP-бар в своём мини-профиле
+  myProfileBgUrl?: string | null  // моя загруженная картинка фона профиля — баннер своего мини-профиля
   grouped?: boolean // часть серии того же автора — без аватара/шапки
   highlight?: boolean // подсветка при переходе из поиска/пинов
   canModerate?: boolean
@@ -66,7 +67,7 @@ interface Props {
   onMarkUnread?: () => void            // «Пометить непрочитанным отсюда» (ChatFeed знает предыдущее сообщение)
 }
 
-export function Message({ m, meId, meName, authorName: authorNameProp, authorAvatarUrl: authorAvatarProp, nameColor, topRole, rank, myServerRank, grouped, highlight, canModerate, onReact, onReply, onEdit, onDelete, onPin, onOpenDm, onMarkUnread }: Props) {
+export function Message({ m, meId, meName, authorName: authorNameProp, authorAvatarUrl: authorAvatarProp, nameColor, topRole, rank, myServerRank, myProfileBgUrl, grouped, highlight, canModerate, onReact, onReply, onEdit, onDelete, onPin, onOpenDm, onMarkUnread }: Props) {
   // приоритет — свежий резолв из списка участников; запечённое в сообщении значение (часто UUID) как фолбэк
   const authorName = authorNameProp ?? m.authorName
   const authorAvatarUrl = authorAvatarProp !== undefined ? authorAvatarProp : m.authorAvatarUrl
@@ -241,7 +242,7 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
         )}
       </div>
       {menu && <MsgMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
-      {popover && <UserPopover m={m} name={authorName} avatarUrl={authorAvatarUrl} nameColor={nameColor} topRole={topRole} rank={rank} myServerRank={myServerRank} isOwn={isOwn} x={popover.x} y={popover.y} onOpenDm={onOpenDm} onClose={() => setPopover(null)} />}
+      {popover && <UserPopover m={m} name={authorName} avatarUrl={authorAvatarUrl} nameColor={nameColor} topRole={topRole} rank={rank} myServerRank={myServerRank} bgUrl={isOwn ? myProfileBgUrl : null} isOwn={isOwn} x={popover.x} y={popover.y} onOpenDm={onOpenDm} onClose={() => setPopover(null)} />}
     </div>
   )
 }
@@ -283,15 +284,17 @@ function XpBar({ sr }: { sr: ServerRankInfo }) {
   )
 }
 
-function UserPopover({ m, name, avatarUrl, nameColor, topRole, rank, myServerRank, isOwn, x, y, onOpenDm, onClose }: { m: Msg; name: string; avatarUrl?: string | null; nameColor?: string | null; topRole?: { name: string; color: string | null } | null; rank?: MemberRank; myServerRank?: ServerRankInfo; isOwn: boolean; x: number; y: number; onOpenDm?: (id: string) => void; onClose: () => void }) {
+function UserPopover({ m, name, avatarUrl, nameColor, topRole, rank, myServerRank, bgUrl, isOwn, x, y, onOpenDm, onClose }: { m: Msg; name: string; avatarUrl?: string | null; nameColor?: string | null; topRole?: { name: string; color: string | null } | null; rank?: MemberRank; myServerRank?: ServerRankInfo; bgUrl?: string | null; isOwn: boolean; x: number; y: number; onOpenDm?: (id: string) => void; onClose: () => void }) {
   const status: Presence = MOCK ? 'online' : presence.statusOf(m.authorId)
   const top = Math.min(y, window.innerHeight - 300)
   const left = Math.min(x, window.innerWidth - 256)
+  // баннер: загруженная картинка (свой профиль) → CSS-фон из экипировки (всем) → акцентная заливка
+  const bgStyle = bgUrl ? { backgroundImage: `url(${bgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : profileBgLayer(rank?.equipped?.profileBg)
   return (
     <>
       <div onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose() }} style={{ position: 'fixed', inset: 0, zIndex: 50 }} />
       <div style={{ position: 'fixed', left, top, zIndex: 51, width: 240, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 22px 50px -18px var(--shadow)', overflow: 'hidden', animation: 'popIn .14s ease' }}>
-        <div style={{ height: 54, background: 'var(--accent-tint)' }} />
+        <div style={{ height: 54, ...(bgStyle ?? { background: 'var(--accent-tint)' }) }} />
         <div style={{ padding: '0 16px 16px', marginTop: -28 }}>
           <Avatar name={name} src={avatarUrl} size={64} presence={status} frame={rank?.equipped?.frame} glow={rank?.equipped?.glow} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>

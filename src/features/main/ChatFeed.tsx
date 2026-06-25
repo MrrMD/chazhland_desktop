@@ -30,13 +30,14 @@ function dayLabel(iso: string) {
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', ...(d.getFullYear() !== now.getFullYear() ? { year: 'numeric' } : {}) })
 }
 
-export function ChatFeed({ messages, readState, membersById, roles, ranks, myServerRank, onReact, meId, meName, canModerate, onReply, onEdit, onDelete, onPin, onOpenDm, onMarkUnread, onLoadOlder, hasMore, loadingOlder, loading, targetId, onTargetConsumed, detached, onJumpToPresent }: {
+export function ChatFeed({ messages, readState, membersById, roles, ranks, myServerRank, myProfileBgUrl, onReact, meId, meName, canModerate, onReply, onEdit, onDelete, onPin, onOpenDm, onMarkUnread, onLoadOlder, hasMore, loadingOlder, loading, targetId, onTargetConsumed, detached, onJumpToPresent }: {
   messages: Msg[]
   readState?: ReadState
   membersById?: Map<string, Member> // для резолва имени/аватара автора по authorId на момент рендера
   roles?: ServerRole[] // кастомные роли — для цвета ника/бейджа автора
   ranks?: Map<string, MemberRank> // ранг-чип у автора
   myServerRank?: ServerRankInfo // мой прогресс на сервере (XP-бар в своём мини-профиле)
+  myProfileBgUrl?: string | null // моя загруженная картинка фона профиля (баннер своего мини-профиля)
   onReact?: (messageId: string, emoji: string) => void
   meId?: string
   meName?: string
@@ -153,7 +154,7 @@ export function ChatFeed({ messages, readState, membersById, roles, ranks, mySer
           <Fragment key={m.id}>
             {newDay && <Divider label={dayLabel(m.createdAt)} />}
             {isUnread && <UnreadDivider />}
-            <Message m={m} authorName={author?.username} authorAvatarUrl={author ? author.avatarUrl : undefined} nameColor={nameColor} topRole={top ? { name: top.name, color: top.color } : null} rank={ranks?.get(m.authorId)} myServerRank={myServerRank} grouped={grouped} highlight={m.id === targetId} meId={meId} meName={meName} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} onPin={onPin} onOpenDm={onOpenDm} onMarkUnread={() => onMarkUnread?.(prev ? prev.id : null)} />
+            <Message m={m} authorName={author?.username} authorAvatarUrl={author ? author.avatarUrl : undefined} nameColor={nameColor} topRole={top ? { name: top.name, color: top.color } : null} rank={ranks?.get(m.authorId)} myServerRank={myServerRank} myProfileBgUrl={myProfileBgUrl} grouped={grouped} highlight={m.id === targetId} meId={meId} meName={meName} canModerate={canModerate} onReact={(emoji) => onReact?.(m.id, emoji)} onReply={onReply} onEdit={onEdit} onDelete={onDelete} onPin={onPin} onOpenDm={onOpenDm} onMarkUnread={() => onMarkUnread?.(prev ? prev.id : null)} />
           </Fragment>
         )
       })}

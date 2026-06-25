@@ -8,13 +8,13 @@ import { useAuth } from '@/store/auth'
 import { useTheme } from '@/theme/ThemeProvider'
 import { ACCENTS, type ThemeName } from '@/theme/themes'
 import { notifyPrefs } from '@/lib/prefs'
-import { nameStyle, SLOT_LABELS, SLOT_ORDER } from '@/lib/cosmetics'
+import { nameStyle, profileBgLayer, SLOT_LABELS, SLOT_ORDER } from '@/lib/cosmetics'
 import type { MyRank, RankCatalog, RankCosmetic } from '@/lib/types'
 
 const lbl: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }
 const fieldS: React.CSSProperties = { padding: '11px 13px', marginBottom: 13 }
 
-export function SettingsModal({ onClose, onEquipChange }: { onClose: () => void; onEquipChange?: (equipped: Record<string, string>) => void }) {
+export function SettingsModal({ onClose, onEquipChange, onProfileBgChange }: { onClose: () => void; onEquipChange?: (equipped: Record<string, string>) => void; onProfileBgChange?: (url: string | null) => void }) {
   const { session, updateUser, logout } = useAuth()
   const user = session!.user
   const { theme, accent, setTheme, setAccent } = useTheme()
@@ -117,7 +117,7 @@ export function SettingsModal({ onClose, onEquipChange }: { onClose: () => void;
       <div style={{ height: 1, background: 'var(--border)', margin: '18px 0' }} />
 
       <SectionTitle>Награды · косметика</SectionTitle>
-      <CosmeticsSection meName={username.trim() || user.username} meAvatar={user.avatarUrl} onEquipChange={onEquipChange} />
+      <CosmeticsSection meName={username.trim() || user.username} meAvatar={user.avatarUrl} onEquipChange={onEquipChange} onProfileBgChange={onProfileBgChange} />
 
       <div style={{ height: 1, background: 'var(--border)', margin: '18px 0' }} />
 
@@ -145,19 +145,41 @@ export function SettingsModal({ onClose, onEquipChange }: { onClose: () => void;
   )
 }
 
-function CosmeticsSection({ meName, meAvatar, onEquipChange }: { meName: string; meAvatar: string | null; onEquipChange?: (equipped: Record<string, string>) => void }) {
+function CosmeticsSection({ meName, meAvatar, onEquipChange, onProfileBgChange }: { meName: string; meAvatar: string | null; onEquipChange?: (equipped: Record<string, string>) => void; onProfileBgChange?: (url: string | null) => void }) {
   const [catalog, setCatalog] = useState<RankCatalog | null>(null)
   const [mine, setMine] = useState<MyRank | null>(null)
   const [equipped, setEquipped] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null) // cosmeticId/slot в процессе
+  const [bgUrl, setBgUrl] = useState<string | null>(null) // загруженный фон профиля
+  const [bgBusy, setBgBusy] = useState(false)
+  const bgFileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     let alive = true
     Promise.all([api.rankCatalog(), api.myRank()])
-      .then(([c, m]) => { if (!alive) return; setCatalog(c); setMine(m); setEquipped({ ...(m.equipped ?? {}) }) })
+      .then(([c, m]) => { if (!alive) return; setCatalog(c); setMine(m); setEquipped({ ...(m.equipped ?? {}) }); setBgUrl(m.profileBackgroundUrl ?? null) })
       .catch(() => {})
     return () => { alive = false }
   }, [])
+
+  async function pickBg(file?: File) {
+    if (!file) return
+    if (!file.type.startsWith('image/')) { toast.error('Фон должен быть изображением'); return }
+    setBgBusy(true)
+    try {
+      const up = await api.uploadFile(file)
+      const url = await api.setProfileBackground(up.objectKey)
+      setBgUrl(url); onProfileBgChange?.(url)
+      toast.ok('Фон профиля обновлён')
+    } catch { toast.error('Не удалось загрузить фон') }
+    finally { setBgBusy(false) }
+  }
+  async function removeBg() {
+    setBgBusy(true)
+    try { await api.clearProfileBackground(); setBgUrl(null); onProfileBgChange?.(null); toast.ok('Фон профиля снят') }
+    catch { toast.error('Не удалось снять фон') }
+    finally { setBgBusy(false) }
+  }
 
   async function equip(slot: string, cosmeticId: string | null) {
     const key = cosmeticId ?? `none:${slot}`
@@ -184,16 +206,40 @@ function CosmeticsSection({ meName, meAvatar, onEquipChange }: { meName: string;
   const unlocked = new Set(mine.unlockedCosmeticIds)
   const slots = SLOT_ORDER.filter((s) => catalog.cosmetics.some((c) => c.slot === s))
   const unlockedCount = catalog.cosmetics.filter((c) => unlocked.has(c.id)).length
+  // загружаемые (userUpload) косметики фона профиля: открыта ли хоть одна (иначе — на каком уровне откроется)
+  const uploadCosmetics = catalog.cosmetics.filter((c) => c.slot === 'profileBg' && c.kind === 'userUpload')
+  const canUploadBg = uploadCosmetics.some((c) => unlocked.has(c.id))
+  const uploadAtLevel = uploadCosmetics.length ? Math.min(...uploadCosmetics.map((c) => c.unlockLevel)) : null
+  const bgStyle = bgUrl ? { backgroundImage: `url(${bgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : (profileBgLayer(equipped.profileBg) ?? null)
+  const hasBg = !!bgStyle
 
   return (
     <div>
-      {/* живое превью: аватар с рамкой/свечением + ник с эффектом + пик-титул */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '13px 14px', marginBottom: 14, borderRadius: 14, background: 'var(--surface-2)', border: '1px solid var(--border)' }}>
-        <Avatar name={meName} src={meAvatar} size={56} frame={equipped.frame} glow={equipped.glow} />
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.2, ...(nameStyle(equipped.nameEffect) ?? { color: 'var(--text)' }) }}>{meName}</div>
-          <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 3 }}>пик: ур.{mine.peakLevel}{mine.peakTitle ? ` · ${mine.peakTitle}` : ''} · открыто {unlockedCount} из {catalog.cosmetics.length}</div>
+      {/* живое превью-карточка: фон профиля + аватар с рамкой/свечением + ник с эффектом + пик-титул */}
+      <div style={{ position: 'relative', overflow: 'hidden', marginBottom: 14, borderRadius: 14, border: '1px solid var(--border)' }}>
+        {hasBg && <div style={{ position: 'absolute', inset: 0, ...bgStyle }} />}
+        {hasBg && <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, rgba(0,0,0,.6), rgba(0,0,0,.28))' }} />}
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, padding: '13px 14px', background: hasBg ? 'transparent' : 'var(--surface-2)' }}>
+          <Avatar name={meName} src={meAvatar} size={56} frame={equipped.frame} glow={equipped.glow} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800, fontSize: 16, lineHeight: 1.2, ...(nameStyle(equipped.nameEffect) ?? { color: hasBg ? '#fff' : 'var(--text)' }) }}>{meName}</div>
+            <div style={{ fontSize: 12, color: hasBg ? 'rgba(255,255,255,.85)' : 'var(--text-3)', marginTop: 3 }}>пик: ур.{mine.peakLevel}{mine.peakTitle ? ` · ${mine.peakTitle}` : ''} · открыто {unlockedCount} из {catalog.cosmetics.length}</div>
+          </div>
         </div>
+      </div>
+
+      {/* загрузка своей картинки на фон профиля (верхняя косметика) */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>Свой фон профиля</div>
+        {canUploadBg ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <button type="button" className="pill no-drag" disabled={bgBusy} onClick={() => bgFileRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', fontWeight: 600, fontSize: 13, opacity: bgBusy ? 0.6 : 1 }}><Camera size={15} /> {bgBusy ? 'Загрузка…' : (bgUrl ? 'Заменить картинку' : 'Загрузить картинку')}</button>
+            {bgUrl && <button type="button" className="no-drag" disabled={bgBusy} onClick={removeBg} style={{ fontSize: 12.5, color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Снять</button>}
+            <input ref={bgFileRef} type="file" accept="image/*" hidden onChange={(e) => { pickBg(e.target.files?.[0]); e.target.value = '' }} />
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: 'var(--text-3)', display: 'flex', alignItems: 'center', gap: 6 }}><Lock size={12} /> Откроется на ур.{uploadAtLevel ?? '—'} — своя картинка/анимация на фон профиля</div>
+        )}
       </div>
 
       {slots.map((slot) => {
@@ -249,7 +295,8 @@ function CosmeticSwatch({ c, meName, meAvatar }: { c: RankCosmetic; meName: stri
   if (c.slot === 'frame') return <Avatar name={meName} src={meAvatar} size={40} frame={c.id} />
   if (c.slot === 'glow') return <Avatar name={meName} src={meAvatar} size={40} glow={c.id} />
   if (c.slot === 'nameEffect') return <div style={{ width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 22, ...(nameStyle(c.id) ?? { color: 'var(--text)' }) }}>Аб</div>
-  // banner/profileBg/прочее — обобщённая градиентная плашка
+  if (c.slot === 'profileBg') return <div style={{ width: 40, height: 40, borderRadius: 9, overflow: 'hidden', ...(profileBgLayer(c.id) ?? { background: 'linear-gradient(135deg,#3a3550,#5b6cff)' }) }} />
+  // banner/прочее — обобщённая градиентная плашка
   return <div style={{ width: 40, height: 40, borderRadius: 9, background: 'linear-gradient(135deg,var(--accent),#13b886)', opacity: 0.85 }} />
 }
 
