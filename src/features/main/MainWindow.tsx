@@ -134,8 +134,9 @@ export function MainWindow() {
     api.notificationSettings().then((list) => setNotifLevels(new Map(list.map((s) => [s.channelId, s.level])))).catch(() => {})
   }, [])
 
-  // контекст выбранного сервера — перезагрузка дерева/участников/ролей при переключении
+  // контекст выбранного сервера — перезагрузка дерева/участников/ролей + presence при переключении
   useEffect(() => {
+    presence.setServer(currentServerId || null) // presence только этого сервера (сброс при выходе из последнего)
     if (!currentServerId) return
     let alive = true
     setMembersLoaded(false)

@@ -296,9 +296,9 @@ export const api = {
     await http(`/channels/${channelId}/permissions/${targetType}/${targetId}`, { method: 'DELETE' })
   },
 
-  async presenceSnapshot(): Promise<{ online: { userId: string; status: string }[]; voice: Record<string, string[]> }> {
+  async presenceSnapshot(serverId?: string): Promise<{ online: { userId: string; status: string }[]; voice: Record<string, string[]> }> {
     if (MOCK) return { online: [], voice: {} }
-    return http('/presence')
+    return http(serverId ? `/servers/${serverId}/presence` : '/presence')
   },
 
   async messages(channelId: string): Promise<Message[]> {

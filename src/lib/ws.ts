@@ -84,9 +84,13 @@ class Ws {
     this.client.publish({ destination: `/app/watch.${channelId}.control`, body: JSON.stringify({ action, positionSeconds }) })
   }
 
-  /** Presence: подписка на /topic/presence (PRESENCE_UPDATE/VOICE_UPDATE). */
+  /** Presence (легаси-общий): /topic/presence. */
   onPresence(cb: (e: any) => void): () => void {
     return this.subscribeTopic('/topic/presence', cb)
+  }
+  /** Presence КОНКРЕТНОГО сервера: /topic/server.{id}.presence (изоляция между серверами). */
+  onServerPresence(serverId: string, cb: (e: any) => void): () => void {
+    return this.subscribeTopic(`/topic/server.${serverId}.presence`, cb)
   }
   /** Heartbeat присутствия. status (online|idle|dnd) опционален — без него только продление онлайна. */
   heartbeat(status?: string) {
