@@ -60,6 +60,24 @@ export interface Member {
   statusMessage?: string | null // кастомный статус «о себе» (приходит из MemberResponse)
 }
 
+// --- Ранги/опыт (cosmetic-only). GET /ranks/catalog, /me/rank, /servers/{id}/members/ranks ---
+export interface RankLevel { level: number; title: string; tier: string; cumulativeXp: number; milestone?: boolean }
+export interface RankTier { index: number; name: string; levelFrom: number; levelTo: number }
+export interface RankCosmetic { id: string; slot: string; unlockLevel: number; kind: string; name: string }
+export interface RankCatalog { maxLevel: number; levels: RankLevel[]; tiers: RankTier[]; cosmetics: RankCosmetic[] }
+
+/** Пер-серверный прогресс (с порогами XP для бара). */
+export interface ServerRankInfo {
+  serverId: string; level: number; xp: number; title: string; tier: string
+  levelStartXp: number; nextLevelXp: number
+}
+export interface MyRank {
+  peakLevel: number; peakTitle: string | null
+  servers: ServerRankInfo[]; unlockedCosmeticIds: string[]
+}
+/** Ранг участника для чипа у ника. */
+export interface MemberRank { userId: string; level: number; title: string | null }
+
 // права как имена битов (бэк: Permission enum)
 export type Permission =
   | 'VIEW_CHANNEL' | 'SEND_MESSAGES' | 'MANAGE_MESSAGES' | 'MANAGE_CHANNELS'

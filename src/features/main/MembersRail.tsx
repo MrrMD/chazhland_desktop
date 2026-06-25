@@ -2,17 +2,19 @@ import { useEffect, useState } from 'react'
 import { ChevronRight, ChevronLeft, Crown } from 'lucide-react'
 import { Avatar, presenceColor } from '@/components/Avatar'
 import { Skeleton } from '@/components/Skeleton'
+import { RankChip } from '@/components/RankChip'
 import { presence } from '@/lib/presence'
 import { MOCK } from '@/lib/config'
 import { roleColor, highestRole } from '@/lib/roles'
 import { hexA } from '@/theme/themes'
-import type { Member, Presence, ServerRole } from '@/lib/types'
+import type { Member, MemberRank, Presence, ServerRole } from '@/lib/types'
 
 const SUB: Record<string, string> = { online: 'в сети', idle: 'отошёл', dnd: 'не беспокоить', offline: 'не в сети' }
 
-export function MembersRail({ members, roles = [], loading, expanded, onToggle, meId, onOpenDm }: {
+export function MembersRail({ members, roles = [], ranks, loading, expanded, onToggle, meId, onOpenDm }: {
   members: Member[]
   roles?: ServerRole[]
+  ranks?: Map<string, MemberRank>
   loading?: boolean
   expanded: boolean
   onToggle: () => void
@@ -41,9 +43,9 @@ export function MembersRail({ members, roles = [], loading, expanded, onToggle, 
           </div>
         ))}
         {online.length > 0 && <Group label={`В СЕТИ · ${online.length}`} show={expanded} />}
-        {online.map((m) => <Row key={m.userId} m={m} status={stat(m)} roles={roles} expanded={expanded} self={m.userId === meId} onOpenDm={onOpenDm} />)}
+        {online.map((m) => <Row key={m.userId} m={m} status={stat(m)} roles={roles} rank={ranks?.get(m.userId)} expanded={expanded} self={m.userId === meId} onOpenDm={onOpenDm} />)}
         {offline.length > 0 && <Group label={`НЕ В СЕТИ · ${offline.length}`} show={expanded} />}
-        {offline.map((m) => <Row key={m.userId} m={m} status="offline" roles={roles} expanded={expanded} dim self={m.userId === meId} onOpenDm={onOpenDm} />)}
+        {offline.map((m) => <Row key={m.userId} m={m} status="offline" roles={roles} rank={ranks?.get(m.userId)} expanded={expanded} dim self={m.userId === meId} onOpenDm={onOpenDm} />)}
       </div>
     </div>
   )
@@ -54,7 +56,7 @@ function Group({ label, show, color, icon }: { label: string; show: boolean; col
   return <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', color: color || 'var(--text-3)', padding: '11px 8px 7px', display: 'flex', alignItems: 'center', gap: 5 }}>{icon}{label}</div>
 }
 
-function Row({ m, status, roles, expanded, dim, self, onOpenDm }: { m: Member; status: Presence; roles: ServerRole[]; expanded: boolean; dim?: boolean; self?: boolean; onOpenDm?: (userId: string) => void }) {
+function Row({ m, status, roles, rank, expanded, dim, self, onOpenDm }: { m: Member; status: Presence; roles: ServerRole[]; rank?: MemberRank; expanded: boolean; dim?: boolean; self?: boolean; onOpenDm?: (userId: string) => void }) {
   const color = roleColor(m.roleIds, roles)      // цвет ника по высшей цветной роли
   const top = highestRole(m.roleIds, roles)      // высшая кастомная роль — для бейджа
   return (
@@ -67,9 +69,13 @@ function Row({ m, status, roles, expanded, dim, self, onOpenDm }: { m: Member; s
             {/* кастомный статус «о себе» приоритетнее метки присутствия (если бэк его отдаёт) */}
             <div style={{ fontSize: 11, color: m.statusMessage?.trim() ? 'var(--text-3)' : presenceColor(status), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={m.statusMessage?.trim() || undefined}>{m.statusMessage?.trim() || SUB[status]}</div>
           </div>
-          {m.role === 'OWNER' && <span style={{ marginLeft: 'auto', color: 'var(--accent)', display: 'flex', flex: 'none' }}><Crown size={13} /></span>}
-          {m.role !== 'OWNER' && top && <span style={{ marginLeft: 'auto', flex: 'none', fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', whiteSpace: 'nowrap', background: top.color ? hexA(top.color, 0.16) : 'var(--surface-3)', color: top.color || 'var(--text-2)' }}>{top.name}</span>}
-          {m.role === 'ADMIN' && !top && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-3)', flex: 'none' }}>admin</span>}
+          {/* справа: ранг-чип + бейдж роли/корона */}
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
+            {rank && <RankChip level={rank.level} title={rank.title} compact />}
+            {m.role === 'OWNER' && <span style={{ color: 'var(--accent)', display: 'flex' }}><Crown size={13} /></span>}
+            {m.role !== 'OWNER' && top && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', whiteSpace: 'nowrap', background: top.color ? hexA(top.color, 0.16) : 'var(--surface-3)', color: top.color || 'var(--text-2)' }}>{top.name}</span>}
+            {m.role === 'ADMIN' && !top && <span style={{ fontSize: 11, color: 'var(--text-3)' }}>admin</span>}
+          </div>
         </>
       )}
     </div>

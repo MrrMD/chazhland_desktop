@@ -1,5 +1,5 @@
 import type {
-  AuditEntry, Category, Channel, Member, Message, ReadState, ServerSummary, User,
+  AuditEntry, Category, Channel, Member, MemberRank, Message, MyRank, RankCatalog, ReadState, ServerSummary, User,
 } from '@/lib/types'
 
 export const MOCK_USER: User = { id: 'u_me', username: 'я_дизайнер', avatarUrl: null }
@@ -35,6 +35,57 @@ export const MOCK_MEMBERS: Member[] = [
   { userId: 'u_lena', username: 'Лена', avatarUrl: null, role: 'MEMBER', status: 'idle', joinedAt: '2026-04-05' },
   { userId: 'u_dmitry', username: 'dmitry', avatarUrl: null, role: 'MEMBER', status: 'offline', joinedAt: '2026-04-20' },
 ]
+
+// --- Ранги (mock для превью UI) ---
+export const MOCK_MEMBER_RANKS: Record<string, MemberRank[]> = {
+  s_home: [
+    { userId: 'u_anya', level: 200, title: 'Вершина Чажленда' },
+    { userId: 'u_mark', level: 140, title: 'Легенда поколения' },
+    { userId: 'u_kostya', level: 95, title: 'Мастер своего дела' },
+    { userId: 'u_me', level: 58, title: 'Ветеран' },
+    { userId: 'u_lena', level: 22, title: 'Свой человек' },
+    { userId: 'u_dmitry', level: 7, title: 'Прохожий' },
+  ],
+  s_squad: [
+    { userId: 'u_me', level: 31, title: 'Старожил' },
+    { userId: 'u_anya', level: 12, title: 'Прохожий' },
+  ],
+}
+
+export const MOCK_MY_RANK: MyRank = {
+  peakLevel: 58,
+  peakTitle: 'Ветеран',
+  servers: [
+    { serverId: 's_home', level: 58, xp: 24700, title: 'Ветеран', tier: 'Ветеран', levelStartXp: 23980, nextLevelXp: 25910 },
+    { serverId: 's_squad', level: 31, xp: 6300, title: 'Старожил', tier: 'Старожил', levelStartXp: 6010, nextLevelXp: 6700 },
+  ],
+  unlockedCosmeticIds: ['name.color.ember', 'frame.ring.gold', 'glow.soft.accent', 'frame.anim.spin', 'banner.gradient.dawn'],
+}
+
+export const MOCK_RANK_CATALOG: RankCatalog = {
+  maxLevel: 220,
+  levels: [
+    { level: 1, title: 'Гость на пороге', tier: 'Новичок', cumulativeXp: 8 },
+    { level: 7, title: 'Прохожий', tier: 'Прохожий', cumulativeXp: 230 },
+    { level: 22, title: 'Свой человек', tier: 'Свой человек', cumulativeXp: 2540 },
+    { level: 58, title: 'Ветеран', tier: 'Ветеран', cumulativeXp: 23980, milestone: true },
+    { level: 95, title: 'Мастер своего дела', tier: 'Мастер', cumulativeXp: 78400 },
+    { level: 140, title: 'Легенда поколения', tier: 'Легенда', cumulativeXp: 232000 },
+    { level: 200, title: 'Вершина Чажленда', tier: 'Вершина', cumulativeXp: 750034, milestone: true },
+    { level: 220, title: 'Имя, ставшее историей', tier: 'Запределье', cumulativeXp: 1057381, milestone: true },
+  ],
+  tiers: [
+    { index: 1, name: 'Новичок', levelFrom: 1, levelTo: 5 },
+    { index: 6, name: 'Ветеран', levelFrom: 49, levelTo: 64 },
+    { index: 16, name: 'Запределье', levelFrom: 201, levelTo: 220 },
+  ],
+  cosmetics: [
+    { id: 'name.color.ember', slot: 'nameEffect', unlockLevel: 1, kind: 'css', name: 'Цвет ника — уголёк' },
+    { id: 'frame.ring.gold', slot: 'frame', unlockLevel: 13, kind: 'css', name: 'Золотая рамка' },
+    { id: 'frame.anim.spin', slot: 'frame', unlockLevel: 49, kind: 'css', name: 'Вращающаяся рамка' },
+    { id: 'profbg.upload.animated', slot: 'profileBg', unlockLevel: 200, kind: 'userUpload', name: 'Свой анимированный фон профиля' },
+  ],
+}
 
 export const MOCK_MESSAGES: Record<string, Message[]> = {
   ch_general: [

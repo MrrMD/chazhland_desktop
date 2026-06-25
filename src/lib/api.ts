@@ -1,11 +1,12 @@
 import { MOCK } from './config'
 import { http, delay, setTokens } from './http'
 import type {
-  AttachmentInput, AuditEntry, Channel, ChannelOverwrite, ChannelType, Category, DigestFull, DigestSummary, Dm, Member, Message, MessageType, NotificationLevel, OverwriteTarget, Permission, Presence, ReadState, Role, ServerRole, ServerSummary, InviteSummary, InviteCreated, TokenResponse, User, WatchState, WatchSourceRequest, WatchSearchResult,
+  AttachmentInput, AuditEntry, Channel, ChannelOverwrite, ChannelType, Category, DigestFull, DigestSummary, Dm, Member, Message, MessageType, NotificationLevel, OverwriteTarget, Permission, Presence, ReadState, Role, ServerRole, ServerSummary, InviteSummary, InviteCreated, TokenResponse, User, WatchState, WatchSourceRequest, WatchSearchResult, RankCatalog, MyRank, MemberRank,
 } from './types'
 import {
   MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_MEMBERS,
   MOCK_MESSAGES, MOCK_READ_STATES, MOCK_SERVERS, MOCK_USER,
+  MOCK_RANK_CATALOG, MOCK_MY_RANK, MOCK_MEMBER_RANKS,
 } from '@/mocks/data'
 
 export interface ServerTree { categories: Category[]; channels: Channel[] }
@@ -504,5 +505,18 @@ export const api = {
   async stopWatch(channelId: string): Promise<void> {
     if (MOCK) return
     await http(`/channels/${channelId}/watch`, { method: 'DELETE' })
+  },
+  // --- Ранги (read-only; пусто/нули при выключенной фиче на бэке) ---
+  async rankCatalog(): Promise<RankCatalog> {
+    if (MOCK) { await delay(200); return MOCK_RANK_CATALOG }
+    return http<RankCatalog>('/ranks/catalog')
+  },
+  async myRank(): Promise<MyRank> {
+    if (MOCK) { await delay(150); return MOCK_MY_RANK }
+    return http<MyRank>('/me/rank')
+  },
+  async memberRanks(serverId: string): Promise<MemberRank[]> {
+    if (MOCK) { await delay(150); return MOCK_MEMBER_RANKS[serverId] ?? [] }
+    return http<MemberRank[]>(`/servers/${serverId}/members/ranks`)
   },
 }

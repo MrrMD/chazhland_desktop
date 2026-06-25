@@ -3,7 +3,7 @@ import { api, type ServerTree } from '@/lib/api'
 import { useAuth } from '@/store/auth'
 import { voice, type VoiceState } from '@/lib/voice'
 import { presence } from '@/lib/presence'
-import type { AttachmentInput, Channel, ChannelType, Dm, Member, Message, NotificationLevel, Presence, ReadState, ServerRole, ServerSummary } from '@/lib/types'
+import type { AttachmentInput, Channel, ChannelType, Dm, Member, MemberRank, Message, NotificationLevel, Presence, ReadState, ServerRole, ServerSummary } from '@/lib/types'
 import { ChatFeed } from './ChatFeed'
 import { Composer } from './Composer'
 import { MembersRail } from './MembersRail'
@@ -45,6 +45,7 @@ export function MainWindow() {
   const [dms, setDms] = useState<Dm[]>([])
   const [members, setMembers] = useState<Member[]>([])
   const [roles, setRoles] = useState<ServerRole[]>([]) // кастомные роли сервера (для цветных ников/бейджей)
+  const [memberRanks, setMemberRanks] = useState<Map<string, MemberRank>>(new Map()) // ранг-чипы у ников
   const [readStates, setReadStates] = useState<ReadState[]>([])
   const [messages, setMessages] = useState<Message[]>([])
   const [currentId, setCurrentId] = useState('')
@@ -140,6 +141,7 @@ export function MainWindow() {
     if (!currentServerId) return
     let alive = true
     setMembersLoaded(false)
+    setMemberRanks(new Map())
     api.serverTree(currentServerId).then((t) => {
       if (!alive) return
       setTree(t)
@@ -148,6 +150,7 @@ export function MainWindow() {
     }).catch(() => {})
     api.members(currentServerId).then((ms) => { if (alive) setMembers(ms) }).catch(() => {}).finally(() => { if (alive) setMembersLoaded(true) })
     api.roles(currentServerId).then((r) => { if (alive) setRoles(r) }).catch(() => {})
+    api.memberRanks(currentServerId).then((rs) => { if (alive) setMemberRanks(new Map(rs.map((r) => [r.userId, r]))) }).catch(() => {})
     return () => { alive = false }
   }, [currentServerId])
 
@@ -599,7 +602,7 @@ export function MainWindow() {
                 )}
               </div>
             ))}
-            {!screenFull && <MembersRail members={members} roles={roles} loading={!membersLoaded} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} meId={user.id} onOpenDm={openDm} />}
+            {!screenFull && <MembersRail members={members} roles={roles} ranks={memberRanks} loading={!membersLoaded} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} meId={user.id} onOpenDm={openDm} />}
             {panel === 'stats' && <StatsPanel onClose={() => setPanel(null)} />}
             {(panel === 'search' || panel === 'pins') && currentId && (
               <ChatPanel mode={panel} channelId={currentId} channelName={channel?.name ?? ''} pinsVersion={pinsVersion} onClose={() => setPanel(null)} onUnpin={(id) => pinMsg(id, false)} onJump={jumpTo} />
