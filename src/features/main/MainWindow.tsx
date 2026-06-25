@@ -3,7 +3,7 @@ import { api, type ServerTree } from '@/lib/api'
 import { useAuth } from '@/store/auth'
 import { voice, type VoiceState } from '@/lib/voice'
 import { presence } from '@/lib/presence'
-import type { AttachmentInput, Channel, ChannelType, Dm, Member, MemberRank, Message, NotificationLevel, Presence, ReadState, ServerRole, ServerSummary } from '@/lib/types'
+import type { AttachmentInput, Channel, ChannelType, Dm, Member, MemberRank, Message, MyRank, NotificationLevel, Presence, ReadState, ServerRankInfo, ServerRole, ServerSummary } from '@/lib/types'
 import { ChatFeed } from './ChatFeed'
 import { Composer } from './Composer'
 import { MembersRail } from './MembersRail'
@@ -46,6 +46,7 @@ export function MainWindow() {
   const [members, setMembers] = useState<Member[]>([])
   const [roles, setRoles] = useState<ServerRole[]>([]) // кастомные роли сервера (для цветных ников/бейджей)
   const [memberRanks, setMemberRanks] = useState<Map<string, MemberRank>>(new Map()) // ранг-чипы у ников
+  const [myRank, setMyRank] = useState<MyRank | null>(null) // мой прогресс (пик + пер-сервер с порогами XP)
   const [readStates, setReadStates] = useState<ReadState[]>([])
   const [messages, setMessages] = useState<Message[]>([])
   const [currentId, setCurrentId] = useState('')
@@ -99,6 +100,8 @@ export function MainWindow() {
   }, [user.avatarUrl, user.id])
 
   const membersById = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members])
+  // мой прогресс на текущем сервере (для XP-бара в своём мини-профиле)
+  const myServerRank = useMemo<ServerRankInfo | undefined>(() => myRank?.servers.find((s) => s.serverId === currentServerId) ?? myRank?.servers[0], [myRank, currentServerId])
 
   // автор сообщения, которого нет в списке участников (только зашёл / список устарел) → освежаем участников,
   // чтобы вместо длинного UUID показать ник. На каждого неизвестного — одна попытка (иначе цикл для вышедших).
@@ -151,6 +154,7 @@ export function MainWindow() {
     api.members(currentServerId).then((ms) => { if (alive) setMembers(ms) }).catch(() => {}).finally(() => { if (alive) setMembersLoaded(true) })
     api.roles(currentServerId).then((r) => { if (alive) setRoles(r) }).catch(() => {})
     api.memberRanks(currentServerId).then((rs) => { if (alive) setMemberRanks(new Map(rs.map((r) => [r.userId, r]))) }).catch(() => {})
+    api.myRank().then((r) => { if (alive) setMyRank(r) }).catch(() => {})
     return () => { alive = false }
   }, [currentServerId])
 
@@ -590,7 +594,7 @@ export function MainWindow() {
               <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', background: 'var(--win)' }}>
                 {/* key={currentId} — перезапускает fadeIn при смене канала; Composer вне обёртки, чтобы сохранить черновик */}
                 <div key={currentId} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', animation: 'fadeIn .26s ease' }}>
-                  <ChatFeed messages={messages} readState={readState} membersById={membersById} roles={roles} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onOpenDm={openDm} onMarkUnread={markChannelUnreadFrom} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
+                  <ChatFeed messages={messages} readState={readState} membersById={membersById} roles={roles} ranks={memberRanks} myServerRank={myServerRank} onReact={react} meId={user.id} meName={user.username} canModerate={canModerate} onReply={setReplyTo} onEdit={editMsg} onDelete={deleteMsg} onPin={pinMsg} onOpenDm={openDm} onMarkUnread={markChannelUnreadFrom} onLoadOlder={loadOlder} hasMore={hasMore} loadingOlder={loadingOlder} loading={loadingMessages} targetId={jumpTargetId} onTargetConsumed={() => setJumpTargetId(null)} detached={detached} onJumpToPresent={jumpToPresent} />
                 </div>
                 <TypingIndicator names={typing.map((t) => t.name)} />
                 {channel?.system ? (

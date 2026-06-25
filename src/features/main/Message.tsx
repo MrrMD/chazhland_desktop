@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Reply, SmilePlus, Pencil, Ban, Download, X, Pin, File as FileIcon, Trash2, Copy, Mail, UserRound, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Avatar, presenceColor } from '@/components/Avatar'
+import { RankChip } from '@/components/RankChip'
+import { rankColor } from '@/lib/ranks'
 import { toast } from '@/lib/toast'
 import { useEscape } from '@/lib/useEscape'
 import { presence } from '@/lib/presence'
@@ -8,7 +10,7 @@ import { MOCK } from '@/lib/config'
 import { hexA } from '@/theme/themes'
 import { renderRichText } from '@/lib/markdown'
 import { EMOJIS } from '@/lib/emojis'
-import type { Attachment, Message as Msg, Presence } from '@/lib/types'
+import type { Attachment, MemberRank, Message as Msg, Presence, ServerRankInfo } from '@/lib/types'
 
 // скачивание через blob: cross-origin download-атрибут Chromium игнорирует (навигация → блок navigation-guard)
 async function downloadAttachment(url: string, filename?: string | null) {
@@ -49,6 +51,8 @@ interface Props {
   authorAvatarUrl?: string | null // (в DTO сообщения их нет — иначе у не-в-списке автора виден UUID/нет аватара)
   nameColor?: string | null       // цвет ника по высшей цветной роли
   topRole?: { name: string; color: string | null } | null // высшая кастомная роль — бейдж
+  rank?: MemberRank               // ранг автора — чип у имени
+  myServerRank?: ServerRankInfo   // мой прогресс на сервере — XP-бар в своём мини-профиле
   grouped?: boolean // часть серии того же автора — без аватара/шапки
   highlight?: boolean // подсветка при переходе из поиска/пинов
   canModerate?: boolean
@@ -61,7 +65,7 @@ interface Props {
   onMarkUnread?: () => void            // «Пометить непрочитанным отсюда» (ChatFeed знает предыдущее сообщение)
 }
 
-export function Message({ m, meId, meName, authorName: authorNameProp, authorAvatarUrl: authorAvatarProp, nameColor, topRole, grouped, highlight, canModerate, onReact, onReply, onEdit, onDelete, onPin, onOpenDm, onMarkUnread }: Props) {
+export function Message({ m, meId, meName, authorName: authorNameProp, authorAvatarUrl: authorAvatarProp, nameColor, topRole, rank, myServerRank, grouped, highlight, canModerate, onReact, onReply, onEdit, onDelete, onPin, onOpenDm, onMarkUnread }: Props) {
   // приоритет — свежий резолв из списка участников; запечённое в сообщении значение (часто UUID) как фолбэк
   const authorName = authorNameProp ?? m.authorName
   const authorAvatarUrl = authorAvatarProp !== undefined ? authorAvatarProp : m.authorAvatarUrl
@@ -172,6 +176,7 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
               <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>
             )}
             {topRole && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', background: topRole.color ? hexA(topRole.color, 0.16) : 'var(--surface-3)', color: topRole.color || 'var(--text-2)' }}>{topRole.name}</span>}
+            {rank && <RankChip level={rank.level} title={rank.title} compact />}
             <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{hhmm(m.createdAt)}</span>
             {m.pinnedAt && <Pin size={11} style={{ color: 'var(--accent)' }} />}
           </div>
@@ -235,7 +240,7 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
         )}
       </div>
       {menu && <MsgMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
-      {popover && <UserPopover m={m} name={authorName} avatarUrl={authorAvatarUrl} nameColor={nameColor} topRole={topRole} isOwn={isOwn} x={popover.x} y={popover.y} onOpenDm={onOpenDm} onClose={() => setPopover(null)} />}
+      {popover && <UserPopover m={m} name={authorName} avatarUrl={authorAvatarUrl} nameColor={nameColor} topRole={topRole} rank={rank} myServerRank={myServerRank} isOwn={isOwn} x={popover.x} y={popover.y} onOpenDm={onOpenDm} onClose={() => setPopover(null)} />}
     </div>
   )
 }
@@ -258,9 +263,28 @@ function MsgMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuIt
 }
 
 const STATUS_SUB: Record<string, string> = { online: 'в сети', idle: 'отошёл', dnd: 'не беспокоить', offline: 'не в сети' }
-function UserPopover({ m, name, avatarUrl, nameColor, topRole, isOwn, x, y, onOpenDm, onClose }: { m: Msg; name: string; avatarUrl?: string | null; nameColor?: string | null; topRole?: { name: string; color: string | null } | null; isOwn: boolean; x: number; y: number; onOpenDm?: (id: string) => void; onClose: () => void }) {
+/** XP-полоска текущего уровня в своём мини-профиле (по порогам levelStartXp/nextLevelXp из /me/rank). */
+function XpBar({ sr }: { sr: ServerRankInfo }) {
+  const span = Math.max(1, sr.nextLevelXp - sr.levelStartXp)
+  const cur = Math.max(0, sr.xp - sr.levelStartXp)
+  const pct = Math.max(0, Math.min(100, (cur / span) * 100))
+  const c = rankColor(sr.level)
+  return (
+    <div style={{ marginTop: 13 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 11, color: 'var(--text-3)', marginBottom: 5 }}>
+        <span style={{ color: c, fontWeight: 700 }}>ур.{sr.level} · {sr.title}</span>
+        <span>{cur.toLocaleString('ru-RU')} / {span.toLocaleString('ru-RU')} XP</span>
+      </div>
+      <div style={{ height: 7, borderRadius: 99, background: 'var(--surface-3)', overflow: 'hidden' }}>
+        <div style={{ width: pct + '%', height: '100%', background: c, transition: 'width .3s' }} />
+      </div>
+    </div>
+  )
+}
+
+function UserPopover({ m, name, avatarUrl, nameColor, topRole, rank, myServerRank, isOwn, x, y, onOpenDm, onClose }: { m: Msg; name: string; avatarUrl?: string | null; nameColor?: string | null; topRole?: { name: string; color: string | null } | null; rank?: MemberRank; myServerRank?: ServerRankInfo; isOwn: boolean; x: number; y: number; onOpenDm?: (id: string) => void; onClose: () => void }) {
   const status: Presence = MOCK ? 'online' : presence.statusOf(m.authorId)
-  const top = Math.min(y, window.innerHeight - 230)
+  const top = Math.min(y, window.innerHeight - 300)
   const left = Math.min(x, window.innerWidth - 256)
   return (
     <>
@@ -273,10 +297,12 @@ function UserPopover({ m, name, avatarUrl, nameColor, topRole, isOwn, x, y, onOp
             <span style={{ fontWeight: 800, fontSize: 17, color: nameColor || undefined, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{name}</span>
             {m.authorRole && roleBadge[m.authorRole] && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', flex: 'none', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>}
             {topRole && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', flex: 'none', background: topRole.color ? hexA(topRole.color, 0.16) : 'var(--surface-3)', color: topRole.color || 'var(--text-2)' }}>{topRole.name}</span>}
+            {rank && <RankChip level={rank.level} title={rank.title} />}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: presenceColor(status), marginTop: 4 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: presenceColor(status) }} />{STATUS_SUB[status]}
           </div>
+          {isOwn && myServerRank && <XpBar sr={myServerRank} />}
           {!isOwn && onOpenDm && (
             <button className="accent-btn no-drag" onClick={() => { onClose(); onOpenDm(m.authorId) }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', marginTop: 14, borderRadius: 11, padding: '9px 0', fontWeight: 700, fontSize: 13.5 }}><MessageSquare size={15} /> Написать в ЛС</button>
           )}
