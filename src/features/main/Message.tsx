@@ -246,7 +246,7 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
         )}
       </div>
       {menu && <MsgMenu x={menu.x} y={menu.y} items={menuItems} onClose={() => setMenu(null)} />}
-      {popover && <UserPopover m={m} name={authorName} avatarUrl={authorAvatarUrl} nameColor={nameColor} topRole={topRole} rank={rank} myServerRank={myServerRank} bgUrl={isOwn ? myProfileBgUrl : null} isOwn={isOwn} x={popover.x} y={popover.y} onOpenDm={onOpenDm} onClose={() => setPopover(null)} />}
+      {popover && <UserPopover m={m} name={authorName} avatarUrl={authorAvatarUrl} nameColor={nameColor} topRole={topRole} rank={rank} myServerRank={myServerRank} bgUrl={isOwn ? myProfileBgUrl : (rank?.profileBackgroundUrl ?? null)} isOwn={isOwn} x={popover.x} y={popover.y} onOpenDm={onOpenDm} onClose={() => setPopover(null)} />}
     </div>
   )
 }

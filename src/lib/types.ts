@@ -87,8 +87,8 @@ export interface RankEvent {
   peak?: number
   unlocked?: string[]
 }
-/** Ранг участника для чипа у ника + экипированная косметика (рамка/свечение на аватаре). */
-export interface MemberRank { userId: string; level: number; title: string | null; equipped?: Record<string, string> }
+/** Ранг участника для чипа у ника + экипированная косметика (рамка/свечение на аватаре) + загруженный фон. */
+export interface MemberRank { userId: string; level: number; title: string | null; equipped?: Record<string, string>; profileBackgroundUrl?: string | null }
 
 // права как имена битов (бэк: Permission enum)
 export type Permission =
