@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { Reply, SmilePlus, Pencil, Ban, Download, X, Pin, File as FileIcon, Trash2, Copy, Mail, UserRound, MessageSquare, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Avatar, presenceColor } from '@/components/Avatar'
 import { RankChip } from '@/components/RankChip'
+import { RankBadge } from '@/components/RankBadge'
 import { rankColor } from '@/lib/ranks'
-import { nameStyle, profileBgLayer } from '@/lib/cosmetics'
+import { bannerLayer, msgAccentColor, nameGlow, nameStyle, profileBgLayer } from '@/lib/cosmetics'
 import { toast } from '@/lib/toast'
 import { useEscape } from '@/lib/useEscape'
 import { presence } from '@/lib/presence'
@@ -152,6 +153,8 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
       style={{ display: 'flex', gap: 13, padding: mention ? '9px 8px' : grouped ? '1px 8px' : '7px 8px', borderRadius: 12, position: 'relative', background: highlight ? 'var(--accent-tint)' : mention ? 'var(--accent-tint)' : undefined, boxShadow: highlight ? 'inset 0 0 0 2px var(--accent)' : undefined, transition: 'background .35s, box-shadow .35s' }}
     >
       {mention && <div style={{ position: 'absolute', left: 0, top: 9, bottom: 9, width: 3, borderRadius: 3, background: 'var(--accent)' }} />}
+      {/* косметика msgAccent: акцентная полоса у сообщений автора (если не перебита подсветкой упоминания) */}
+      {!mention && !highlight && msgAccentColor(rank?.equipped?.msgAccent) && <div style={{ position: 'absolute', left: 0, top: 5, bottom: 5, width: 3, borderRadius: 3, background: msgAccentColor(rank?.equipped?.msgAccent) || undefined }} />}
 
       {(hover || picker) && !editing && (
         <div style={{ position: 'absolute', top: -12, right: 10, display: 'flex', gap: 2, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 9, padding: 3, boxShadow: '0 6px 18px -8px var(--shadow)', zIndex: 2 }}>
@@ -173,11 +176,12 @@ export function Message({ m, meId, meName, authorName: authorNameProp, authorAva
       <div style={{ minWidth: 0, flex: 1 }}>
         {!grouped && (
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, marginBottom: 3 }}>
-            <span onClick={(e) => setPopover({ x: e.clientX, y: e.clientY })} style={{ fontWeight: 700, fontSize: 14.5, color: nameColor || undefined, cursor: 'pointer', ...(nameStyle(rank?.equipped?.nameEffect) ?? {}) }}>{authorName}</span>
+            <span onClick={(e) => setPopover({ x: e.clientX, y: e.clientY })} style={{ fontWeight: 700, fontSize: 14.5, color: nameColor || undefined, cursor: 'pointer', ...(nameStyle(rank?.equipped?.nameEffect) ?? {}), ...(nameGlow(rank?.equipped?.msgAccent) ?? {}) }}>{authorName}</span>
             {m.authorRole && roleBadge[m.authorRole] && (
               <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>
             )}
             {topRole && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', background: topRole.color ? hexA(topRole.color, 0.16) : 'var(--surface-3)', color: topRole.color || 'var(--text-2)' }}>{topRole.name}</span>}
+            <RankBadge id={rank?.equipped?.badge} size={14} />
             {rank && <RankChip level={rank.level} title={rank.title} compact />}
             <span style={{ fontSize: 11.5, color: 'var(--text-3)' }}>{hhmm(m.createdAt)}</span>
             {m.pinnedAt && <Pin size={11} style={{ color: 'var(--accent)' }} />}
@@ -288,8 +292,10 @@ function UserPopover({ m, name, avatarUrl, nameColor, topRole, rank, myServerRan
   const status: Presence = MOCK ? 'online' : presence.statusOf(m.authorId)
   const top = Math.min(y, window.innerHeight - 300)
   const left = Math.min(x, window.innerWidth - 256)
-  // баннер: загруженная картинка (свой профиль) → CSS-фон из экипировки (всем) → акцентная заливка
-  const bgStyle = bgUrl ? { backgroundImage: `url(${bgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : profileBgLayer(rank?.equipped?.profileBg)
+  // баннер: загруженная картинка (свой профиль) → CSS-фон профиля → баннер-косметика → акцентная заливка
+  const bgStyle = bgUrl
+    ? { backgroundImage: `url(${bgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+    : (profileBgLayer(rank?.equipped?.profileBg) ?? bannerLayer(rank?.equipped?.banner))
   return (
     <>
       <div onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose() }} style={{ position: 'fixed', inset: 0, zIndex: 50 }} />
@@ -301,6 +307,7 @@ function UserPopover({ m, name, avatarUrl, nameColor, topRole, rank, myServerRan
             <span style={{ fontWeight: 800, fontSize: 17, color: nameColor || undefined, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', ...(nameStyle(rank?.equipped?.nameEffect) ?? {}) }}>{name}</span>
             {m.authorRole && roleBadge[m.authorRole] && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', flex: 'none', ...roleBadge[m.authorRole] }}>{m.authorRole}</span>}
             {topRole && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', flex: 'none', background: topRole.color ? hexA(topRole.color, 0.16) : 'var(--surface-3)', color: topRole.color || 'var(--text-2)' }}>{topRole.name}</span>}
+            <RankBadge id={rank?.equipped?.badge} size={16} />
             {rank && <RankChip level={rank.level} title={rank.title} />}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: presenceColor(status), marginTop: 4 }}>

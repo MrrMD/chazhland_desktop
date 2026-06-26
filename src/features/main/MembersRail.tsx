@@ -3,6 +3,7 @@ import { ChevronRight, ChevronLeft, Crown } from 'lucide-react'
 import { Avatar, presenceColor } from '@/components/Avatar'
 import { Skeleton } from '@/components/Skeleton'
 import { RankChip } from '@/components/RankChip'
+import { RankBadge } from '@/components/RankBadge'
 import { presence } from '@/lib/presence'
 import { MOCK } from '@/lib/config'
 import { nameStyle } from '@/lib/cosmetics'
@@ -72,6 +73,7 @@ function Row({ m, status, roles, rank, expanded, dim, self, onOpenDm }: { m: Mem
           </div>
           {/* справа: ранг-чип + бейдж роли/корона */}
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
+            <RankBadge id={rank?.equipped?.badge} size={14} />
             {rank && <RankChip level={rank.level} title={rank.title} compact />}
             {m.role === 'OWNER' && <span style={{ color: 'var(--accent)', display: 'flex' }}><Crown size={13} /></span>}
             {m.role !== 'OWNER' && top && <span style={{ fontSize: 10, fontWeight: 700, borderRadius: 5, padding: '1px 7px', whiteSpace: 'nowrap', background: top.color ? hexA(top.color, 0.16) : 'var(--surface-3)', color: top.color || 'var(--text-2)' }}>{top.name}</span>}

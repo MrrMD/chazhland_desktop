@@ -39,10 +39,10 @@ export const MOCK_MEMBERS: Member[] = [
 // --- Ранги (mock для превью UI) ---
 export const MOCK_MEMBER_RANKS: Record<string, MemberRank[]> = {
   s_home: [
-    { userId: 'u_anya', level: 200, title: 'Вершина Чажленда', equipped: { frame: 'frame.anim.spin', glow: 'glow.aura.rainbow', nameEffect: 'name.anim.holo', profileBg: 'profbg.gradient.flow' } },
-    { userId: 'u_mark', level: 140, title: 'Легенда поколения', equipped: { frame: 'frame.anim.shimmerGold', glow: 'glow.pulse.breath', nameEffect: 'name.anim.shimmer' } },
+    { userId: 'u_anya', level: 200, title: 'Вершина Чажленда', equipped: { frame: 'frame.anim.spin', glow: 'glow.aura.rainbow', nameEffect: 'name.anim.holo', profileBg: 'profbg.gradient.flow', badge: 'badge.tier.11', msgAccent: 'msgaccent.glowname' } },
+    { userId: 'u_mark', level: 140, title: 'Легенда поколения', equipped: { frame: 'frame.anim.shimmerGold', glow: 'glow.pulse.breath', nameEffect: 'name.anim.shimmer', badge: 'badge.tier.6', msgAccent: 'msgaccent.bar.solid' } },
     { userId: 'u_kostya', level: 95, title: 'Мастер своего дела', equipped: { frame: 'frame.ring.gold', glow: 'glow.warm.ember', nameEffect: 'name.gradient.sunset' } },
-    { userId: 'u_me', level: 58, title: 'Ветеран', equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent', nameEffect: 'name.gradient.sunset', profileBg: 'profbg.gradient.flow' } },
+    { userId: 'u_me', level: 58, title: 'Ветеран', equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent', nameEffect: 'name.gradient.sunset', profileBg: 'profbg.gradient.flow', badge: 'badge.founder', msgAccent: 'msgaccent.bar.gradient' } },
     { userId: 'u_lena', level: 22, title: 'Свой человек', equipped: { frame: 'frame.ring.bronze', nameEffect: 'name.color.azure' } },
     { userId: 'u_dmitry', level: 7, title: 'Прохожий' },
   ],
@@ -65,9 +65,11 @@ export const MOCK_MY_RANK: MyRank = {
     'frame.ring.bronze', 'frame.ring.silver', 'frame.ring.gold', 'frame.gradient.aurora', 'frame.anim.spin', 'frame.anim.shimmerGold',
     'glow.soft.accent', 'glow.warm.ember', 'glow.pulse.breath', 'glow.aura.rainbow',
     'profbg.gradient.flow', 'profbg.upload.image', 'profbg.upload.animated',
-    'badge.founder',
+    'badge.founder', 'badge.tier.6', 'badge.tier.11',
+    'banner.gradient.dawn', 'banner.anim.gradient',
+    'msgaccent.bar.solid', 'msgaccent.bar.gradient', 'msgaccent.glowname',
   ],
-  equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent', nameEffect: 'name.gradient.sunset', profileBg: 'profbg.gradient.flow' },
+  equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent', nameEffect: 'name.gradient.sunset', profileBg: 'profbg.gradient.flow', badge: 'badge.founder', msgAccent: 'msgaccent.bar.gradient' },
 }
 
 export const MOCK_RANK_CATALOG: RankCatalog = {
@@ -112,6 +114,17 @@ export const MOCK_RANK_CATALOG: RankCatalog = {
     { id: 'profbg.gradient.flow', slot: 'profileBg', unlockLevel: 65, kind: 'css', name: 'Фон профиля — анимированный градиент' },
     { id: 'profbg.upload.image', slot: 'profileBg', unlockLevel: 195, kind: 'userUpload', name: 'Своя картинка на фон профиля' },
     { id: 'profbg.upload.animated', slot: 'profileBg', unlockLevel: 200, kind: 'userUpload', name: 'Свой анимированный фон профиля' },
+    // бейджи
+    { id: 'badge.founder', slot: 'badge', unlockLevel: 0, kind: 'css', name: 'Бейдж «Основатель»' },
+    { id: 'badge.tier.6', slot: 'badge', unlockLevel: 64, kind: 'css', name: 'Бейдж тира «Ветеран»' },
+    { id: 'badge.tier.11', slot: 'badge', unlockLevel: 154, kind: 'css', name: 'Бейдж тира «Легенда»' },
+    // баннеры профиля
+    { id: 'banner.gradient.dawn', slot: 'banner', unlockLevel: 49, kind: 'css', name: 'Баннер — рассвет (градиент)' },
+    { id: 'banner.anim.gradient', slot: 'banner', unlockLevel: 83, kind: 'css', name: 'Баннер — плывущий градиент' },
+    // акцент сообщений
+    { id: 'msgaccent.bar.solid', slot: 'msgAccent', unlockLevel: 83, kind: 'css', name: 'Акцентная полоса у сообщений' },
+    { id: 'msgaccent.bar.gradient', slot: 'msgAccent', unlockLevel: 137, kind: 'css', name: 'Градиентная полоса у сообщений' },
+    { id: 'msgaccent.glowname', slot: 'msgAccent', unlockLevel: 171, kind: 'css', name: 'Свечение имени в сообщениях' },
   ],
 }
 

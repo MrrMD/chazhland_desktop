@@ -8,7 +8,8 @@ import { useAuth } from '@/store/auth'
 import { useTheme } from '@/theme/ThemeProvider'
 import { ACCENTS, type ThemeName } from '@/theme/themes'
 import { notifyPrefs } from '@/lib/prefs'
-import { nameStyle, profileBgLayer, SLOT_LABELS, SLOT_ORDER } from '@/lib/cosmetics'
+import { bannerLayer, msgAccentColor, nameStyle, profileBgLayer, SLOT_LABELS, SLOT_ORDER } from '@/lib/cosmetics'
+import { RankBadge } from '@/components/RankBadge'
 import type { MyRank, RankCatalog, RankCosmetic } from '@/lib/types'
 
 const lbl: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }
@@ -296,7 +297,10 @@ function CosmeticSwatch({ c, meName, meAvatar }: { c: RankCosmetic; meName: stri
   if (c.slot === 'glow') return <Avatar name={meName} src={meAvatar} size={40} glow={c.id} />
   if (c.slot === 'nameEffect') return <div style={{ width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 22, ...(nameStyle(c.id) ?? { color: 'var(--text)' }) }}>Аб</div>
   if (c.slot === 'profileBg') return <div style={{ width: 40, height: 40, borderRadius: 9, overflow: 'hidden', ...(profileBgLayer(c.id) ?? { background: 'linear-gradient(135deg,#3a3550,#5b6cff)' }) }} />
-  // banner/прочее — обобщённая градиентная плашка
+  if (c.slot === 'badge') return <div style={{ width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><RankBadge id={c.id} size={26} /></div>
+  if (c.slot === 'banner') return <div style={{ width: 40, height: 40, borderRadius: 9, overflow: 'hidden', ...(bannerLayer(c.id) ?? { background: 'linear-gradient(135deg,var(--accent),#13b886)' }) }} />
+  if (c.slot === 'msgAccent') return <div style={{ width: 40, height: 40, borderRadius: 9, background: 'var(--surface-3)', boxShadow: `inset 3px 0 0 ${msgAccentColor(c.id) || 'var(--accent)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, color: 'var(--text-3)' }}>≡</div>
+  // прочее — обобщённая градиентная плашка
   return <div style={{ width: 40, height: 40, borderRadius: 9, background: 'linear-gradient(135deg,var(--accent),#13b886)', opacity: 0.85 }} />
 }
 

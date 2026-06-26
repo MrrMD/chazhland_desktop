@@ -1,4 +1,6 @@
 import type { CSSProperties } from 'react'
+import { hexA } from '@/theme/themes'
+import { rankColor } from '@/lib/ranks'
 
 /**
  * Косметика-рамка: слой-кольцо вокруг аватара (на 3px больше внутреннего круга, под ним по z — видно
@@ -68,6 +70,53 @@ export function profileBgLayer(id?: string): CSSProperties | null {
       if (id.startsWith('profbg')) return { background: 'linear-gradient(135deg,var(--accent),#13b886)' }
       return null
   }
+}
+
+/**
+ * Косметика-бейдж: маленькая эмблема у ника. Основатель — золотая корона; тир-бейдж — цвет по тиру +
+ * номер; прочее — акцентная звезда. Возвращает {bg, glyph} или null.
+ */
+export function badgeMeta(id?: string): { bg: string; glyph: string } | null {
+  if (!id) return null
+  if (id === 'badge.founder') return { bg: 'linear-gradient(135deg,#e7c14b,#fff3c0,#a06a14)', glyph: '♛' }
+  const m = id.match(/^badge\.tier\.(\d+)$/)
+  if (m) {
+    const tier = Number(m[1])
+    const c = rankColor(Math.min(220, tier * 14)) // тир→репрезентативный уровень→цвет тира
+    return { bg: `linear-gradient(135deg,${c},${hexA(c, 0.55)})`, glyph: String(tier) }
+  }
+  if (id.startsWith('badge')) return { bg: 'linear-gradient(135deg,var(--accent),#13b886)', glyph: '✦' }
+  return null
+}
+
+/** Косметика-баннер профиля: фон верхней полосы мини-профиля (отдельно от profileBg-фона карточки). */
+export function bannerLayer(id?: string): CSSProperties | null {
+  if (!id) return null
+  switch (id) {
+    case 'banner.tint.default': return { background: 'var(--accent-tint)' }
+    case 'banner.solid.choice': return { background: 'var(--accent)' }
+    case 'banner.gradient.dawn': return { background: 'linear-gradient(90deg,#ff8a3a,#e0457b,#7c5cff)' }
+    case 'banner.anim.gradient': return { background: 'linear-gradient(90deg,#5b6cff,#13b886,#e0457b,#5b6cff)', backgroundSize: '420px 100%', animation: 'shimmer 8s linear infinite' }
+    case 'banner.particle.stars': return { background: 'radial-gradient(circle at 30% 35%, #3a2f6e, #100c22)' }
+    default:
+      if (id.startsWith('banner')) return { background: 'linear-gradient(135deg,var(--accent),#13b886)' }
+      return null
+  }
+}
+
+/** Косметика-акцент сообщений: цвет левой полосы у сообщений автора (по box-shadow inset). */
+export function msgAccentColor(id?: string): string | null {
+  if (!id || !id.startsWith('msgaccent.bar')) return null
+  switch (id) {
+    case 'msgaccent.bar.gradient': return '#e0457b'
+    default: return 'var(--accent)'
+  }
+}
+
+/** Косметика msgaccent.glowname: мягкое свечение имени автора в сообщениях (text-shadow). */
+export function nameGlow(id?: string): CSSProperties | null {
+  if (id !== 'msgaccent.glowname') return null
+  return { textShadow: '0 0 8px var(--accent)' }
 }
 
 /** Человекочитаемые названия слотов косметики (для группировки в экипировке). */
