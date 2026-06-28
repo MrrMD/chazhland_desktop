@@ -18,7 +18,7 @@ function periodLabel(s: DigestSummary): string {
 }
 
 // Боковая панель «Статистика»: история дайджестов сервера + богатый рендер выбранной недели.
-export function StatsPanel({ onClose }: { onClose: () => void }) {
+export function StatsPanel({ serverId, onClose }: { serverId: string; onClose: () => void }) {
   const [list, setList] = useState<DigestSummary[] | null>(null)
   const [selId, setSelId] = useState<string | null>(null)
   const [full, setFull] = useState<DigestFull | null>(null)
@@ -27,22 +27,23 @@ export function StatsPanel({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     let alive = true
-    api.digests()
+    setSelId(null) // смена сервера: сбрасываем выбор, чтобы не дёргать чужой digest id
+    api.digests(serverId || undefined)
       .then((r) => { if (alive) { setList(r); if (r[0]) setSelId(r[0].id) } })
       .catch(() => { if (alive) setList([]) })
     return () => { alive = false }
-  }, [])
+  }, [serverId])
 
   useEffect(() => {
     if (!selId) { setFull(null); return }
     let alive = true
     setLoading(true)
-    api.digest(selId)
+    api.digest(selId, serverId || undefined)
       .then((r) => { if (alive) setFull(r) })
       .catch(() => { if (alive) setFull(null) })
       .finally(() => { if (alive) setLoading(false) })
     return () => { alive = false }
-  }, [selId])
+  }, [selId, serverId])
 
   return (
     <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: 380, maxWidth: '100%', zIndex: 40, background: 'var(--surface)', borderLeft: '1px solid var(--border)', boxShadow: '-14px 0 40px -22px var(--shadow)', display: 'flex', flexDirection: 'column', animation: 'ovIn .2s ease' }}>

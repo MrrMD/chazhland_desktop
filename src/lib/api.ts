@@ -444,12 +444,12 @@ export const api = {
   },
 
   // ---- дайджест «Чажленд Wrapped» ----
-  async digests(): Promise<DigestSummary[]> {
+  async digests(serverId?: string): Promise<DigestSummary[]> {
     if (MOCK) return []
-    return http<DigestSummary[]>('/server/digests')
+    return http<DigestSummary[]>(serverId ? `/servers/${serverId}/digests` : '/server/digests')
   },
-  async digest(id: string): Promise<DigestFull> {
-    return http<DigestFull>(`/digests/${id}`)
+  async digest(id: string, serverId?: string): Promise<DigestFull> {
+    return http<DigestFull>(serverId ? `/servers/${serverId}/digests/${id}` : `/digests/${id}`)
   },
 
   // ---- actions ----

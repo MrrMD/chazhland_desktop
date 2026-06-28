@@ -81,6 +81,14 @@ export function MainWindow() {
   const [membersLoaded, setMembersLoaded] = useState(false)
   const [unread, setUnread] = useState<Set<string>>(new Set()) // каналы с непрочитанными (кроме открытого)
   const [notifLevels, setNotifLevels] = useState<Map<string, NotificationLevel>>(new Map()) // персональный уровень уведомлений по каналу
+  // каналы ВСЕХ серверов (не только открытого) — для фоновых подписок и бейджей серверов в рейле.
+  // read-states/notif-settings и так глобальны по channelId, поэтому переносить нужно ТОЛЬКО дерево каналов.
+  const [serverChannels, setServerChannels] = useState<Map<string, Channel[]>>(new Map())
+  const channelToServer = useMemo(() => {
+    const m = new Map<string, string>()
+    serverChannels.forEach((chs, sid) => chs.forEach((c) => m.set(c.id, sid)))
+    return m
+  }, [serverChannels])
 
   useEffect(() => voice.subscribe(setVs), [])
   // восстановленный статус (dnd/idle) — в presence ДО первого heartbeat, чтобы другие сразу видели его, а не «online»
@@ -121,6 +129,7 @@ export function MainWindow() {
   useEffect(() => { detachedRef.current = detached }, [detached])
   // свежие tree/dms/user для фоновых обработчиков уведомлений (имена каналов/диалогов, ник)
   const treeRef = useRef(tree); useEffect(() => { treeRef.current = tree }, [tree])
+  const serverChannelsRef = useRef(serverChannels); useEffect(() => { serverChannelsRef.current = serverChannels }, [serverChannels]) // имена каналов ВСЕХ серверов для фоновых уведомлений
   const dmsRef = useRef(dms); useEffect(() => { dmsRef.current = dms }, [dms])
   const userRef = useRef(user); useEffect(() => { userRef.current = user }, [user])
   const statusRef = useRef(status); useEffect(() => { statusRef.current = status }, [status]) // для DND-гейта в фоновых WS-колбэках
@@ -133,6 +142,10 @@ export function MainWindow() {
     api.servers().then((list) => {
       setServers(list)
       setCurrentServerId((cur) => (cur && list.some((s) => s.id === cur) ? cur : (list[0]?.id ?? '')))
+      // деревья ВСЕХ серверов → фоновые подписки на их каналы и бейджи в гилд-рейле (один промах сервера не валит остальные)
+      Promise.all(list.map((s) => api.serverTree(s.id).then((t) => [s.id, t.channels] as const).catch(() => [s.id, [] as Channel[]] as const)))
+        .then((pairs) => setServerChannels(new Map(pairs)))
+        .catch(() => {})
     }).catch(() => {})
     api.readStates().then(setReadStates).catch(() => {})
     api.listDms().then(setDms).catch(() => {})
@@ -149,6 +162,7 @@ export function MainWindow() {
     api.serverTree(currentServerId).then((t) => {
       if (!alive) return
       setTree(t)
+      setServerChannels((m) => { const n = new Map(m); n.set(currentServerId, t.channels); return n }) // держим карту серверов свежей
       // первый открытый канал — первый текстовый (или любой) этого сервера
       setCurrentId((cur) => (cur && t.channels.some((c) => c.id === cur) ? cur : (t.channels.find((c) => c.type === 'TEXT')?.id ?? t.channels[0]?.id ?? '')))
     }).catch(() => {})
@@ -285,9 +299,15 @@ export function MainWindow() {
     }
   }, [currentId])
 
-  // фоновая подписка на ВСЕ текстовые каналы + DM — непрочитанные и уведомления вне открытого канала.
-  // user-topic'а у бэка нет, поэтому слушаем каждый /topic/channel.{id} (см. backend-research).
-  const bgIds = useMemo(() => [...tree.channels.filter((c) => c.type !== 'VOICE').map((c) => c.id), ...dms.map((d) => d.id)], [tree, dms])
+  // фоновая подписка на ВСЕ текстовые каналы ВСЕХ серверов + DM — непрочитанные/уведомления вне открытого
+  // канала и в других серверах. У бэка нет user-topic'а, поэтому слушаем каждый /topic/channel.{id}
+  // (подписка авторизуется по членству в сервере канала — AccessGuard.requireChannelAccess).
+  const bgIds = useMemo(() => {
+    const ids = new Set<string>()
+    serverChannels.forEach((chs) => chs.forEach((c) => { if (c.type !== 'VOICE') ids.add(c.id) }))
+    dms.forEach((d) => ids.add(d.id))
+    return [...ids]
+  }, [serverChannels, dms])
   const bgKey = bgIds.join(',')
   useEffect(() => {
     if (bgIds.length === 0) return
@@ -312,7 +332,9 @@ export function MainWindow() {
           return [...rs, { channelId: id, lastReadMessageId: null, mentionCount: 1 }]
         })
         if (np.desktop && !quiet) {
-          const name = isDm ? (dmsRef.current.find((d) => d.id === id)?.name ?? m.authorName) : (treeRef.current.channels.find((c) => c.id === id)?.name ?? 'канал')
+          // имя канала ищем по ВСЕМ серверам (сообщение могло прийти не из открытого), не только treeRef
+          const findChanName = () => { for (const chs of serverChannelsRef.current.values()) { const c = chs.find((x) => x.id === id); if (c) return c.name } return 'канал' }
+          const name = isDm ? (dmsRef.current.find((d) => d.id === id)?.name ?? m.authorName) : findChanName()
           const body = m.content || (m.attachments.length ? 'вложение' : 'новое сообщение')
           window.chazh?.notify({ title: isDm ? m.authorName : `${m.authorName} · #${name}`, body, channelId: id })
         }
@@ -350,6 +372,18 @@ export function MainWindow() {
   const myRole = members.find((m) => m.userId === user.id)?.role
   const canModerate = myRole === 'OWNER' || myRole === 'ADMIN'
   const unreadTotal = readStates.reduce((a, r) => a + r.mentionCount, 0)
+  // агрегаты по серверам для бейджей рейла: точка = есть непрочитанный канал; число = сумма упоминаний.
+  // read-states/unread глобальны по channelId; DM (serverId=null) в channelToServer нет → в рейле не учитываются.
+  const serverBadges = useMemo(() => {
+    const map = new Map<string, { unread: boolean; mentions: number }>()
+    const bump = (sid: string, mentions: number, hasUnread: boolean) => {
+      const cur = map.get(sid) ?? { unread: false, mentions: 0 }
+      map.set(sid, { unread: cur.unread || hasUnread, mentions: cur.mentions + mentions })
+    }
+    unread.forEach((cid) => { const sid = channelToServer.get(cid); if (sid) bump(sid, 0, true) })
+    readStates.forEach((r) => { if (r.mentionCount > 0) { const sid = channelToServer.get(r.channelId); if (sid) bump(sid, r.mentionCount, true) } })
+    return map
+  }, [unread, readStates, channelToServer])
   // имя того, чья демонстрация активна (для чипа «развернуть») — ник из участников, не UUID из токена
   const activeShare = vs.screens.find((s) => s.id === vs.activeScreenId)
   const screenSharerName = (activeShare && (membersById.get(activeShare.userId)?.username || activeShare.by)) || vs.screenBy || 'кто-то'
@@ -375,12 +409,22 @@ export function MainWindow() {
     setReplyTo(null)
   }
   function editMsg(id: string, content: string) {
+    const ch = currentId
+    const prev = messages.find((m) => m.id === id) // снимок ДО правки — для отката при отказе API
     setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, content, editedAt: new Date().toISOString() } : m)))
-    api.editMessage(id, content).catch(() => {})
+    api.editMessage(id, content).catch(() => {
+      if (prev) setMessages((ms) => (currentIdRef.current === ch ? ms.map((m) => (m.id === id ? prev : m)) : ms))
+      toast.error('Не удалось изменить сообщение')
+    })
   }
   function deleteMsg(id: string) {
+    const ch = currentId
+    const prev = messages.find((m) => m.id === id) // снимок ДО удаления — иначе фантомное «удалено» при отказе API
     setMessages((ms) => ms.map((m) => (m.id === id ? { ...m, deleted: true, content: null } : m)))
-    api.deleteMessage(id).catch(() => {})
+    api.deleteMessage(id).catch(() => {
+      if (prev) setMessages((ms) => (currentIdRef.current === ch ? ms.map((m) => (m.id === id ? prev : m)) : ms))
+      toast.error('Не удалось удалить сообщение')
+    })
   }
   function react(messageId: string, emoji: string) {
     const mine = !!messages.find((m) => m.id === messageId)?.reactions.find((r) => r.emoji === emoji)?.mine
@@ -427,14 +471,19 @@ export function MainWindow() {
   async function saveChannel(patch: { name: string; categoryId?: string | null; topic?: string | null; userLimit?: number | null; slowModeSeconds?: number | null }) {
     if (!channelEdit) return
     await api.updateChannel(channelEdit.id, patch)
-    setTree(await api.serverTree(currentServerIdRef.current))
+    const sid = currentServerIdRef.current
+    const t = await api.serverTree(sid)
+    setTree(t)
+    setServerChannels((m) => { const n = new Map(m); n.set(sid, t.channels); return n }) // карта серверов в синхроне (имя канала в уведомлениях/рейле)
   }
   async function deleteChannelNow() {
     if (!channelEdit) return
     const id = channelEdit.id
     await api.deleteChannel(id)
-    const t = await api.serverTree(currentServerIdRef.current)
+    const sid = currentServerIdRef.current
+    const t = await api.serverTree(sid)
     setTree(t)
+    setServerChannels((m) => { const n = new Map(m); n.set(sid, t.channels); return n }) // убрать удалённый канал из фоновых подписок/карты
     if (currentIdRef.current === id) setCurrentId(t.channels.find((c) => c.type === 'TEXT')?.id ?? t.channels[0]?.id ?? '')
   }
   function loadOlder() {
@@ -529,6 +578,8 @@ export function MainWindow() {
   }
   function onServerJoined(s: ServerSummary) {
     setServers((list) => (list.some((x) => x.id === s.id) ? list.map((x) => (x.id === s.id ? s : x)) : [...list, s]))
+    // подтянуть дерево нового сервера → его каналы сразу под фоновой подпиской (не ждать переоткрытия)
+    api.serverTree(s.id).then((t) => setServerChannels((m) => { const n = new Map(m); n.set(s.id, t.channels); return n })).catch(() => {})
     switchServer(s.id)
   }
   function onServerRenamed(s: ServerSummary) {
@@ -537,6 +588,7 @@ export function MainWindow() {
   function onServerLeft(id: string) {
     const remaining = servers.filter((x) => x.id !== id)
     setServers(remaining)
+    setServerChannels((m) => { const n = new Map(m); n.delete(id); return n }) // отписаться от каналов покинутого сервера (bgKey пересоберётся)
     const home = remaining[0]
     if (home) switchServer(home.id)
     else { setCurrentServerId(''); setView('chat') }
@@ -545,14 +597,16 @@ export function MainWindow() {
   async function createChannel(p: { name: string; type: ChannelType }) {
     const sid = currentServerIdRef.current
     const ch = await api.createChannel(p, sid)
-    setTree(await api.serverTree(sid))
+    const t = await api.serverTree(sid)
+    setTree(t)
+    setServerChannels((m) => { const n = new Map(m); n.set(sid, t.channels); return n }) // новый канал сразу в фоновой подписке
     if (ch.type !== 'VOICE') { setCurrentId(ch.id); setView('chat') } // сразу открыть новый канал
   }
 
   return (
     <div style={{ position: 'relative', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        <GuildRail servers={servers} currentId={currentServerId} onSwitch={switchServer} onAdd={() => setServerActionsOpen(true)} />
+        <GuildRail servers={servers} currentId={currentServerId} badges={serverBadges} onSwitch={switchServer} onAdd={() => setServerActionsOpen(true)} />
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
       {view === 'admin' && canModerate ? (
         <AdminScreen serverId={currentServerId} isHome={servers.length > 0 && currentServerId === servers[0]?.id} onClose={() => setView('chat')} onRenamed={onServerRenamed} onLeft={onServerLeft} />
@@ -628,7 +682,7 @@ export function MainWindow() {
               </div>
             ))}
             {!screenFull && <MembersRail members={members} roles={roles} ranks={memberRanks} loading={!membersLoaded} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} meId={user.id} onOpenDm={openDm} />}
-            {panel === 'stats' && <StatsPanel onClose={() => setPanel(null)} />}
+            {panel === 'stats' && <StatsPanel serverId={currentServerId} onClose={() => setPanel(null)} />}
             {(panel === 'search' || panel === 'pins') && currentId && (
               <ChatPanel mode={panel} channelId={currentId} channelName={channel?.name ?? ''} pinsVersion={pinsVersion} onClose={() => setPanel(null)} onUnpin={(id) => pinMsg(id, false)} onJump={jumpTo} />
             )}
@@ -650,6 +704,7 @@ export function MainWindow() {
         streamOn={vs.screenOn}
         onGoLive={() => { if (vs.screenOn) voice.toggleScreen(); else if (window.chazh?.getScreenSources) setScreenPickerOpen(true); else voice.toggleScreen() }}
         voiceChannelName={vs.channelName}
+        reconnecting={vs.reconnecting}
         onAckAll={ackAll}
         onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
