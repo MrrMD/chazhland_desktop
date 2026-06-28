@@ -138,7 +138,12 @@ class Voice {
   private captureOpts(): AudioCaptureOptions {
     return {
       deviceId: this.settings.inputId || undefined,
-      noiseSuppression: this.settings.noiseSuppression,
+      // браузерный WebRTC-NS ВЫКЛЮЧЕН: шумоподавлением заведует RNNoise (MicProcessor). Иначе два шумодава
+      // стакаются — браузер курочит сигнал до RNNoise (пересглаживание/«роботный» голос) и дерётся с AGC.
+      // Тумблер «Шумоподавление» теперь управляет ТОЛЬКО RNNoise (refreshMicProcessor). AEC/AGC оставляем
+      // браузеру (RNNoise их не делает). Если RNNoise не загрузится (крайне редко в Electron — WASM в бандле),
+      // NS не будет — приемлемо.
+      noiseSuppression: false,
       echoCancellation: this.settings.echoCancellation,
       autoGainControl: this.settings.autoGain,
     }
@@ -434,6 +439,9 @@ class Voice {
   async setInputDevice(id: string) {
     this.settings.inputId = id; this.saveSettings()
     if (this.room) await this.room.switchActiveDevice('audioinput', id || 'default').catch(() => {})
+    // LiveKit сам пере-захватит трек и пересоберёт RNNoise, но клон-замер голос-гейта остался на СТАРОМ
+    // (уже остановленном) устройстве → при ненулевом пороге новый мик молчал бы. Пересобираем гейт.
+    if (this.room && this.state.micOn) { this.stopMicGate(false); this.syncMicGate() }
   }
   async setOutputDevice(id: string) {
     this.settings.outputId = id; this.saveSettings()
@@ -487,7 +495,7 @@ class Voice {
       const proc = createMicProcessor({ suppress, gain })
       await track.setProcessor(proc)
       this.micProcessor = proc
-    } catch { this.micProcessor = null /* недоступно — остаётся браузерный noiseSuppression из captureOpts */ }
+    } catch { this.micProcessor = null /* RNNoise недоступен → публикуем сырой трек (браузерный NS выключен в captureOpts) */ }
   }
 
   // ---- голосовой гейт (порог реагирования микрофона) ----
@@ -508,6 +516,7 @@ class Voice {
       const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
       if (!Ctor) return
       const ctx = new Ctor()
+      if (ctx.state === 'suspended') void ctx.resume() // не на user-gesture-стеке (setMode/reconnect) → иначе замер читает нули
       const measure = src.clone() // отдельный трек для замера: гашение публикуемого трека его не глушит
       const analyser = ctx.createAnalyser()
       analyser.fftSize = 512
