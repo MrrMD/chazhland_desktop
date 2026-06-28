@@ -1,9 +1,10 @@
-import { Room, RoomEvent, Track, AudioPresets, ScreenSharePresets, type RemoteTrack, type RemoteTrackPublication, type RemoteParticipant, type Participant, type LocalAudioTrack, type AudioCaptureOptions, type ScreenShareCaptureOptions, type TrackPublishOptions, type VideoPreset } from 'livekit-client'
+import { Room, RoomEvent, Track, AudioPresets, ScreenSharePresets, DisconnectReason, type RemoteTrack, type RemoteTrackPublication, type RemoteParticipant, type Participant, type LocalAudioTrack, type AudioCaptureOptions, type ScreenShareCaptureOptions, type TrackPublishOptions, type VideoPreset } from 'livekit-client'
 import { createMicProcessor, MicProcessor } from './rnnoise'
 import { MOCK } from './config'
 import { api } from './api'
 import { sfx } from './sfx'
 import { soundboard } from './soundboard'
+import { toast } from './toast'
 
 export interface VoiceParticipant { id: string; name: string; speaking: boolean; micOn: boolean; deafened: boolean; volume: number }
 export interface ScreenShare { id: string; track: RemoteTrack; by: string; userId: string }
@@ -46,6 +47,7 @@ export interface VoiceState {
   channelId: string | null
   channelName: string | null
   connecting: boolean
+  reconnecting: boolean // связь с голосовым сервером потеряна, идёт авто-переподключение
   micOn: boolean
   deafened: boolean
   screenOn: boolean
@@ -59,7 +61,7 @@ export interface AudioDevice { id: string; label: string }
 export interface VolumeSettings { master: number; soundboard: number; stream: number; mic: number }
 
 const INITIAL: VoiceState = {
-  channelId: null, channelName: null, connecting: false,
+  channelId: null, channelName: null, connecting: false, reconnecting: false,
   micOn: false, deafened: false, screenOn: false, participants: [], screenTrack: null, screenBy: null,
   screens: [], activeScreenId: null,
 }
@@ -87,6 +89,8 @@ class Voice {
   private screenSeq = 0 // инвалидация in-flight операций демонстрации (стоп/смена качества/комнаты)
   private micBeforeDeaf = true
   private pttHeld = false
+  private reconnectAttempts = 0 // счётчик подряд идущих авто-переподключений (сброс при успехе)
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private micChain: Promise<void> = Promise.resolve() // очередь операций с микрофоном (анти-гонка)
   private micProcessor: MicProcessor | null = null // активная мик-цепочка (шумодав + gain); null = без обработки
   // голосовой гейт (порог реагирования микрофона): замеряем уровень с клона трека, публикуемый трек
@@ -110,6 +114,8 @@ class Voice {
       // PTT по кнопке мыши (боковые/средняя): срабатывает, пока окно в фокусе
       window.addEventListener('mousedown', (e) => this.onMouse(e, true))
       window.addEventListener('mouseup', (e) => this.onMouse(e, false))
+      // окно потеряло фокус: оконные keyup/mouseup до нас уже не дойдут — отпускаем зажатый PTT
+      window.addEventListener('blur', () => this.onBlur())
       window.chazh?.onToggleMic(() => { void this.toggleMic() }) // глобальный хоткей → тумблер микрофона
     }
   }
@@ -141,6 +147,7 @@ class Voice {
   async join(channelId: string, channelName: string) {
     if (this.targetId === channelId) return
     this.targetId = channelId
+    this.clearReconnect() // новый заход отменяет отложенное авто-переподключение к прежнему каналу
     const seq = ++this.joinSeq
     await this.teardownRoom()
     if (this.joinSeq !== seq) return
@@ -170,7 +177,11 @@ class Voice {
         .on(RoomEvent.ParticipantConnected, () => { sfx.join(); this.refresh() })
         .on(RoomEvent.ParticipantDisconnected, () => { sfx.leave(); this.refresh() })
         .on(RoomEvent.LocalTrackPublished, () => this.refresh())
-        .on(RoomEvent.Disconnected, () => { if (this.room === room) { this.stopMicGate(false); this.targetId = null; this.room = null; this.micProcessor = null; window.chazh?.setMicHotkey(null); this.set({ ...INITIAL }) } })
+        // авто-реконнект LiveKit (сетевой блип): показываем баннер, токен переиспользуется самим клиентом
+        .on(RoomEvent.Reconnecting, () => { if (this.room === room) this.set({ reconnecting: true }) })
+        .on(RoomEvent.Reconnected, () => { if (this.room === room) { this.reconnectAttempts = 0; this.set({ reconnecting: false }) } })
+        .on(RoomEvent.MediaDevicesError, (e: Error) => toast.error('Ошибка аудиоустройства: ' + (e?.message || 'нет доступа к микрофону')))
+        .on(RoomEvent.Disconnected, (reason?: DisconnectReason) => { if (this.room === room) this.onDisconnected(reason) })
       await room.connect(t.url, t.token)
       if (this.joinSeq !== seq) { room.removeAllListeners(); try { await room.disconnect() } catch { /* */ } return }
       if (this.settings.outputId) await room.switchActiveDevice('audiooutput', this.settings.outputId).catch(() => {})
@@ -184,7 +195,8 @@ class Voice {
           await room.localParticipant.publishTrack(sb.clone(), { name: SB_TRACK_NAME, source: Track.Source.Unknown })
         }
       } catch { /* саундпад недоступен — голос работает */ }
-      this.set({ connecting: false, micOn })
+      this.reconnectAttempts = 0 // успешно подключились — сбрасываем счётчик переподключений
+      this.set({ connecting: false, micOn, reconnecting: false })
       // только если это всё ещё актуальное соединение — иначе Disconnected уже снял хоткей, не возвращаем его
       if (this.joinSeq === seq && this.room === room) window.chazh?.setMicHotkey(MIC_HOTKEY)
       this.refresh()
@@ -286,8 +298,11 @@ class Voice {
   async toggleDeaf() {
     const d = !this.state.deafened
     let micOn: boolean
+    // в PTT микрофон не висит открытым: снятие оглушения НЕ восстанавливает мик (он откроется только
+    // на удержание), и сбрасываем зажатие, чтобы un-deafen не оставил микрофон включённым
+    if (this.settings.mode === 'ptt') this.pttHeld = false
     if (d) { this.micBeforeDeaf = this.state.micOn; micOn = false }
-    else { micOn = this.micBeforeDeaf }
+    else { micOn = this.settings.mode === 'ptt' ? false : this.micBeforeDeaf }
     this.set({ deafened: d, micOn }) // синхронно: UI + собственный deafened, который читает refresh()
     this.applyMutes() // оглушение глушит и голос собеседников, и саундпад, и звук демонстрации
     d ? sfx.deafOn() : sfx.deafOff()
@@ -441,6 +456,7 @@ class Voice {
   }
   async setMode(mode: VoiceMode) {
     this.settings.mode = mode; this.saveSettings()
+    this.pttHeld = false // смена режима сбрасывает зажатие: потерянный keyup иначе «залипает»
     if (!this.room) return
     if (mode === 'ptt') { await this.room.localParticipant.setMicrophoneEnabled(false).catch(() => {}); this.set({ micOn: false }) }
     else if (!this.state.deafened) { await this.room.localParticipant.setMicrophoneEnabled(true, this.captureOpts()).catch(() => {}); await this.refreshMicProcessor(); this.set({ micOn: true }) }
@@ -538,19 +554,26 @@ class Voice {
   }
 
   private async onKey(e: KeyboardEvent, down: boolean) {
-    if (this.settings.mode !== 'ptt' || !this.room || MOCK) return
+    if (MOCK || !this.room) return
     if (e.code !== this.settings.pttKey) return
-    const el = document.activeElement
-    if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return // не перехватываем ввод текста
-    if (down && e.repeat) return
+    // отпускание активного зажатия пропускаем ВСЕГДА — даже если режим сменили посреди удержания,
+    // иначе потерянный keyup оставит pttHeld=true и микрофон «залипнет»
+    if (down) {
+      if (this.settings.mode !== 'ptt') return
+      const el = document.activeElement
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return // не перехватываем ввод текста
+      if (e.repeat) return
+    } else if (!this.pttHeld) return // случайный keyup без активного удержания
     e.preventDefault()
     await this.pttApply(down)
   }
 
   // PTT по кнопке мыши: pttKey вида 'Mouse<button>' (1 — средняя, 2 — правая, 3/4 — боковые)
   private async onMouse(e: MouseEvent, down: boolean) {
-    if (this.settings.mode !== 'ptt' || !this.room || MOCK) return
+    if (MOCK || !this.room) return
     if (this.settings.pttKey !== 'Mouse' + e.button) return
+    if (down && this.settings.mode !== 'ptt') return // нажатие ловим только в PTT…
+    if (!down && !this.pttHeld) return               // …отпускание — только если что-то зажато
     e.preventDefault() // для боковых кнопок заодно гасим навигацию назад/вперёд
     await this.pttApply(down)
   }
@@ -561,6 +584,14 @@ class Voice {
     this.pttHeld = down
     this.set({ micOn: down })
     await this.applyMic(down)
+  }
+
+  // окно потеряло фокус: оконные keyup/mouseup до нас уже не дойдут — принудительно отпускаем
+  // активный PTT, иначе при удержании микрофон «залип» бы открытым (или потом не открылся)
+  private onBlur() {
+    if (!this.pttHeld) return
+    this.pttHeld = false
+    if (this.settings.mode === 'ptt') { this.set({ micOn: false }); void this.applyMic(false) }
   }
 
   // Разблокировка меток устройств: enumerateDevices даёт пустые label без granted-доступа к
@@ -585,9 +616,48 @@ class Voice {
     } catch { return { inputs: [], outputs: [] } }
   }
 
+  private clearReconnect() {
+    if (this.reconnectTimer) { clearTimeout(this.reconnectTimer); this.reconnectTimer = null }
+  }
+
+  // НЕОЖИДАННЫЙ разрыв: сюда попадаем, только если LiveKit исчерпал собственный авто-реконнект —
+  // при leave()/смене канала листенеры снимаются ДО disconnect, поэтому штатный выход сюда не идёт.
+  // Чистим комнату и, если канал ещё выбран и причина не терминальная, перезаходим со свежим токеном
+  // (с бэкоффом и лимитом подряд-попыток, чтобы не зациклиться при kick/duplicate/room-deleted).
+  private onDisconnected(reason?: DisconnectReason) {
+    this.stopMicGate(false)
+    this.room = null
+    this.micProcessor = null
+    window.chazh?.setMicHotkey(null)
+    this.audioEls.forEach((v) => v.el.remove()); this.audioEls.clear()
+    this.soundboardEls.forEach((el) => el.remove()); this.soundboardEls.clear()
+    this.screenAudioEls.forEach((el) => el.remove()); this.screenAudioEls.clear()
+    this.screenTracks.clear(); this.activeScreenId = null; this.speaking.clear(); this.pttHeld = false
+
+    const target = this.targetId
+    const terminal = reason === DisconnectReason.CLIENT_INITIATED || reason === DisconnectReason.DUPLICATE_IDENTITY
+      || reason === DisconnectReason.PARTICIPANT_REMOVED || reason === DisconnectReason.ROOM_DELETED
+    if (!MOCK && target && !terminal && this.reconnectAttempts < 3) {
+      this.reconnectAttempts++
+      const name = this.state.channelName || ''
+      this.targetId = null // снимаем guard join(), чтобы перезайти в тот же канал
+      this.set({ reconnecting: true, connecting: true, micOn: false, screenOn: false, participants: [], screenTrack: null, screenBy: null, screens: [], activeScreenId: null })
+      this.clearReconnect()
+      this.reconnectTimer = setTimeout(() => { this.reconnectTimer = null; void this.join(target, name) }, 600 * this.reconnectAttempts)
+    } else {
+      this.targetId = null
+      this.reconnectAttempts = 0
+      this.clearReconnect()
+      if (reason === DisconnectReason.PARTICIPANT_REMOVED) toast.error('Вас отключили от голосового канала')
+      this.set({ ...INITIAL })
+    }
+  }
+
   async leave() {
     this.targetId = null
     this.joinSeq++
+    this.reconnectAttempts = 0
+    this.clearReconnect()
     window.chazh?.setMicHotkey(null)
     await this.teardownRoom()
     this.set({ ...INITIAL })

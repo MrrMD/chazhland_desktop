@@ -41,6 +41,9 @@ export class MicProcessor implements TrackProcessor<Track.Kind.Audio, AudioProce
     this.gain.connect(this.dest)
     this.wire()
     this.processedTrack = this.dest.stream.getAudioTracks()[0]
+    // контекст может родиться 'suspended' (смена устройства / создание не на стеке user-gesture):
+    // тогда процессор отдаёт НЕМОЙ трек, пока его не разбудить — делаем resume явно
+    if (ctx.state === 'suspended') { try { await ctx.resume() } catch { /* */ } }
   }
 
   // переключение src → node → gain (с шумодавом) ↔ src → gain (без) без пересоздания узлов

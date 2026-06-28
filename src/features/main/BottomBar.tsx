@@ -22,6 +22,7 @@ interface Props {
   streamOn: boolean
   onGoLive: () => void
   voiceChannelName: string | null
+  reconnecting?: boolean // голосовое соединение потеряно, идёт авто-переподключение
   onAckAll: () => void
   onOpenVoiceSettings: () => void
   onOpenSettings: () => void
@@ -60,11 +61,12 @@ export function BottomBar(p: Props) {
           <div style={{ lineHeight: 1.2, textAlign: 'left', minWidth: 0 }}>
             <div style={{ fontWeight: 700, fontSize: 14, ...(nameStyle(p.equipped?.nameEffect) ?? {}) }}>{p.user.username}</div>
             {(() => {
-              // приоритет: в голосовом → статус «о себе» → пресенс-метка (онлайн/отошёл/dnd)
+              // приоритет: переподключение → в голосовом → статус «о себе» → пресенс-метка (онлайн/отошёл/dnd)
+              const reconn = !!p.reconnecting && !!p.voiceChannelName
               const custom = !p.voiceChannelName && !!p.user.statusMessage?.trim()
-              const text = p.voiceChannelName ? `в эфире · ${p.voiceChannelName}` : (p.user.statusMessage?.trim() || STATUS_LABEL[p.status])
+              const text = reconn ? 'переподключение…' : (p.voiceChannelName ? `в эфире · ${p.voiceChannelName}` : (p.user.statusMessage?.trim() || STATUS_LABEL[p.status]))
               return (
-                <div style={{ fontSize: 11.5, color: custom ? 'var(--text-3)' : presenceColor(p.status), display: 'flex', alignItems: 'center', gap: 5, maxWidth: 168 }}>
+                <div style={{ fontSize: 11.5, color: reconn ? '#e8a33d' : (custom ? 'var(--text-3)' : presenceColor(p.status)), display: 'flex', alignItems: 'center', gap: 5, maxWidth: 168 }}>
                   <span style={{ width: 7, height: 7, borderRadius: '50%', background: presenceColor(p.status), flex: 'none' }} />
                   <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text}</span>
                 </div>
@@ -85,7 +87,7 @@ export function BottomBar(p: Props) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, justifySelf: 'end' }}>
         {p.voiceChannelName ? (
           <>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--green)', fontSize: 13, fontWeight: 600, padding: '0 6px' }}><Volume2 size={15} /> {p.voiceChannelName}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: p.reconnecting ? '#e8a33d' : 'var(--green)', fontSize: 13, fontWeight: 600, padding: '0 6px' }}><Volume2 size={15} /> {p.reconnecting ? 'переподключение…' : p.voiceChannelName}</span>
             <VoiceButton active={p.muted} onClick={p.onMute} title={p.muted ? 'Включить микрофон' : 'Выключить микрофон'} vol={{ title: 'ГРОМКОСТЬ МИКРОФОНА', max: 200, get: () => Math.round(voice.getVolumeSettings().mic * 100), set: (v) => voice.setMicVolume(v / 100) }}>{p.muted ? <MicOff size={18} /> : <Mic size={18} />}</VoiceButton>
             <VoiceButton active={p.deafened} onClick={p.onDeaf} title={p.deafened ? 'Включить звук' : 'Заглушить звук'} vol={{ title: 'ОБЩАЯ ГРОМКОСТЬ', max: 100, get: () => Math.round(voice.getVolumeSettings().master * 100), set: (v) => voice.setMasterVolume(v / 100) }}>{p.deafened ? <HeadphoneOff size={18} /> : <Headphones size={18} />}</VoiceButton>
             <SoundboardControl disabled={p.soundboardDisabled} />
