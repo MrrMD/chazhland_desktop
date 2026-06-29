@@ -214,11 +214,10 @@ function CosmeticsSection({ meId, meName, meAvatar, onEquipChange, onProfileBgCh
   }
   function deleteLoadout(id: string) { setPresets(loadouts.remove(meId, id)) }
   async function applyLoadout(lo: Loadout) {
-    const before = equipped
     setBusy('loadout')
     setEquipped({ ...lo.equipped }) // оптимистично весь образ сразу
+    let saved = { ...equipped } // аккумулятор реально применённого на сервере (для отката к факту)
     try {
-      let saved = { ...equipped }
       for (const slot of SLOT_ORDER) {
         const want = lo.equipped[slot] ?? null
         if ((saved[slot] ?? null) !== want) saved = await api.equipCosmetic(slot, want)
@@ -226,8 +225,9 @@ function CosmeticsSection({ meId, meName, meAvatar, onEquipChange, onProfileBgCh
       setEquipped(saved); onEquipChange?.(saved)
       toast.ok(`Образ «${lo.name}» применён`)
     } catch {
-      setEquipped(before); onEquipChange?.(before)
-      toast.error('Не удалось применить образ')
+      // часть слотов могла уже примениться — синхронизируемся с фактическим состоянием, а не откатываем всё
+      setEquipped(saved); onEquipChange?.(saved)
+      toast.error('Образ применён частично')
     } finally { setBusy(null) }
   }
 
@@ -339,10 +339,10 @@ function CosmeticsSection({ meId, meName, meAvatar, onEquipChange, onProfileBgCh
           <div key={slot} style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)', marginBottom: 8 }}>{SLOT_LABELS[slot] ?? slot}</div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-              <NoneCard active={!equipped[slot]} busy={busy === `none:${slot}`} onClick={() => equip(slot, null)} />
+              <NoneCard active={!equipped[slot]} busy={busy === `none:${slot}` || busy === 'loadout'} onClick={() => equip(slot, null)} />
               {items.map((c) => (
                 <CosmeticCard key={c.id} c={c} meName={meName} meAvatar={meAvatar}
-                  locked={!unlocked.has(c.id)} active={equipped[slot] === c.id} busy={busy === c.id}
+                  locked={!unlocked.has(c.id)} active={equipped[slot] === c.id} busy={busy === c.id || busy === 'loadout'}
                   onClick={() => unlocked.has(c.id) && equip(slot, c.id)} />
               ))}
             </div>

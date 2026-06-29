@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, type ServerTree } from '@/lib/api'
 import { useAuth } from '@/store/auth'
 import { voice, type VoiceState } from '@/lib/voice'
@@ -51,7 +51,8 @@ export function MainWindow() {
   const [roles, setRoles] = useState<ServerRole[]>([]) // кастомные роли сервера (для цветных ников/бейджей)
   const [memberRanks, setMemberRanks] = useState<Map<string, MemberRank>>(new Map()) // ранг-чипы у ников
   const [myRank, setMyRank] = useState<MyRank | null>(null) // мой прогресс (пик + пер-сервер с порогами XP)
-  const [celebrate, setCelebrate] = useState<{ level: number; unlocked: number } | null>(null) // момент апа уровня
+  const [celebrate, setCelebrate] = useState<{ level: number; unlocked: number; nonce: number } | null>(null) // момент апа уровня
+  const dismissCelebrate = useCallback(() => setCelebrate(null), []) // стабильный onDone — таймер не сбрасывается на каждом ре-рендере
   const [readStates, setReadStates] = useState<ReadState[]>([])
   const [messages, setMessages] = useState<Message[]>([])
   const [currentId, setCurrentId] = useState('')
@@ -189,7 +190,7 @@ export function MainWindow() {
       if (e.type !== 'RANK_UP') return
       if (e.userId === user.id) {
         sfx.mention()
-        setCelebrate({ level: e.level ?? 0, unlocked: e.unlocked?.length ?? 0 }) // конфетти + карточка
+        setCelebrate({ level: e.level ?? 0, unlocked: e.unlocked?.length ?? 0, nonce: Date.now() }) // конфетти + карточка
         api.myRank().then((r) => { if (alive) setMyRank(r) }).catch(() => {})
       }
       // guard: пользователь мог сменить сервер, пока летел refetch — не затирать чипы чужого сервера
@@ -770,7 +771,7 @@ export function MainWindow() {
 
       {profileMember && <ProfileModal member={profileMember} rank={memberRanks.get(profileMember.userId)} self={profileMember.userId === user.id} onClose={() => setProfileMember(null)} onOpenDm={openDm} />}
 
-      {celebrate && <LevelUpCelebration level={celebrate.level} unlocked={celebrate.unlocked} onDone={() => setCelebrate(null)} />}
+      {celebrate && <LevelUpCelebration key={celebrate.nonce} level={celebrate.level} unlocked={celebrate.unlocked} onDone={dismissCelebrate} />}
       {settingsTab && <SettingsModal initialTab={settingsTab} onClose={() => setSettingsTab(null)} onEquipChange={(eq) => {
         setMyRank((r) => (r ? { ...r, equipped: eq } : r))
         // обновить мою экипировку в списке участников, чтобы рамка/свечение/ник обновились живьём
