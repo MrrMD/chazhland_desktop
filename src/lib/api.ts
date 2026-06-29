@@ -2,6 +2,7 @@ import { MOCK } from './config'
 import { http, delay, setTokens } from './http'
 import type {
   AttachmentInput, AuditEntry, Channel, ChannelOverwrite, ChannelType, Category, DigestFull, DigestSummary, Dm, Member, Message, MessageType, NotificationLevel, OverwriteTarget, Permission, Presence, ReadState, Role, ServerRole, ServerSummary, InviteSummary, InviteCreated, TokenResponse, User, WatchState, WatchSourceRequest, WatchSearchResult, RankCatalog, MyRank, MemberRank,
+  QuoteKind, QuoteMuseumEntry, MyAchievements, AchievementShowcaseItem, VoiceMemberSince, AfkSettings,
 } from './types'
 import {
   MOCK_AUDIT, MOCK_CATEGORIES, MOCK_CHANNELS, MOCK_MEMBERS,
@@ -554,5 +555,51 @@ export const api = {
       return http<Record<string, string>>('/me/rank/equip', { method: 'PUT', body: JSON.stringify({ cosmeticId }) })
     }
     return http<Record<string, string>>(`/me/rank/equip/${slot}`, { method: 'DELETE' })
+  },
+
+  // ---- Музей цитат (🏆 Золотая рамка / 🫠 Карточка стыда) ----
+  async quoteMuseum(serverId?: string, kind?: QuoteKind): Promise<QuoteMuseumEntry[]> {
+    if (MOCK) return []
+    const q = kind ? `?kind=${kind}` : ''
+    return http<QuoteMuseumEntry[]>(serverId ? `/servers/${serverId}/quote-museum${q}` : `/server/quote-museum${q}`)
+  },
+
+  // ---- Секретные ачивки ----
+  async myAchievements(): Promise<MyAchievements> {
+    if (MOCK) return { unlocked: [], locked: [], lockedSecretCount: 0, showAll: true, total: 0, unlockedCount: 0 }
+    return http<MyAchievements>('/me/achievements')
+  },
+  async userAchievements(userId: string): Promise<AchievementShowcaseItem[]> {
+    if (MOCK) return []
+    return http<AchievementShowcaseItem[]>(`/users/${userId}/achievements/showcase`)
+  },
+  async pinAchievement(achievementId: string, pinned: boolean): Promise<void> {
+    if (MOCK) return
+    await http(`/me/achievements/${achievementId}/pin?pinned=${pinned}`, { method: 'POST' })
+  },
+  async setAchievementShowcaseMode(showAll: boolean): Promise<void> {
+    if (MOCK) return
+    await http(`/me/achievements/showcase-mode?showAll=${showAll}`, { method: 'PUT' })
+  },
+
+  // ---- время в войсе (момент входа текущих участников голоса) ----
+  async voiceSince(serverId: string): Promise<VoiceMemberSince[]> {
+    if (MOCK) return []
+    return http<VoiceMemberSince[]>(`/servers/${serverId}/voice/since`)
+  },
+
+  // ---- авто-AFK ----
+  async afkSettings(serverId: string): Promise<AfkSettings> {
+    if (MOCK) return { enabled: false, timeoutSeconds: 900, afkChannelId: null, afkChannelName: null }
+    return http<AfkSettings>(`/servers/${serverId}/afk`)
+  },
+  async updateAfkSettings(serverId: string, p: { enabled?: boolean; timeoutSeconds?: number }): Promise<AfkSettings> {
+    if (MOCK) return { enabled: p.enabled ?? false, timeoutSeconds: p.timeoutSeconds ?? 900, afkChannelId: null, afkChannelName: null }
+    return http<AfkSettings>(`/servers/${serverId}/afk`, { method: 'PUT', body: JSON.stringify(p) })
+  },
+  /** Лёгкий пинг голосовой активности (active-speaker/анмьют) — сбрасывает таймер авто-AFK. */
+  async voiceActivity(): Promise<void> {
+    if (MOCK) return
+    await http('/voice/activity', { method: 'POST' })
   },
 }

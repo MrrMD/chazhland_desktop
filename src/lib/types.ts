@@ -289,6 +289,58 @@ export interface DigestData {
   necroposter?: DigestNomination | null
   voiceChampion?: DigestNomination | null
   loyalFriends?: DigestDuo | null
+  // 😈 «Доска позора» — анти-награды (бэк: DigestData.ghost/regretter/voiceGhost), опциональны
+  ghost?: DigestNomination | null        // 👻 В пустоту — больше всех сообщений без реакций
+  regretter?: DigestNomination | null    // 🗯️ Удалил и пожалел — больше всех удалённых
+  voiceGhost?: DigestNomination | null   // 🦗 Призрак — больше всех молчал в войсе
 }
 export interface DigestSummary { id: string; kind: DigestKind; periodStart: string; periodEnd: string; generatedAt: string }
 export interface DigestFull extends DigestSummary { data: DigestData }
+
+// ===== Музей цитат (бэк: QuoteMuseumEntryResponse) =====
+export type QuoteKind = 'GOLD' | 'SHAME'
+export interface QuoteMuseumEntry {
+  id: string
+  kind: QuoteKind
+  emoji: string
+  messageId: string
+  channelId: string
+  author: DigestUserRef
+  excerpt: string | null
+  reactionCount: number
+  inductedAt: string
+}
+
+// ===== Секретные ачивки (бэк: AchievementCard / MyAchievementsResponse / AchievementShowcaseItem) =====
+export interface AchievementCard {
+  id: string
+  emoji: string
+  name: string
+  description: string
+  secret: boolean
+  unlocked: boolean
+  unlockedAt?: string | null
+  pinned: boolean
+}
+export interface MyAchievements {
+  unlocked: AchievementCard[]
+  locked: AchievementCard[]
+  lockedSecretCount: number
+  showAll: boolean
+  total: number
+  unlockedCount: number
+}
+export interface AchievementShowcaseItem { id: string; emoji: string; name: string; unlockedAt: string }
+/** WS /topic/server.{id}.achievement — открытие ачивки (тост/эффект). */
+export interface AchievementEvent { userId: string; achievementId: string; emoji: string; name: string }
+
+// ===== Кворум (WS /topic/server.{id}.quorum, бэк: QuorumEvent) =====
+export interface QuorumEvent { channelId: string; channelName: string; count: number; legendary: boolean }
+
+// ===== Авто-AFK =====
+/** Настройки авто-AFK сервера (бэк: AfkSettingsResponse). */
+export interface AfkSettings { enabled: boolean; timeoutSeconds: number; afkChannelId?: string | null; afkChannelName?: string | null }
+/** WS /topic/server.{id}.afk — сигнал «уйди в AFK-канал» (бэк: AfkEvent). */
+export interface AfkEvent { userId: string; fromChannelId: string; afkChannelId: string }
+/** Момент входа участника в голос (бэк: VoiceMemberSince) — для таймера «в комнате». */
+export interface VoiceMemberSince { channelId: string; userId: string; joinedAt?: string | null }

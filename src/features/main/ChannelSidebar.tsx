@@ -12,11 +12,24 @@ const TYPE_ICON: Record<string, React.ReactNode> = { TEXT: <Hash size={17} />, V
 
 // Унифицированный житель голосового канала. rich=true — мы подключены к этому каналу и знаем
 // живой стейт из LiveKit (говорит/мьют/громкость); rich=false — только членство из presence.
-interface Occupant { userId: string; name: string; avatarUrl: string | null; speaking: boolean; micOn: boolean; deafened: boolean; volume: number; self: boolean; rich: boolean }
+interface Occupant { userId: string; name: string; avatarUrl: string | null; speaking: boolean; micOn: boolean; deafened: boolean; volume: number; self: boolean; rich: boolean; joinedAt?: string | null }
+
+// Сколько участник сидит в голосовом без выхода (по joinedAt из api.voiceSince).
+function roomTime(joinedAt?: string | null): string | null {
+  if (!joinedAt) return null
+  const t = new Date(joinedAt).getTime()
+  if (isNaN(t)) return null
+  const s = Math.max(0, Math.floor((Date.now() - t) / 1000))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  if (h > 0) return `${h}ч ${m}м`
+  if (m > 0) return `${m}м`
+  return '<1м'
+}
 
 // Левый сайдбар каналов в стиле Discord: категории → каналы, под голосовыми — кто там сейчас.
 export function ChannelSidebar({
-  channels, dms, members, readStates, currentId, voiceState, unread, meId, canManage, notifLevels, onPick, onEditChannel, onMarkRead, onSetNotif, onCreateChannel,
+  channels, dms, members, readStates, currentId, voiceState, unread, meId, canManage, notifLevels, voiceSince, onPick, onEditChannel, onMarkRead, onSetNotif, onCreateChannel,
 }: {
   channels: Channel[]
   dms: Dm[]
@@ -28,6 +41,7 @@ export function ChannelSidebar({
   meId: string
   canManage: boolean // OWNER/ADMIN — показываем «Изменить/Удалить канал»
   notifLevels: Map<string, NotificationLevel>
+  voiceSince?: Map<string, string> // userId → joinedAt: «сидит в комнате N» (api.voiceSince)
   onPick: (id: string) => void
   onEditChannel: (c: Channel) => void
   onMarkRead: (c: Channel) => void
@@ -36,6 +50,7 @@ export function ChannelSidebar({
 }) {
   const [, setTick] = useState(0)
   useEffect(() => presence.subscribe(() => setTick((t) => t + 1)), []) // живой ростер голосовых (join/leave по WS)
+  useEffect(() => { const t = window.setInterval(() => setTick((x) => x + 1), 30000); return () => window.clearInterval(t) }, []) // тик таймеров «в комнате»
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [createOpen, setCreateOpen] = useState(false)
   const [menu, setMenu] = useState<{ c: Channel; x: number; y: number } | null>(null) // ПКМ-контекст-меню канала
@@ -52,12 +67,13 @@ export function ChannelSidebar({
       return voiceState.participants.map((p) => ({
         userId: p.id, name: memberBy.get(p.id)?.username || p.name, avatarUrl: memberBy.get(p.id)?.avatarUrl ?? null,
         speaking: p.speaking, micOn: p.micOn, deafened: p.deafened, volume: p.volume, self: p.id === meId, rich: true,
+        joinedAt: voiceSince?.get(p.id) ?? null,
       }))
     }
     const ids = MOCK ? (ch.id === firstVoiceId ? members.filter((m) => m.inVoice).map((m) => m.userId) : []) : presence.voiceMembers(ch.id)
     return ids.map((id) => {
       const m = memberBy.get(id)
-      return { userId: id, name: m?.username || 'участник', avatarUrl: m?.avatarUrl ?? null, speaking: false, micOn: true, deafened: false, volume: 1, self: id === meId, rich: false }
+      return { userId: id, name: m?.username || 'участник', avatarUrl: m?.avatarUrl ?? null, speaking: false, micOn: true, deafened: false, volume: 1, self: id === meId, rich: false, joinedAt: voiceSince?.get(id) ?? null }
     })
   }
 
@@ -186,7 +202,8 @@ function OccupantRow({ o }: { o: Occupant }) {
         <span style={{ fontSize: 13, fontWeight: 500, color: o.speaking ? 'var(--green)' : 'var(--text-2)', minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
           {o.name}{o.self && ' (вы)'}
         </span>
-        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 3, flex: 'none' }}>
+        <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5, flex: 'none' }}>
+          {roomTime(o.joinedAt) && <span title="В голосовом без выхода" style={{ fontSize: 10.5, fontWeight: 700, color: 'var(--text-3)', fontVariantNumeric: 'tabular-nums' }}>{roomTime(o.joinedAt)}</span>}
           {o.rich && o.deafened && <span style={{ color: 'var(--danger)', display: 'flex' }} title="Звук выключен"><HeadphoneOff size={12} /></span>}
           {o.rich && !o.micOn && <span style={{ color: 'var(--danger)', display: 'flex' }} title="Микрофон выключен"><MicOff size={12} /></span>}
           {o.rich && !o.self && (

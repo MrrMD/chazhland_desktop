@@ -35,6 +35,11 @@ function flush() {
     accSeconds -= secs
     api.talkHeartbeat(channelId, secs).catch(() => {})
   }
+  // Авто-AFK: пока пользователь говорит (этим окном или прямо сейчас) — сбрасываем таймер AFK на бэке.
+  // Молчание ⇒ пинга нет ⇒ через таймаут сервера он уезжает в AFK. Независимо от рангов.
+  if (channelId && (secs > 0 || speakingSince !== null)) {
+    api.voiceActivity().catch(() => {})
+  }
 }
 
 function onVoice(s: { channelId: string | null; participants: { id: string; speaking: boolean }[] }) {

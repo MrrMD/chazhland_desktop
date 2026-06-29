@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/Skeleton'
 import { ConfirmModal, ChangeRoleModal, TempPasswordModal } from './modals'
 import { RolesTab } from './RolesTab'
 import { ChannelAccessTab } from './ChannelAccessTab'
-import type { AuditEntry, InviteCreated, InviteSummary, Member, ServerSummary } from '@/lib/types'
+import type { AfkSettings, AuditEntry, InviteCreated, InviteSummary, Member, ServerSummary } from '@/lib/types'
 
 type Tab = 'members' | 'roles' | 'channels' | 'invites' | 'server' | 'audit'
 const TAB_LABEL: Record<Tab, string> = { members: 'Участники', roles: 'Роли', channels: 'Каналы', invites: 'Приглашения', server: 'Сервер', audit: 'Аудит' }
@@ -306,11 +306,70 @@ function ServerTab({ serverId, onRenamed, onLeft }: { serverId?: string; onRenam
         </div>
       </Card>
       <div style={{ marginTop: 16 }}>
+        <AfkSettingsCard serverId={serverId} />
+      </div>
+      <div style={{ marginTop: 16 }}>
         <button onClick={() => setLeaveOpen(true)} className="no-drag" style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'var(--danger-tint)', border: '1px solid rgba(224,57,47,.3)', color: 'var(--danger)', borderRadius: 12, padding: '11px 16px', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' }}><LogOut size={16} /> Покинуть сервер</button>
       </div>
       {leaveOpen && <ConfirmModal title="Покинуть сервер" message="Вы выйдете из этого сервера и перестанете видеть его каналы. Владелец выйти не может — сначала передайте владение." confirmLabel="Покинуть" danger busy={leaving}
         onConfirm={async () => { if (!serverId) return; setLeaving(true); try { await api.leaveServer(serverId); onLeft(serverId) } catch { toast.error('Не удалось выйти (владелец не может покинуть сервер)'); setLeaving(false) } }}
         onClose={() => setLeaveOpen(false)} />}
     </div>
+  )
+}
+
+// Авто-AFK: тумблер + таймаут неактива (минуты). При включении бэк создаёт голосовой AFK-канал.
+function AfkSettingsCard({ serverId }: { serverId?: string }) {
+  const [s, setS] = useState<AfkSettings | null>(null)
+  const [minutes, setMinutes] = useState(15)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!serverId) return
+    let a = true
+    api.afkSettings(serverId)
+      .then((r) => { if (a) { setS(r); setMinutes(Math.max(1, Math.round(r.timeoutSeconds / 60))) } })
+      .catch(() => { /* нет прав/недоступно — карточку не показываем */ })
+    return () => { a = false }
+  }, [serverId])
+
+  async function apply(p: { enabled?: boolean; timeoutSeconds?: number }) {
+    if (!serverId) return
+    setSaving(true)
+    try {
+      const r = await api.updateAfkSettings(serverId, p)
+      setS(r); setMinutes(Math.max(1, Math.round(r.timeoutSeconds / 60)))
+      toast.ok('Настройки AFK сохранены')
+    } catch { toast.error('Не удалось — нужно право «Управление сервером»') }
+    finally { setSaving(false) }
+  }
+
+  if (!s) return null
+  return (
+    <Card>
+      <div style={{ padding: '18px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>😴 Авто-AFK</div>
+            <div style={{ fontSize: 12.5, color: 'var(--text-3)', marginTop: 3 }}>Неактивных в голосе уводит в AFK-канал с выключенными микро и звуком</div>
+          </div>
+          <button onClick={() => apply({ enabled: !s.enabled })} disabled={saving} className="no-drag" title={s.enabled ? 'Выключить' : 'Включить'}
+            style={{ flex: 'none', width: 46, height: 26, borderRadius: 13, border: 'none', cursor: 'pointer', position: 'relative', background: s.enabled ? 'var(--accent)' : 'var(--border-2)', transition: 'background .15s' }}>
+            <span style={{ position: 'absolute', top: 3, left: s.enabled ? 23 : 3, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
+          </button>
+        </div>
+        {s.enabled && (
+          <div style={{ marginTop: 16, display: 'flex', alignItems: 'flex-end', gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)' }}>Таймаут неактива (минуты)</label>
+              <input type="number" min={1} max={180} value={minutes} onChange={(e) => setMinutes(Math.max(1, Number(e.target.value) || 1))} className="no-drag"
+                style={{ width: '100%', marginTop: 8, padding: '10px 14px', borderRadius: 10, border: '1px solid var(--border-2)', background: 'var(--win)', color: 'var(--text)', outline: 'none' }} />
+              {s.afkChannelName && <div style={{ fontSize: 12, color: 'var(--text-3)', marginTop: 7 }}>Канал: «{s.afkChannelName}» (можно переименовать в списке каналов)</div>}
+            </div>
+            <button onClick={() => apply({ timeoutSeconds: minutes * 60 })} disabled={saving} className="accent-btn no-drag" style={{ borderRadius: 10, padding: '10px 18px', fontWeight: 700, fontSize: 13.5, opacity: saving ? 0.5 : 1 }}>Сохранить</button>
+          </div>
+        )}
+      </div>
+    </Card>
   )
 }

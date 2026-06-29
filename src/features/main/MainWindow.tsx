@@ -4,7 +4,7 @@ import { useAuth } from '@/store/auth'
 import { voice, type VoiceState } from '@/lib/voice'
 import { talkHeartbeat } from '@/lib/talkHeartbeat'
 import { presence } from '@/lib/presence'
-import type { AttachmentInput, Channel, ChannelType, Dm, Member, MemberRank, Message, MyRank, NotificationLevel, Presence, RankEvent, ReadState, ServerRankInfo, ServerRole, ServerSummary } from '@/lib/types'
+import type { AchievementEvent, AfkEvent, AttachmentInput, Channel, ChannelType, Dm, Member, MemberRank, Message, MyRank, NotificationLevel, Presence, QuorumEvent, RankEvent, ReadState, ServerRankInfo, ServerRole, ServerSummary } from '@/lib/types'
 import { ChatFeed } from './ChatFeed'
 import { Composer } from './Composer'
 import { MembersRail } from './MembersRail'
@@ -19,13 +19,16 @@ import { ScreenPicker } from './ScreenPicker'
 import { SettingsModal, type SettingsTab } from './SettingsModal'
 import { ChatPanel } from './ChatPanel'
 import { StatsPanel } from './StatsPanel'
+import { MuseumPanel } from './MuseumPanel'
+import { AchievementsPanel } from './AchievementsPanel'
+import { ProfileModal } from './ProfileModal'
 import { AdminScreen } from '@/features/admin/AdminScreen'
 import { ws } from '@/lib/ws'
 import { toast } from '@/lib/toast'
 import { mentionsUser } from '@/lib/mentions'
 import { sfx } from '@/lib/sfx'
 import { notifyPrefs } from '@/lib/prefs'
-import { Search, Pin, Bell, Users, Hash, Volume2, Play, AtSign, BarChart3, Lock } from 'lucide-react'
+import { Search, Pin, Bell, Users, Hash, Volume2, Play, AtSign, BarChart3, Lock, Trophy, Medal } from 'lucide-react'
 
 const TYPE_ICON: Record<ChannelType, React.ReactNode> = { TEXT: <Hash size={18} />, VOICE: <Volume2 size={18} />, WATCH: <Play size={18} />, DM: <AtSign size={18} /> }
 
@@ -69,7 +72,9 @@ export function MainWindow() {
   const [channelEdit, setChannelEdit] = useState<Channel | null>(null) // открытая модалка настроек канала
   const [typing, setTyping] = useState<{ id: string; name: string }[]>([])
   const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
-  const [panel, setPanel] = useState<null | 'search' | 'pins' | 'stats'>(null)
+  const [panel, setPanel] = useState<null | 'search' | 'pins' | 'stats' | 'museum' | 'achievements'>(null)
+  const [profileMember, setProfileMember] = useState<Member | null>(null)
+  const [voiceSince, setVoiceSince] = useState<Map<string, string>>(new Map())
   const [pinsVersion, setPinsVersion] = useState(0)
   const [jumpTargetId, setJumpTargetId] = useState<string | null>(null) // переход к сообщению из поиска/пинов
   const [detached, setDetached] = useState(false) // лента показывает историческое окно (не «хвост») — live-сообщения не дописываем
@@ -188,8 +193,50 @@ export function MainWindow() {
       // guard: пользователь мог сменить сервер, пока летел refetch — не затирать чипы чужого сервера
       api.memberRanks(currentServerId).then((rs) => { if (alive) setMemberRanks(new Map(rs.map((r) => [r.userId, r]))) }).catch(() => {})
     })
-    return () => { alive = false; off() }
+    // «Кворум»: рекорд людей в войсе — серверный хайп-момент (тост всем участникам)
+    const offQuorum = ws.onServerQuorum(currentServerId, (e: QuorumEvent) => {
+      if (e.legendary) {
+        sfx.mention()
+        toast.info(`🌟 ЛЕГЕНДАРНЫЙ СОЗЫВ! Весь Чажленд в «${e.channelName}» — ${e.count}!`)
+      } else {
+        toast.info(`🔥 КВОРУМ! В «${e.channelName}» собралось ${e.count} — новый рекорд!`)
+      }
+    })
+    // Ачивки: своё открытие — праздничный тост (публичная карточка летит в #info отдельно)
+    const offAch = ws.onServerAchievement(currentServerId, (e: AchievementEvent) => {
+      if (e.userId === user.id) {
+        sfx.mention()
+        toast.info(`🎉 Открыта ачивка ${e.emoji} «${e.name}»!`)
+      }
+    })
+    // Авто-AFK: сервер просит увести МЕНЯ в AFK-канал — переходим туда с выключенными микро и звуком.
+    // Серверный force-mute микрофона уже применён; здесь выполняем сам переход (LiveKit не двигает серверно).
+    const offAfk = ws.onServerAfk(currentServerId, (e: AfkEvent) => {
+      if (e.userId !== user.id) return
+      if (!voice.state.channelId || voice.state.channelId === e.afkChannelId) return // не в войсе / уже в AFK
+      const name = tree.channels.find((c) => c.id === e.afkChannelId)?.name ?? 'AFK'
+      void (async () => {
+        try {
+          await voice.join(e.afkChannelId, name)
+          if (!voice.state.deafened) await voice.toggleDeaf() // выключить и микрофон, и звук
+          toast.info('😴 Ты ушёл в AFK — микрофон и звук выключены')
+        } catch { /* переход не удался — не критично */ }
+      })()
+    })
+    return () => { alive = false; off(); offQuorum(); offAch(); offAfk() }
   }, [currentServerId, user.id])
+
+  // «Время в войсе»: joinedAt текущих участников голоса сервера (для таймера «в комнате N»). Лёгкий поллинг.
+  useEffect(() => {
+    if (!currentServerId) { setVoiceSince(new Map()); return }
+    let alive = true
+    const load = () => api.voiceSince(currentServerId)
+      .then((r) => { if (alive) setVoiceSince(new Map(r.filter((x) => x.joinedAt).map((x) => [x.userId, x.joinedAt as string]))) })
+      .catch(() => {})
+    load()
+    const t = window.setInterval(load, 15000)
+    return () => { alive = false; window.clearInterval(t) }
+  }, [currentServerId])
 
   useEffect(() => {
     if (!currentId) return
@@ -621,6 +668,7 @@ export function MainWindow() {
             meId={user.id}
             canManage={canModerate}
             notifLevels={notifLevels}
+            voiceSince={voiceSince}
             onPick={pickChannel}
             onEditChannel={setChannelEdit}
             onMarkRead={markReadChannel}
@@ -651,6 +699,8 @@ export function MainWindow() {
               <button className="ib no-drag" onClick={() => setPanel((p) => (p === 'search' ? null : 'search'))} style={{ width: 38, height: 38, ...(panel === 'search' ? { background: 'var(--accent-tint)', color: 'var(--accent)' } : {}) }} title="Поиск"><Search size={16} /></button>
               <button className="ib no-drag" onClick={() => setPanel((p) => (p === 'pins' ? null : 'pins'))} style={{ width: 38, height: 38, ...(panel === 'pins' ? { background: 'var(--accent-tint)', color: 'var(--accent)' } : {}) }} title="Закреплённые"><Pin size={16} /></button>
               <button className="ib no-drag" onClick={() => setPanel((p) => (p === 'stats' ? null : 'stats'))} style={{ width: 38, height: 38, ...(panel === 'stats' ? { background: 'var(--accent-tint)', color: 'var(--accent)' } : {}) }} title="Статистика · Wrapped"><BarChart3 size={16} /></button>
+              <button className="ib no-drag" onClick={() => setPanel((p) => (p === 'museum' ? null : 'museum'))} style={{ width: 38, height: 38, ...(panel === 'museum' ? { background: 'var(--accent-tint)', color: 'var(--accent)' } : {}) }} title="Музей цитат"><Trophy size={16} /></button>
+              <button className="ib no-drag" onClick={() => setPanel((p) => (p === 'achievements' ? null : 'achievements'))} style={{ width: 38, height: 38, ...(panel === 'achievements' ? { background: 'var(--accent-tint)', color: 'var(--accent)' } : {}) }} title="Ачивки"><Medal size={16} /></button>
               <button className="ib no-drag" style={{ width: 38, height: 38 }} title="Уведомления"><Bell size={16} /></button>
               <button className="ib no-drag" onClick={() => setMembersExpanded((v) => !v)} style={{ width: 38, height: 38, background: 'var(--accent-tint)', color: 'var(--accent)' }} title="Участники"><Users size={16} /></button>
             </div>
@@ -679,8 +729,10 @@ export function MainWindow() {
                 )}
               </div>
             ))}
-            {!screenFull && <MembersRail members={members} roles={roles} ranks={memberRanks} loading={!membersLoaded} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} meId={user.id} onOpenDm={openDm} />}
+            {!screenFull && <MembersRail members={members} roles={roles} ranks={memberRanks} loading={!membersLoaded} expanded={membersExpanded} onToggle={() => setMembersExpanded((v) => !v)} meId={user.id} onOpenDm={openDm} onOpenProfile={setProfileMember} />}
             {panel === 'stats' && <StatsPanel serverId={currentServerId} onClose={() => setPanel(null)} />}
+            {panel === 'museum' && <MuseumPanel serverId={currentServerId} onClose={() => setPanel(null)} />}
+            {panel === 'achievements' && <AchievementsPanel onClose={() => setPanel(null)} />}
             {(panel === 'search' || panel === 'pins') && currentId && (
               <ChatPanel mode={panel} channelId={currentId} channelName={channel?.name ?? ''} pinsVersion={pinsVersion} onClose={() => setPanel(null)} onUnpin={(id) => pinMsg(id, false)} onJump={jumpTo} />
             )}
@@ -713,6 +765,8 @@ export function MainWindow() {
         soundboardDisabled={membersById.get(user.id)?.soundboardDisabled}
         equipped={myRank?.equipped}
       />
+
+      {profileMember && <ProfileModal member={profileMember} rank={memberRanks.get(profileMember.userId)} self={profileMember.userId === user.id} onClose={() => setProfileMember(null)} onOpenDm={openDm} />}
 
       {settingsTab && <SettingsModal initialTab={settingsTab} onClose={() => setSettingsTab(null)} onEquipChange={(eq) => {
         setMyRank((r) => (r ? { ...r, equipped: eq } : r))

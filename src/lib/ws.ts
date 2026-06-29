@@ -1,6 +1,6 @@
 import { Client, type IMessage, type StompSubscription } from '@stomp/stompjs'
 import { MOCK, WS_URL } from './config'
-import type { RankEvent, WatchAction, WatchState } from './types'
+import type { AchievementEvent, AfkEvent, QuorumEvent, RankEvent, WatchAction, WatchState } from './types'
 
 export interface WsEvent { type: string; channelId?: string; message?: unknown; userId?: string; username?: string; messageId?: string; emoji?: string }
 export type WsStatus = 'online' | 'connecting'
@@ -73,6 +73,18 @@ class Ws {
   /** События рангов сервера: /topic/server.{id}.rank (RANK_UP) */
   onServerRank(serverId: string, cb: (e: RankEvent) => void): () => void {
     return this.subscribeTopic(`/topic/server.${serverId}.rank`, cb as (b: any) => void)
+  }
+  /** «Кворум» сервера: /topic/server.{id}.quorum (рекорд людей в войсе → тост/эффект) */
+  onServerQuorum(serverId: string, cb: (e: QuorumEvent) => void): () => void {
+    return this.subscribeTopic(`/topic/server.${serverId}.quorum`, cb as (b: any) => void)
+  }
+  /** Ачивки сервера: /topic/server.{id}.achievement (открытие ачивки → тост) */
+  onServerAchievement(serverId: string, cb: (e: AchievementEvent) => void): () => void {
+    return this.subscribeTopic(`/topic/server.${serverId}.achievement`, cb as (b: any) => void)
+  }
+  /** Авто-AFK сервера: /topic/server.{id}.afk (сигнал «уйди в AFK-канал») */
+  onServerAfk(serverId: string, cb: (e: AfkEvent) => void): () => void {
+    return this.subscribeTopic(`/topic/server.${serverId}.afk`, cb as (b: any) => void)
   }
   typing(channelId: string) {
     if (MOCK || !this.client?.connected) return

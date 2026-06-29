@@ -13,7 +13,7 @@ import type { Member, MemberRank, Presence, ServerRole } from '@/lib/types'
 
 const SUB: Record<string, string> = { online: 'в сети', idle: 'отошёл', dnd: 'не беспокоить', offline: 'не в сети' }
 
-export function MembersRail({ members, roles = [], ranks, loading, expanded, onToggle, meId, onOpenDm }: {
+export function MembersRail({ members, roles = [], ranks, loading, expanded, onToggle, meId, onOpenDm, onOpenProfile }: {
   members: Member[]
   roles?: ServerRole[]
   ranks?: Map<string, MemberRank>
@@ -22,6 +22,7 @@ export function MembersRail({ members, roles = [], ranks, loading, expanded, onT
   onToggle: () => void
   meId?: string
   onOpenDm?: (userId: string) => void
+  onOpenProfile?: (m: Member) => void
 }) {
   const [, setTick] = useState(0)
   useEffect(() => presence.subscribe(() => setTick((t) => t + 1)), [])
@@ -45,9 +46,9 @@ export function MembersRail({ members, roles = [], ranks, loading, expanded, onT
           </div>
         ))}
         {online.length > 0 && <Group label={`В СЕТИ · ${online.length}`} show={expanded} />}
-        {online.map((m) => <Row key={m.userId} m={m} status={stat(m)} roles={roles} rank={ranks?.get(m.userId)} expanded={expanded} self={m.userId === meId} onOpenDm={onOpenDm} />)}
+        {online.map((m) => <Row key={m.userId} m={m} status={stat(m)} roles={roles} rank={ranks?.get(m.userId)} expanded={expanded} self={m.userId === meId} onOpenDm={onOpenDm} onOpenProfile={onOpenProfile} />)}
         {offline.length > 0 && <Group label={`НЕ В СЕТИ · ${offline.length}`} show={expanded} />}
-        {offline.map((m) => <Row key={m.userId} m={m} status="offline" roles={roles} rank={ranks?.get(m.userId)} expanded={expanded} dim self={m.userId === meId} onOpenDm={onOpenDm} />)}
+        {offline.map((m) => <Row key={m.userId} m={m} status="offline" roles={roles} rank={ranks?.get(m.userId)} expanded={expanded} dim self={m.userId === meId} onOpenDm={onOpenDm} onOpenProfile={onOpenProfile} />)}
       </div>
     </div>
   )
@@ -58,12 +59,15 @@ function Group({ label, show, color, icon }: { label: string; show: boolean; col
   return <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '.07em', color: color || 'var(--text-3)', padding: '11px 8px 7px', display: 'flex', alignItems: 'center', gap: 5 }}>{icon}{label}</div>
 }
 
-function Row({ m, status, roles, rank, expanded, dim, self, onOpenDm }: { m: Member; status: Presence; roles: ServerRole[]; rank?: MemberRank; expanded: boolean; dim?: boolean; self?: boolean; onOpenDm?: (userId: string) => void }) {
+function Row({ m, status, roles, rank, expanded, dim, self, onOpenDm, onOpenProfile }: { m: Member; status: Presence; roles: ServerRole[]; rank?: MemberRank; expanded: boolean; dim?: boolean; self?: boolean; onOpenDm?: (userId: string) => void; onOpenProfile?: (m: Member) => void }) {
   const color = roleColor(m.roleIds, roles)      // цвет ника по высшей цветной роли
   const top = highestRole(m.roleIds, roles)      // высшая кастомная роль — для бейджа
   return (
     <div className="member-row" onClick={() => { if (!self) onOpenDm?.(m.userId) }} title={self ? undefined : 'Личные сообщения'} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: 6, cursor: self ? 'default' : 'pointer' }}>
-      <Avatar name={m.username} src={m.avatarUrl} size={38} presence={status} dim={dim} frame={rank?.equipped?.frame} glow={rank?.equipped?.glow} />
+      {/* клик по аватару — профиль (с витриной ачивок); по остальной строке — ЛС */}
+      <span onClick={(e) => { e.stopPropagation(); onOpenProfile?.(m) }} title="Профиль" style={{ display: 'flex', flex: 'none', cursor: 'pointer' }}>
+        <Avatar name={m.username} src={m.avatarUrl} size={38} presence={status} dim={dim} frame={rank?.equipped?.frame} glow={rank?.equipped?.glow} />
+      </span>
       {expanded && (
         <>
           <div style={{ lineHeight: 1.2, minWidth: 0 }}>
