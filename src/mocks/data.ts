@@ -39,10 +39,10 @@ export const MOCK_MEMBERS: Member[] = [
 // --- Ранги (mock для превью UI) ---
 export const MOCK_MEMBER_RANKS: Record<string, MemberRank[]> = {
   s_home: [
-    { userId: 'u_anya', level: 200, title: 'Вершина Чажленда', equipped: { frame: 'frame.anim.spin', glow: 'glow.aura.rainbow', nameEffect: 'name.anim.holo', profileBg: 'profbg.gradient.flow', badge: 'badge.tier.11', msgAccent: 'msgaccent.glowname' } },
+    { userId: 'u_anya', level: 200, title: 'Вершина Чажленда', equipped: { frame: 'frame.anim.spin', glow: 'glow.aura.rainbow', nameEffect: 'name.anim.holo', profileBg: 'profbg.particle.snow', badge: 'badge.tier.11', msgAccent: 'msgaccent.glowname' } },
     { userId: 'u_mark', level: 140, title: 'Легенда поколения', equipped: { frame: 'frame.anim.shimmerGold', glow: 'glow.pulse.breath', nameEffect: 'name.anim.shimmer', badge: 'badge.tier.6', msgAccent: 'msgaccent.bar.solid' } },
     { userId: 'u_kostya', level: 95, title: 'Мастер своего дела', equipped: { frame: 'frame.ring.gold', glow: 'glow.warm.ember', nameEffect: 'name.gradient.sunset' } },
-    { userId: 'u_me', level: 58, title: 'Ветеран', equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent', nameEffect: 'name.gradient.sunset', profileBg: 'profbg.gradient.flow', badge: 'badge.founder', msgAccent: 'msgaccent.bar.gradient' } },
+    { userId: 'u_me', level: 58, title: 'Ветеран', equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent', nameEffect: 'name.gradient.sunset', profileBg: 'profbg.canvas.nebula', badge: 'badge.founder', msgAccent: 'msgaccent.bar.gradient' } },
     { userId: 'u_lena', level: 22, title: 'Свой человек', equipped: { frame: 'frame.ring.bronze', nameEffect: 'name.color.azure' } },
     { userId: 'u_dmitry', level: 7, title: 'Прохожий' },
   ],
@@ -64,12 +64,12 @@ export const MOCK_MY_RANK: MyRank = {
     'name.color.ember', 'name.color.rose', 'name.color.azure', 'name.gradient.sunset', 'name.anim.shimmer', 'name.anim.holo',
     'frame.ring.bronze', 'frame.ring.silver', 'frame.ring.gold', 'frame.gradient.aurora', 'frame.anim.spin', 'frame.anim.shimmerGold',
     'glow.soft.accent', 'glow.warm.ember', 'glow.pulse.breath', 'glow.aura.rainbow',
-    'profbg.gradient.flow', 'profbg.upload.image', 'profbg.upload.animated',
+    'profbg.gradient.flow', 'profbg.particle.snow', 'profbg.particle.sakura', 'profbg.canvas.nebula', 'profbg.holo.foil', 'profbg.upload.image', 'profbg.upload.animated',
     'badge.founder', 'badge.tier.6', 'badge.tier.11',
-    'banner.gradient.dawn', 'banner.anim.gradient',
+    'banner.gradient.dawn', 'banner.anim.gradient', 'banner.particle.stars',
     'msgaccent.bar.solid', 'msgaccent.bar.gradient', 'msgaccent.glowname',
   ],
-  equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent', nameEffect: 'name.gradient.sunset', profileBg: 'profbg.gradient.flow', badge: 'badge.founder', msgAccent: 'msgaccent.bar.gradient' },
+  equipped: { frame: 'frame.anim.spin', glow: 'glow.soft.accent', nameEffect: 'name.gradient.sunset', profileBg: 'profbg.canvas.nebula', badge: 'badge.founder', msgAccent: 'msgaccent.bar.gradient' },
 }
 
 export const MOCK_RANK_CATALOG: RankCatalog = {
@@ -110,8 +110,12 @@ export const MOCK_RANK_CATALOG: RankCatalog = {
     { id: 'glow.warm.ember', slot: 'glow', unlockLevel: 23, kind: 'css', name: 'Тёплое свечение' },
     { id: 'glow.pulse.breath', slot: 'glow', unlockLevel: 49, kind: 'css', name: 'Дышащая аура' },
     { id: 'glow.aura.rainbow', slot: 'glow', unlockLevel: 155, kind: 'css', name: 'Радужная аура' },
-    // фон профиля (витрина «потолка»)
+    // фон профиля (витрина «потолка») — css/частицы/canvas/голограмма/загрузка
     { id: 'profbg.gradient.flow', slot: 'profileBg', unlockLevel: 65, kind: 'css', name: 'Фон профиля — анимированный градиент' },
+    { id: 'profbg.particle.snow', slot: 'profileBg', unlockLevel: 101, kind: 'cssParticle', name: 'Фон профиля — снег' },
+    { id: 'profbg.particle.sakura', slot: 'profileBg', unlockLevel: 119, kind: 'cssParticle', name: 'Фон профиля — сакура' },
+    { id: 'profbg.canvas.nebula', slot: 'profileBg', unlockLevel: 155, kind: 'canvas', name: 'Фон профиля — туманность' },
+    { id: 'profbg.holo.foil', slot: 'profileBg', unlockLevel: 171, kind: 'parallax', name: 'Фон профиля — голограмма/фольга' },
     { id: 'profbg.upload.image', slot: 'profileBg', unlockLevel: 195, kind: 'userUpload', name: 'Своя картинка на фон профиля' },
     { id: 'profbg.upload.animated', slot: 'profileBg', unlockLevel: 200, kind: 'userUpload', name: 'Свой анимированный фон профиля' },
     // бейджи
@@ -121,6 +125,7 @@ export const MOCK_RANK_CATALOG: RankCatalog = {
     // баннеры профиля
     { id: 'banner.gradient.dawn', slot: 'banner', unlockLevel: 49, kind: 'css', name: 'Баннер — рассвет (градиент)' },
     { id: 'banner.anim.gradient', slot: 'banner', unlockLevel: 83, kind: 'css', name: 'Баннер — плывущий градиент' },
+    { id: 'banner.particle.stars', slot: 'banner', unlockLevel: 119, kind: 'cssParticle', name: 'Баннер — звёздное поле' },
     // акцент сообщений
     { id: 'msgaccent.bar.solid', slot: 'msgAccent', unlockLevel: 83, kind: 'css', name: 'Акцентная полоса у сообщений' },
     { id: 'msgaccent.bar.gradient', slot: 'msgAccent', unlockLevel: 137, kind: 'css', name: 'Градиентная полоса у сообщений' },

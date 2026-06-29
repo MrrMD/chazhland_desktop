@@ -8,8 +8,9 @@ import { useAuth } from '@/store/auth'
 import { useTheme } from '@/theme/ThemeProvider'
 import { ACCENTS, type ThemeName } from '@/theme/themes'
 import { notifyPrefs } from '@/lib/prefs'
-import { bannerLayer, msgAccentColor, nameStyle, profileBgLayer, SLOT_LABELS, SLOT_ORDER } from '@/lib/cosmetics'
+import { msgAccentColor, nameStyle, SLOT_LABELS, SLOT_ORDER } from '@/lib/cosmetics'
 import { RankBadge } from '@/components/RankBadge'
+import { CosmeticBackground } from '@/components/CosmeticBackground'
 import { SettingsAudio } from './SettingsAudio'
 import type { MyRank, RankCatalog, RankCosmetic } from '@/lib/types'
 
@@ -252,14 +253,13 @@ function CosmeticsSection({ meName, meAvatar, onEquipChange, onProfileBgChange }
   const uploadCosmetics = catalog.cosmetics.filter((c) => c.slot === 'profileBg' && c.kind === 'userUpload')
   const canUploadBg = uploadCosmetics.some((c) => unlocked.has(c.id))
   const uploadAtLevel = uploadCosmetics.length ? Math.min(...uploadCosmetics.map((c) => c.unlockLevel)) : null
-  const bgStyle = bgUrl ? { backgroundImage: `url(${bgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : (profileBgLayer(equipped.profileBg) ?? null)
-  const hasBg = !!bgStyle
+  const hasBg = !!bgUrl || !!equipped.profileBg
 
   return (
     <div>
       {/* живое превью-карточка: фон профиля + аватар с рамкой/свечением + ник с эффектом + пик-титул */}
       <div style={{ position: 'relative', overflow: 'hidden', marginBottom: 14, borderRadius: 14, border: '1px solid var(--border)' }}>
-        {hasBg && <div style={{ position: 'absolute', inset: 0, ...bgStyle }} />}
+        {hasBg && <CosmeticBackground id={bgUrl ? null : equipped.profileBg} imageUrl={bgUrl} />}
         {hasBg && <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, rgba(0,0,0,.6), rgba(0,0,0,.28))' }} />}
         <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 14, padding: '13px 14px', background: hasBg ? 'transparent' : 'var(--surface-2)' }}>
           <Avatar name={meName} src={meAvatar} size={56} frame={equipped.frame} glow={equipped.glow} />
@@ -337,9 +337,9 @@ function CosmeticSwatch({ c, meName, meAvatar }: { c: RankCosmetic; meName: stri
   if (c.slot === 'frame') return <Avatar name={meName} src={meAvatar} size={40} frame={c.id} />
   if (c.slot === 'glow') return <Avatar name={meName} src={meAvatar} size={40} glow={c.id} />
   if (c.slot === 'nameEffect') return <div style={{ width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 22, ...(nameStyle(c.id) ?? { color: 'var(--text)' }) }}>Аб</div>
-  if (c.slot === 'profileBg') return <div style={{ width: 40, height: 40, borderRadius: 9, overflow: 'hidden', ...(profileBgLayer(c.id) ?? { background: 'linear-gradient(135deg,#3a3550,#5b6cff)' }) }} />
+  if (c.slot === 'profileBg') return <div style={{ width: 40, height: 40, borderRadius: 9, overflow: 'hidden', position: 'relative', background: '#2a2540' }}><CosmeticBackground id={c.id} /></div>
   if (c.slot === 'badge') return <div style={{ width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><RankBadge id={c.id} size={26} /></div>
-  if (c.slot === 'banner') return <div style={{ width: 40, height: 40, borderRadius: 9, overflow: 'hidden', ...(bannerLayer(c.id) ?? { background: 'linear-gradient(135deg,var(--accent),#13b886)' }) }} />
+  if (c.slot === 'banner') return <div style={{ width: 40, height: 40, borderRadius: 9, overflow: 'hidden', position: 'relative', background: '#2a2540' }}><CosmeticBackground id={c.id} /></div>
   if (c.slot === 'msgAccent') return <div style={{ width: 40, height: 40, borderRadius: 9, background: 'var(--surface-3)', boxShadow: `inset 3px 0 0 ${msgAccentColor(c.id) || 'var(--accent)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 800, color: 'var(--text-3)' }}>≡</div>
   // прочее — обобщённая градиентная плашка
   return <div style={{ width: 40, height: 40, borderRadius: 9, background: 'linear-gradient(135deg,var(--accent),#13b886)', opacity: 0.85 }} />

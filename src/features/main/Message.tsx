@@ -4,7 +4,8 @@ import { Avatar, presenceColor } from '@/components/Avatar'
 import { RankChip } from '@/components/RankChip'
 import { RankBadge } from '@/components/RankBadge'
 import { rankColor } from '@/lib/ranks'
-import { bannerLayer, msgAccentColor, nameGlow, nameStyle, profileBgLayer } from '@/lib/cosmetics'
+import { msgAccentColor, nameGlow, nameStyle } from '@/lib/cosmetics'
+import { CosmeticBackground } from '@/components/CosmeticBackground'
 import { toast } from '@/lib/toast'
 import { useEscape } from '@/lib/useEscape'
 import { presence } from '@/lib/presence'
@@ -292,15 +293,13 @@ function UserPopover({ m, name, avatarUrl, nameColor, topRole, rank, myServerRan
   const status: Presence = MOCK ? 'online' : presence.statusOf(m.authorId)
   const top = Math.min(y, window.innerHeight - 300)
   const left = Math.min(x, window.innerWidth - 256)
-  // баннер: загруженная картинка (свой профиль) → CSS-фон профиля → баннер-косметика → акцентная заливка
-  const bgStyle = bgUrl
-    ? { backgroundImage: `url(${bgUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-    : (profileBgLayer(rank?.equipped?.profileBg) ?? bannerLayer(rank?.equipped?.banner))
+  // баннер: загруженная картинка → canvas/CSS-фон профиля → баннер-косметика → акцентная заливка
+  const bannerBgId = rank?.equipped?.profileBg ?? rank?.equipped?.banner
   return (
     <>
       <div onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose() }} style={{ position: 'fixed', inset: 0, zIndex: 50 }} />
       <div style={{ position: 'fixed', left, top, zIndex: 51, width: 240, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, boxShadow: '0 22px 50px -18px var(--shadow)', overflow: 'hidden', animation: 'popIn .14s ease' }}>
-        <div style={{ height: 54, ...(bgStyle ?? { background: 'var(--accent-tint)' }) }} />
+        <div style={{ height: 54, position: 'relative', overflow: 'hidden', background: 'var(--accent-tint)' }}><CosmeticBackground id={bgUrl ? null : bannerBgId} imageUrl={bgUrl} /></div>
         <div style={{ padding: '0 16px 16px', marginTop: -28 }}>
           <Avatar name={name} src={avatarUrl} size={64} presence={status} frame={rank?.equipped?.frame} glow={rank?.equipped?.glow} />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
