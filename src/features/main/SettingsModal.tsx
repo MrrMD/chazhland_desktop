@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Camera, Lock, LogOut } from 'lucide-react'
+import { Camera, Lock, LogOut, UserRound, Volume2, Bell, Palette, Sparkles, ShieldCheck } from 'lucide-react'
 import { Modal } from '@/components/Modal'
 import { Avatar } from '@/components/Avatar'
 import { api } from '@/lib/api'
@@ -10,14 +10,26 @@ import { ACCENTS, type ThemeName } from '@/theme/themes'
 import { notifyPrefs } from '@/lib/prefs'
 import { bannerLayer, msgAccentColor, nameStyle, profileBgLayer, SLOT_LABELS, SLOT_ORDER } from '@/lib/cosmetics'
 import { RankBadge } from '@/components/RankBadge'
+import { SettingsAudio } from './SettingsAudio'
 import type { MyRank, RankCatalog, RankCosmetic } from '@/lib/types'
 
 const lbl: React.CSSProperties = { fontSize: 12.5, fontWeight: 600, color: 'var(--text-2)', display: 'block', marginBottom: 6 }
 const fieldS: React.CSSProperties = { padding: '11px 13px', marginBottom: 13 }
 
-export function SettingsModal({ onClose, onEquipChange, onProfileBgChange }: { onClose: () => void; onEquipChange?: (equipped: Record<string, string>) => void; onProfileBgChange?: (url: string | null) => void }) {
+export type SettingsTab = 'profile' | 'audio' | 'notifications' | 'appearance' | 'cosmetics' | 'security'
+const TABS: { id: SettingsTab; label: string; icon: typeof UserRound }[] = [
+  { id: 'profile', label: 'Профиль', icon: UserRound },
+  { id: 'audio', label: 'Аудио', icon: Volume2 },
+  { id: 'notifications', label: 'Уведомления', icon: Bell },
+  { id: 'appearance', label: 'Внешний вид', icon: Palette },
+  { id: 'cosmetics', label: 'Косметика', icon: Sparkles },
+  { id: 'security', label: 'Безопасность', icon: ShieldCheck },
+]
+
+export function SettingsModal({ onClose, onEquipChange, onProfileBgChange, initialTab = 'profile' }: { onClose: () => void; onEquipChange?: (equipped: Record<string, string>) => void; onProfileBgChange?: (url: string | null) => void; initialTab?: SettingsTab }) {
   const { session, updateUser, logout } = useAuth()
   const user = session!.user
+  const [tab, setTab] = useState<SettingsTab>(initialTab)
   const { theme, accent, setTheme, setAccent } = useTheme()
   const [np, setNp] = useState(notifyPrefs.get())
   function updNp(p: Partial<typeof np>) { notifyPrefs.set(p); setNp(notifyPrefs.get()) }
@@ -76,72 +88,101 @@ export function SettingsModal({ onClose, onEquipChange, onProfileBgChange }: { o
   }
 
   return (
-    <Modal title="Настройки" onClose={onClose} width={480}>
-      <SectionTitle>Профиль</SectionTitle>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 15, marginBottom: 16 }}>
-        <div style={{ position: 'relative' }}>
-          <Avatar name={user.username} src={user.avatarUrl} size={64} />
-          {avatarBusy && <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spinner /></div>}
+    <Modal title="Настройки" onClose={onClose} width={760} height={600} padded={false}>
+      <div style={{ display: 'flex', height: '100%' }}>
+        {/* левая навигация по разделам */}
+        <nav style={{ width: 178, flex: 'none', borderRight: '1px solid var(--border)', background: 'var(--surface)', padding: '12px 10px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {TABS.map((t) => {
+            const active = tab === t.id
+            return (
+              <button key={t.id} className="no-drag" onClick={() => setTab(t.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', padding: '9px 11px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 13.5, fontWeight: 600, background: active ? 'var(--accent-tint)' : 'transparent', color: active ? 'var(--accent)' : 'var(--text-2)' }}>
+                <t.icon size={16} /> {t.label}
+              </button>
+            )
+          })}
+        </nav>
+
+        {/* контент выбранного раздела (прокручивается) */}
+        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', padding: 22 }}>
+          {tab === 'profile' && (
+            <>
+              <SectionTitle>Профиль</SectionTitle>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 15, marginBottom: 16 }}>
+                <div style={{ position: 'relative' }}>
+                  <Avatar name={user.username} src={user.avatarUrl} size={64} />
+                  {avatarBusy && <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spinner /></div>}
+                </div>
+                <div>
+                  <button type="button" className="pill no-drag" onClick={() => fileRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', fontWeight: 600, fontSize: 13 }}><Camera size={15} /> Изменить аватар</button>
+                  <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 6 }}>PNG, JPG или GIF (анимированный) — лучше квадрат</div>
+                </div>
+                <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { pickAvatar(e.target.files?.[0]); e.target.value = '' }} />
+              </div>
+              <label style={lbl}>Имя пользователя</label>
+              <div className="field" style={fieldS}><input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ваш ник" /></div>
+              <label style={lbl}>О себе / статус</label>
+              <div className="field" style={fieldS}><input value={statusMsg} onChange={(e) => setStatusMsg(e.target.value)} placeholder="например, на удалёнке" maxLength={255} /></div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="button" className="accent-btn no-drag" disabled={!profileDirty || savingProfile} onClick={saveProfile} style={{ borderRadius: 11, padding: '9px 18px', fontWeight: 700, opacity: !profileDirty || savingProfile ? 0.55 : 1 }}>{savingProfile ? 'Сохранение…' : 'Сохранить'}</button>
+              </div>
+            </>
+          )}
+
+          {tab === 'audio' && (<><SectionTitle>Аудио</SectionTitle><SettingsAudio /></>)}
+
+          {tab === 'notifications' && (
+            <>
+              <SectionTitle>Уведомления</SectionTitle>
+              <ToggleRow label="Десктоп-уведомления" hint="всплывающие окна о сообщениях" on={np.desktop} onChange={(v) => updNp({ desktop: v })} />
+              <ToggleRow label="Звуки уведомлений" hint="пинг при упоминании, ЛС и реакции" on={np.sounds} onChange={(v) => updNp({ sounds: v })} />
+              <ToggleRow label="Тихо в режиме «Не беспокоить»" hint="без всплывашек и звука при статусе dnd" on={np.respectDnd} onChange={(v) => updNp({ respectDnd: v })} />
+            </>
+          )}
+
+          {tab === 'appearance' && (
+            <>
+              <SectionTitle>Внешний вид</SectionTitle>
+              <label style={lbl}>Тема</label>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                {(['light', 'dark'] as ThemeName[]).map((t) => (
+                  <button key={t} type="button" onClick={() => setTheme(t)} className="no-drag" style={{ flex: 1, padding: '10px 0', borderRadius: 11, border: `1.5px solid ${theme === t ? 'var(--accent)' : 'var(--border)'}`, background: theme === t ? 'var(--accent-tint)' : 'var(--surface)', color: theme === t ? 'var(--accent)' : 'var(--text)', fontWeight: 600, fontSize: 13.5, cursor: 'pointer' }}>{t === 'light' ? 'Светлая' : 'Тёмная'}</button>
+                ))}
+              </div>
+              <label style={lbl}>Акцент</label>
+              <div style={{ display: 'flex', gap: 10 }}>
+                {ACCENTS.map((c) => {
+                  const sel = accent.toLowerCase() === c.toLowerCase()
+                  return <button key={c} type="button" onClick={() => setAccent(c)} aria-label={`акцент ${c}`} className="no-drag" style={{ width: 28, height: 28, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer', outline: sel ? '2px solid var(--text)' : '1px solid var(--border-2)', outlineOffset: 2 }} />
+                })}
+              </div>
+            </>
+          )}
+
+          {tab === 'cosmetics' && (
+            <>
+              <SectionTitle>Награды · косметика</SectionTitle>
+              <CosmeticsSection meName={username.trim() || user.username} meAvatar={user.avatarUrl} onEquipChange={onEquipChange} onProfileBgChange={onProfileBgChange} />
+            </>
+          )}
+
+          {tab === 'security' && (
+            <>
+              <SectionTitle>Безопасность</SectionTitle>
+              <label style={lbl}>Текущий пароль</label>
+              <div className="field" style={fieldS}><input type="password" value={curPw} onChange={(e) => setCurPw(e.target.value)} placeholder="••••••••" /></div>
+              <label style={lbl}>Новый пароль</label>
+              <div className="field" style={fieldS}><input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="минимум 8 символов" /></div>
+              <label style={lbl}>Повторите новый пароль</label>
+              <div className="field" style={fieldS}><input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} placeholder="••••••••" /></div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
+                <button type="button" className="accent-btn no-drag" disabled={pwBusy || !curPw || !newPw || !confirmPw} onClick={savePassword} style={{ borderRadius: 11, padding: '9px 18px', fontWeight: 700, opacity: pwBusy || !curPw || !newPw || !confirmPw ? 0.55 : 1 }}>{pwBusy ? 'Смена…' : 'Сменить пароль'}</button>
+              </div>
+              <div style={{ height: 1, background: 'var(--border)', margin: '18px 0' }} />
+              <button type="button" className="danger-btn no-drag" onClick={doLogoutAll} style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 11, padding: '10px 16px', fontWeight: 600, fontSize: 13 }}><LogOut size={15} /> Выйти со всех устройств</button>
+            </>
+          )}
         </div>
-        <div>
-          <button type="button" className="pill no-drag" onClick={() => fileRef.current?.click()} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', fontWeight: 600, fontSize: 13 }}><Camera size={15} /> Изменить аватар</button>
-          <div style={{ fontSize: 11.5, color: 'var(--text-3)', marginTop: 6 }}>PNG, JPG или GIF (анимированный) — лучше квадрат</div>
-        </div>
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => { pickAvatar(e.target.files?.[0]); e.target.value = '' }} />
       </div>
-
-      <label style={lbl}>Имя пользователя</label>
-      <div className="field" style={fieldS}><input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="ваш ник" /></div>
-      <label style={lbl}>О себе / статус</label>
-      <div className="field" style={fieldS}><input value={statusMsg} onChange={(e) => setStatusMsg(e.target.value)} placeholder="например, на удалёнке" maxLength={255} /></div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}>
-        <button type="button" className="accent-btn no-drag" disabled={!profileDirty || savingProfile} onClick={saveProfile} style={{ borderRadius: 11, padding: '9px 18px', fontWeight: 700, opacity: !profileDirty || savingProfile ? 0.55 : 1 }}>{savingProfile ? 'Сохранение…' : 'Сохранить'}</button>
-      </div>
-
-      <div style={{ height: 1, background: 'var(--border)', margin: '18px 0' }} />
-
-      <SectionTitle>Внешний вид</SectionTitle>
-      <label style={lbl}>Тема</label>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {(['light', 'dark'] as ThemeName[]).map((t) => (
-          <button key={t} type="button" onClick={() => setTheme(t)} className="no-drag" style={{ flex: 1, padding: '10px 0', borderRadius: 11, border: `1.5px solid ${theme === t ? 'var(--accent)' : 'var(--border)'}`, background: theme === t ? 'var(--accent-tint)' : 'var(--surface)', color: theme === t ? 'var(--accent)' : 'var(--text)', fontWeight: 600, fontSize: 13.5, cursor: 'pointer' }}>{t === 'light' ? 'Светлая' : 'Тёмная'}</button>
-        ))}
-      </div>
-      <label style={lbl}>Акцент</label>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 4 }}>
-        {ACCENTS.map((c) => {
-          const sel = accent.toLowerCase() === c.toLowerCase()
-          return <button key={c} type="button" onClick={() => setAccent(c)} aria-label={`акцент ${c}`} className="no-drag" style={{ width: 28, height: 28, borderRadius: '50%', background: c, border: 'none', cursor: 'pointer', outline: sel ? '2px solid var(--text)' : '1px solid var(--border-2)', outlineOffset: 2 }} />
-        })}
-      </div>
-
-      <div style={{ height: 1, background: 'var(--border)', margin: '18px 0' }} />
-
-      <SectionTitle>Награды · косметика</SectionTitle>
-      <CosmeticsSection meName={username.trim() || user.username} meAvatar={user.avatarUrl} onEquipChange={onEquipChange} onProfileBgChange={onProfileBgChange} />
-
-      <div style={{ height: 1, background: 'var(--border)', margin: '18px 0' }} />
-
-      <SectionTitle>Уведомления</SectionTitle>
-      <ToggleRow label="Десктоп-уведомления" hint="всплывающие окна о сообщениях" on={np.desktop} onChange={(v) => updNp({ desktop: v })} />
-      <ToggleRow label="Звуки уведомлений" hint="пинг при упоминании, ЛС и реакции" on={np.sounds} onChange={(v) => updNp({ sounds: v })} />
-      <ToggleRow label="Тихо в режиме «Не беспокоить»" hint="без всплывашек и звука при статусе dnd" on={np.respectDnd} onChange={(v) => updNp({ respectDnd: v })} />
-
-      <div style={{ height: 1, background: 'var(--border)', margin: '18px 0' }} />
-
-      <SectionTitle>Безопасность</SectionTitle>
-      <label style={lbl}>Текущий пароль</label>
-      <div className="field" style={fieldS}><input type="password" value={curPw} onChange={(e) => setCurPw(e.target.value)} placeholder="••••••••" /></div>
-      <label style={lbl}>Новый пароль</label>
-      <div className="field" style={fieldS}><input type="password" value={newPw} onChange={(e) => setNewPw(e.target.value)} placeholder="минимум 8 символов" /></div>
-      <label style={lbl}>Повторите новый пароль</label>
-      <div className="field" style={fieldS}><input type="password" value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)} placeholder="••••••••" /></div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 4 }}>
-        <button type="button" className="accent-btn no-drag" disabled={pwBusy || !curPw || !newPw || !confirmPw} onClick={savePassword} style={{ borderRadius: 11, padding: '9px 18px', fontWeight: 700, opacity: pwBusy || !curPw || !newPw || !confirmPw ? 0.55 : 1 }}>{pwBusy ? 'Смена…' : 'Сменить пароль'}</button>
-      </div>
-
-      <div style={{ height: 1, background: 'var(--border)', margin: '18px 0' }} />
-      <button type="button" className="danger-btn no-drag" onClick={doLogoutAll} style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 11, padding: '10px 16px', fontWeight: 600, fontSize: 13 }}><LogOut size={15} /> Выйти со всех устройств</button>
     </Modal>
   )
 }

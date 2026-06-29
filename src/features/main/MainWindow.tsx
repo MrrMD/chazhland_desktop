@@ -16,8 +16,7 @@ import { BottomBar } from './BottomBar'
 import { WatchView } from './WatchView'
 import { ScreenSharePane } from './ScreenSharePane'
 import { ScreenPicker } from './ScreenPicker'
-import { VoiceSettingsModal } from './VoiceSettingsModal'
-import { SettingsModal } from './SettingsModal'
+import { SettingsModal, type SettingsTab } from './SettingsModal'
 import { ChatPanel } from './ChatPanel'
 import { StatsPanel } from './StatsPanel'
 import { AdminScreen } from '@/features/admin/AdminScreen'
@@ -65,8 +64,7 @@ export function MainWindow() {
   const [vs, setVs] = useState<VoiceState>(voice.state)
   const [screenFull, setScreenFull] = useState(false)
   const [screenCollapsed, setScreenCollapsed] = useState(false) // чужая демонстрация свёрнута (показываем чип в шапке)
-  const [voiceSettingsOpen, setVoiceSettingsOpen] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | null>(null) // открытый раздел центра настроек (null = закрыт)
   const [screenPickerOpen, setScreenPickerOpen] = useState(false)
   const [channelEdit, setChannelEdit] = useState<Channel | null>(null) // открытая модалка настроек канала
   const [typing, setTyping] = useState<{ id: string; name: string }[]>([])
@@ -706,8 +704,8 @@ export function MainWindow() {
         voiceChannelName={vs.channelName}
         reconnecting={vs.reconnecting}
         onAckAll={ackAll}
-        onOpenVoiceSettings={() => setVoiceSettingsOpen(true)}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenVoiceSettings={() => setSettingsTab('audio')}
+        onOpenSettings={() => setSettingsTab('profile')}
         onOpenAdmin={() => { if (canModerate) setView('admin') }}
         canModerate={canModerate}
         onLogout={logout}
@@ -716,8 +714,7 @@ export function MainWindow() {
         equipped={myRank?.equipped}
       />
 
-      {voiceSettingsOpen && <VoiceSettingsModal onClose={() => setVoiceSettingsOpen(false)} />}
-      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} onEquipChange={(eq) => {
+      {settingsTab && <SettingsModal initialTab={settingsTab} onClose={() => setSettingsTab(null)} onEquipChange={(eq) => {
         setMyRank((r) => (r ? { ...r, equipped: eq } : r))
         // обновить мою экипировку в списке участников, чтобы рамка/свечение/ник обновились живьём
         setMemberRanks((prev) => {

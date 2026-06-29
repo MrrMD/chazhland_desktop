@@ -1,4 +1,4 @@
-import { Room, RoomEvent, Track, AudioPresets, ScreenSharePresets, DisconnectReason, type RemoteTrack, type RemoteTrackPublication, type RemoteParticipant, type Participant, type LocalAudioTrack, type AudioCaptureOptions, type ScreenShareCaptureOptions, type TrackPublishOptions, type VideoPreset } from 'livekit-client'
+import { Room, RoomEvent, Track, AudioPresets, ScreenSharePresets, DisconnectReason, type RemoteTrack, type RemoteTrackPublication, type RemoteParticipant, type Participant, type LocalAudioTrack, type AudioCaptureOptions, type AudioProcessorOptions, type ScreenShareCaptureOptions, type TrackPublishOptions, type VideoPreset } from 'livekit-client'
 import { createMicProcessor, MicProcessor } from './rnnoise'
 import { MOCK } from './config'
 import { api } from './api'
@@ -101,6 +101,12 @@ class Voice {
   private gateBuf: Float32Array<ArrayBuffer> | null = null
   private gateRaf: number | null = null
   private gateHoldUntil = 0
+  // монитор «Проверить микрофон» (слышу себя): отдельный захват → та же обработка → вывод на устройство
+  private monStream: MediaStream | null = null
+  private monProc: MicProcessor | null = null
+  private monEl: HTMLAudioElement | null = null
+  private monCtx: AudioContext | null = null
+  private monRaf: number | null = null
   private volumes = this.loadVolumes()
   state: VoiceState = { ...INITIAL }
   settings: VoiceSettings = this.load()
@@ -442,6 +448,69 @@ class Voice {
     // LiveKit сам пере-захватит трек и пересоберёт RNNoise, но клон-замер голос-гейта остался на СТАРОМ
     // (уже остановленном) устройстве → при ненулевом пороге новый мик молчал бы. Пересобираем гейт.
     if (this.room && this.state.micOn) { this.stopMicGate(false); this.syncMicGate() }
+  }
+
+  get micMonitorActive(): boolean { return this.monStream != null }
+
+  // «Проверить микрофон» (слышу себя): отдельный захват → та же обработка, что в звонке (RNNoise по
+  // настройке + усиление) → вывод на выбранное устройство. onLevel — живой RMS (0..1 по MIC_RMS_FULL).
+  // Заодно показывает, давит ли шумодав клавиатуру/мышь. Не зависит от того, в звонке ли мы.
+  async startMicMonitor(onLevel?: (level: number) => void): Promise<boolean> {
+    this.stopMicMonitor()
+    if (MOCK) return false
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: this.settings.inputId ? { exact: this.settings.inputId } : undefined,
+          echoCancellation: this.settings.echoCancellation,
+          autoGainControl: this.settings.autoGain,
+          noiseSuppression: false, // как в реальном тракте — шумодавом заведует RNNoise ниже
+        },
+      })
+      this.monStream = stream
+      let out = stream.getAudioTracks()[0]
+      if (this.settings.noiseSuppression || this.settings.micVolume !== 1) {
+        try {
+          const proc = createMicProcessor({ suppress: this.settings.noiseSuppression, gain: this.settings.micVolume })
+          await proc.init({ track: out } as unknown as AudioProcessorOptions) // init читает только opts.track
+          if (proc.processedTrack) { this.monProc = proc; out = proc.processedTrack }
+        } catch { /* RNNoise не поднялся — слышим сырой мик */ }
+      }
+      const el = new Audio()
+      el.srcObject = new MediaStream([out])
+      el.autoplay = true
+      if (this.settings.outputId && 'setSinkId' in el) {
+        await (el as unknown as { setSinkId(id: string): Promise<void> }).setSinkId(this.settings.outputId).catch(() => {})
+      }
+      await el.play().catch(() => {})
+      this.monEl = el
+      if (onLevel) {
+        const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+        if (Ctor) {
+          const ctx = new Ctor(); if (ctx.state === 'suspended') void ctx.resume()
+          const analyser = ctx.createAnalyser(); analyser.fftSize = 512
+          ctx.createMediaStreamSource(new MediaStream([out])).connect(analyser)
+          const buf = new Float32Array(analyser.fftSize)
+          const loop = () => {
+            analyser.getFloatTimeDomainData(buf)
+            let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
+            onLevel(Math.min(1, Math.sqrt(sum / buf.length) / MIC_RMS_FULL))
+            this.monRaf = requestAnimationFrame(loop)
+          }
+          this.monCtx = ctx
+          this.monRaf = requestAnimationFrame(loop)
+        }
+      }
+      return true
+    } catch { this.stopMicMonitor(); return false }
+  }
+
+  stopMicMonitor() {
+    if (this.monRaf != null) { cancelAnimationFrame(this.monRaf); this.monRaf = null }
+    if (this.monEl) { try { this.monEl.pause() } catch { /* */ } this.monEl.srcObject = null; this.monEl = null }
+    if (this.monProc) { const p = this.monProc; this.monProc = null; void p.destroy().catch(() => {}) }
+    if (this.monCtx) { try { void this.monCtx.close() } catch { /* */ } this.monCtx = null }
+    if (this.monStream) { this.monStream.getTracks().forEach((t) => t.stop()); this.monStream = null }
   }
   async setOutputDevice(id: string) {
     this.settings.outputId = id; this.saveSettings()

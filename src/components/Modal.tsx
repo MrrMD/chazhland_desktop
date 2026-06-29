@@ -2,22 +2,24 @@ import type { ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { useEscape } from '@/lib/useEscape'
 
-export function Modal({ title, onClose, children, width = 440 }: {
+export function Modal({ title, onClose, children, width = 440, height, padded = true }: {
   title: string
   onClose: () => void
   children: ReactNode
   width?: number
+  height?: number       // фикс. высота окна (для табличной раскладки настроек); по умолчанию — по контенту
+  padded?: boolean      // false → тело без паддинга/скролла, контент сам управляет раскладкой (нав + скролл)
 }) {
   useEscape(onClose)
   return (
     <div onClick={onClose} style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(20,17,14,.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 22px', animation: 'ovIn .2s ease' }}>
-      <div role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()} style={{ width, maxWidth: '100%', maxHeight: '100%', display: 'flex', flexDirection: 'column', background: 'var(--win)', border: '1px solid var(--border)', borderRadius: 20, boxShadow: '0 40px 90px -20px rgba(0,0,0,.55)', animation: 'mdIn .32s cubic-bezier(.22,.61,.36,1)', overflow: 'hidden' }}>
+      <div role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()} style={{ width, height, maxWidth: '100%', maxHeight: '100%', display: 'flex', flexDirection: 'column', background: 'var(--win)', border: '1px solid var(--border)', borderRadius: 20, boxShadow: '0 40px 90px -20px rgba(0,0,0,.55)', animation: 'mdIn .32s cubic-bezier(.22,.61,.36,1)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', padding: '18px 22px', borderBottom: '1px solid var(--border)', flex: 'none' }}>
           <span style={{ fontWeight: 800, fontSize: 18 }}>{title}</span>
           <button className="ib no-drag" onClick={onClose} style={{ marginLeft: 'auto', width: 32, height: 32, background: 'var(--surface-2)' }}><X size={15} /></button>
         </div>
         {/* тело прокручивается, если контент выше окна — шапка с крестиком всегда видна */}
-        <div style={{ padding: 22, flex: 1, minHeight: 0, overflow: 'auto' }}>{children}</div>
+        <div style={{ padding: padded ? 22 : 0, flex: 1, minHeight: 0, overflow: padded ? 'auto' : 'hidden' }}>{children}</div>
       </div>
     </div>
   )

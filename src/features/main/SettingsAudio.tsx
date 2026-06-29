@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Modal } from '@/components/Modal'
+import { Mic, Square } from 'lucide-react'
 import { voice, MIC_RMS_FULL, type AudioDevice } from '@/lib/voice'
 import { sfx } from '@/lib/sfx'
 
@@ -12,23 +12,24 @@ function keyLabel(code: string) {
   return code.replace('Key', '').replace('Digit', '').replace('Control', 'Ctrl')
 }
 
-export function VoiceSettingsModal({ onClose }: { onClose: () => void }) {
+/** Вкладка «Аудио» центра настроек: устройства, проверка микрофона (слышу себя), обработка, режим, порог, звуки. */
+export function SettingsAudio() {
   const [inputs, setInputs] = useState<AudioDevice[]>([])
   const [outputs, setOutputs] = useState<AudioDevice[]>([])
   const [s, setS] = useState({ ...voice.settings })
   const [capturing, setCapturing] = useState(false)
   const [grantBusy, setGrantBusy] = useState(false)
   const [sounds, setSounds] = useState(sfx.enabled)
-  const [level, setLevel] = useState(0) // живой уровень микрофона для калибровки порога (0..1 по шкале MIC_RMS_FULL)
+  const [level, setLevel] = useState(0)           // живой уровень микрофона (0..1 по шкале MIC_RMS_FULL)
+  const [monitoring, setMonitoring] = useState(false) // активна ли прослушка себя
 
   useEffect(() => {
     let alive = true
     const load = async () => { const d = await voice.listDevices(); if (alive) { setInputs(d.inputs); setOutputs(d.outputs) } }
-    // запрашиваем доступ к микрофону сразу при открытии — иначе метки устройств пустые (не дожидаясь звонка)
-    ;(async () => { await voice.requestMicPermission(); await load() })()
+    ;(async () => { await voice.requestMicPermission(); await load() })() // грант сразу — иначе метки устройств пустые
     const md = navigator.mediaDevices
     md?.addEventListener('devicechange', load)
-    return () => { alive = false; md?.removeEventListener('devicechange', load) }
+    return () => { alive = false; md?.removeEventListener('devicechange', load); voice.stopMicMonitor() }
   }, [])
 
   async function grant() {
@@ -39,16 +40,18 @@ export function VoiceSettingsModal({ onClose }: { onClose: () => void }) {
     setGrantBusy(false)
   }
 
-  // живой замер уровня микрофона, пока открыта модалка — для калибровки порога (свой захват, не зависит от звонка)
+  // Живой замер уровня для калибровки порога — ТОЛЬКО когда НЕ идёт прослушка (иначе двойной захват мика).
+  // Во время прослушки уровень даёт сам монитор (см. toggleMonitor).
   useEffect(() => {
+    if (monitoring) return
     let raf = 0, ctx: AudioContext | null = null, stream: MediaStream | null = null, stopped = false
     ;(async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: s.inputId ? { deviceId: { exact: s.inputId } } : true })
+        stream = await navigator.mediaDevices.getUserMedia({ audio: s.inputId ? { deviceId: { exact: s.inputId }, noiseSuppression: false } : { noiseSuppression: false } })
         if (stopped) { stream.getTracks().forEach((t) => t.stop()); return }
         const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
         if (!Ctor) return
-        ctx = new Ctor()
+        ctx = new Ctor(); if (ctx.state === 'suspended') void ctx.resume()
         const analyser = ctx.createAnalyser(); analyser.fftSize = 512
         ctx.createMediaStreamSource(stream).connect(analyser)
         const buf = new Float32Array(analyser.fftSize)
@@ -59,24 +62,29 @@ export function VoiceSettingsModal({ onClose }: { onClose: () => void }) {
           raf = requestAnimationFrame(loop)
         }
         loop()
-      } catch { /* нет доступа к микрофону — индикатор просто не двигается */ }
+      } catch { /* нет доступа — индикатор не двигается */ }
     })()
     return () => { stopped = true; if (raf) cancelAnimationFrame(raf); if (ctx) { try { void ctx.close() } catch { /* */ } } if (stream) stream.getTracks().forEach((t) => t.stop()) }
-  }, [s.inputId])
+  }, [s.inputId, monitoring])
+
+  async function toggleMonitor() {
+    if (monitoring) { voice.stopMicMonitor(); setMonitoring(false); setLevel(0); return }
+    const ok = await voice.startMicMonitor((l) => setLevel(l)) // монитор сам отдаёт уровень
+    setMonitoring(ok)
+  }
 
   useEffect(() => {
     if (!capturing) return
     const apply = (code: string) => { voice.setPttKey(code); setS((p) => ({ ...p, pttKey: code })); setCapturing(false) }
     const hk = (e: KeyboardEvent) => { e.preventDefault(); apply(e.code) }
-    // левую кнопку (0) не назначаем — это обычный клик по интерфейсу; средняя/правая/боковые — можно
-    const hm = (e: MouseEvent) => { if (e.button === 0) return; e.preventDefault(); apply('Mouse' + e.button) }
+    const hm = (e: MouseEvent) => { if (e.button === 0) return; e.preventDefault(); apply('Mouse' + e.button) } // левую не назначаем (обычный клик)
     window.addEventListener('keydown', hk)
     window.addEventListener('mousedown', hm)
     return () => { window.removeEventListener('keydown', hk); window.removeEventListener('mousedown', hm) }
   }, [capturing])
 
   return (
-    <Modal title="Настройки голоса" onClose={onClose} width={460}>
+    <div>
       <Section label="Микрофон (ввод)">
         <Select value={s.inputId} onChange={(v) => { voice.setInputDevice(v); setS((p) => ({ ...p, inputId: v })) }} options={[{ id: '', label: 'По умолчанию' }, ...inputs]} />
       </Section>
@@ -89,8 +97,18 @@ export function VoiceSettingsModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
       </Section>
+      <Section label="Проверка микрофона">
+        <button className={monitoring ? 'danger-btn no-drag' : 'accent-btn no-drag'} onClick={toggleMonitor} style={{ display: 'flex', alignItems: 'center', gap: 8, borderRadius: 12, padding: '10px 16px', fontWeight: 700, fontSize: 13.5 }}>
+          {monitoring ? <><Square size={15} /> Остановить проверку</> : <><Mic size={15} /> Проверить микрофон</>}
+        </button>
+        <div style={{ position: 'relative', height: 10, borderRadius: 6, background: 'var(--surface-2)', overflow: 'hidden', marginTop: 10 }}>
+          <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${Math.round(level * 100)}%`, background: 'var(--green)', transition: 'width .05s linear' }} />
+        </div>
+        <Hint>{monitoring ? 'Говорите — вы должны слышать себя в наушниках/колонках. Постучите по клавиатуре и подвигайте мышью, чтобы оценить шумоподавление.' : 'Включите, чтобы услышать себя так, как вас слышат другие (с текущим шумоподавлением).'}</Hint>
+      </Section>
       <Section label="Обработка звука">
-        <Toggle label="Шумоподавление" on={s.noiseSuppression} onClick={() => { const v = !s.noiseSuppression; voice.setProcessing({ noiseSuppression: v }); setS((p) => ({ ...p, noiseSuppression: v })) }} />
+        <Toggle label="Шумоподавление (RNNoise)" on={s.noiseSuppression} onClick={() => { const v = !s.noiseSuppression; voice.setProcessing({ noiseSuppression: v }); setS((p) => ({ ...p, noiseSuppression: v })) }} />
+        <Hint>Нейросетевой шумодав в клиенте — давит стук клавиатуры, клики мыши и фоновый гул. Браузерный шумодав при этом выключен (чтобы не было двойной обработки).</Hint>
         <Toggle label="Эхоподавление" on={s.echoCancellation} onClick={() => { const v = !s.echoCancellation; voice.setProcessing({ echoCancellation: v }); setS((p) => ({ ...p, echoCancellation: v })) }} />
         <Toggle label="Авто-громкость (AGC)" on={s.autoGain} onClick={() => { const v = !s.autoGain; voice.setProcessing({ autoGain: v }); setS((p) => ({ ...p, autoGain: v })) }} />
       </Section>
@@ -100,7 +118,7 @@ export function VoiceSettingsModal({ onClose }: { onClose: () => void }) {
           <ModeBtn active={s.mode === 'ptt'} onClick={() => { voice.setMode('ptt'); setS((p) => ({ ...p, mode: 'ptt' })) }} title="Рация (PTT)" desc="говорить по клавише" />
         </div>
         {s.mode === 'ptt' && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 11 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 11, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, color: 'var(--text-2)' }}>Кнопка передачи:</span>
             <span style={{ fontFamily: 'ui-monospace,monospace', fontWeight: 600, padding: '4px 11px', borderRadius: 8, background: 'var(--surface-2)' }}>{keyLabel(s.pttKey)}</span>
             <button className="pill no-drag" onClick={() => setCapturing(true)} style={{ padding: '6px 12px', fontWeight: 600 }}>{capturing ? 'Нажмите клавишу/кнопку мыши…' : 'Изменить'}</button>
@@ -113,16 +131,13 @@ export function VoiceSettingsModal({ onClose }: { onClose: () => void }) {
           <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: `${Math.round(level * 100)}%`, background: level >= s.micThreshold ? 'var(--green)' : 'var(--text-3)', transition: 'width .05s linear' }} />
           <div style={{ position: 'absolute', top: -2, bottom: -2, left: `${Math.round(s.micThreshold * 100)}%`, width: 2, background: 'var(--accent)' }} />
         </div>
-        <Hint>{s.micThreshold === 0 ? 'Гейт выключен — микрофон передаёт всегда.' : 'Говорите: полоска должна переходить за метку. Ниже метки микрофон молчит. Действует в режиме голосовой активации.'}</Hint>
+        <Hint>{s.micThreshold === 0 ? 'Гейт выключен — микрофон передаёт всегда.' : 'Говорите: полоска должна переходить за метку. Ниже метки микрофон молчит. Действует в режиме голосовой активации. Хорошо отсекает клавиатуру/мышь в паузах.'}</Hint>
       </Section>
-      <Section label="Звуки интерфейса">
+      <Section label="Звуки">
         <Toggle label="Звуки действий и уведомлений (мут, вход/выход, упоминания, ЛС)" on={sounds} onClick={() => { const v = !sounds; sfx.setEnabled(v); setSounds(v); if (v) sfx.micOn() }} />
         <Toggle label="Слышать саундпад других" on={!s.soundboardMuted} onClick={() => { const muted = !s.soundboardMuted; voice.setSoundboardMuted(muted); setS((p) => ({ ...p, soundboardMuted: muted })) }} />
       </Section>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
-        <button className="accent-btn no-drag" onClick={onClose} style={{ borderRadius: 12, padding: '10px 18px', fontWeight: 700 }}>Готово</button>
-      </div>
-    </Modal>
+    </div>
   )
 }
 
