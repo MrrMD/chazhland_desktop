@@ -6,10 +6,11 @@ name: Build desktop
 # и работает в Electron (N-API, пересборка не нужна).
 #
 # Где брать готовый билд:
-#  - push в dev / ручной запуск → артефакты на странице запуска:
-#      "chazhland-win-x64"   (Setup .exe — установщик, и .zip — портативный),
-#      "chazhland-linux-x64" (.AppImage — один файл, chmod +x и запуск);
-#  - push тега vX.Y.Z → GitHub Release со всеми файлами (постоянная ссылка).
+#  - push в dev → джоба СОБИРАЕТ (проверяет, что компилируется/пакуется), но артефакты НЕ грузит,
+#      чтобы не переполнять квоту хранилища (инсталлятор ~685 МБ на каждый пуш). Нужен билд из dev —
+#      запусти workflow вручную (Run workflow / workflow_dispatch) → артефакты на странице запуска:
+#      "chazhland-win-x64" (Setup .exe + .zip), "chazhland-linux-x64" (.AppImage);
+#  - push тега vX.Y.Z → артефакты + GitHub Release со всеми файлами (постоянная ссылка).
 #
 # mpv/yt-dlp: на Windows вкладываются в сборку (скачиваются ниже); на Linux НЕ бандлятся —
 # там mpv ставится системно (apt install mpv yt-dlp), код берёт его из PATH.
@@ -73,6 +74,9 @@ jobs:
         run: npx --no-install electron-builder --win nsis zip --publish never
 
       - name: Upload Windows artifact
+        # на КАЖДЫЙ пуш в dev инсталлятор не грузим (685 МБ × пуш переполняли квоту артефактов) —
+        # только на тег v* (для Release) или ручной запуск. На dev джоба всё равно собирает = проверяет.
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: chazhland-win-x64
@@ -80,6 +84,7 @@ jobs:
             release/*.exe
             release/*.zip
           if-no-files-found: error
+          retention-days: 14
 
   linux:
     name: Build & package (linux)
@@ -104,11 +109,14 @@ jobs:
         run: npx --no-install electron-builder --linux AppImage --publish never
 
       - name: Upload Linux artifact
+        # см. коммент к Windows: грузим только на тег v* / ручной запуск, не на каждый push в dev
+        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
         uses: actions/upload-artifact@v4
         with:
           name: chazhland-linux-x64
           path: release/*.AppImage
           if-no-files-found: error
+          retention-days: 14
 
   release:
     name: Publish GitHub Release
