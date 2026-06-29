@@ -11,6 +11,7 @@ import { notifyPrefs } from '@/lib/prefs'
 import { msgAccentColor, nameStyle, SLOT_LABELS, SLOT_ORDER } from '@/lib/cosmetics'
 import { RankBadge } from '@/components/RankBadge'
 import { CosmeticBackground } from '@/components/CosmeticBackground'
+import { loadouts, type Loadout } from '@/lib/loadouts'
 import { SettingsAudio } from './SettingsAudio'
 import type { MyRank, RankCatalog, RankCosmetic } from '@/lib/types'
 
@@ -162,7 +163,7 @@ export function SettingsModal({ onClose, onEquipChange, onProfileBgChange, initi
           {tab === 'cosmetics' && (
             <>
               <SectionTitle>Награды · косметика</SectionTitle>
-              <CosmeticsSection meName={username.trim() || user.username} meAvatar={user.avatarUrl} onEquipChange={onEquipChange} onProfileBgChange={onProfileBgChange} />
+              <CosmeticsSection meId={user.id} meName={username.trim() || user.username} meAvatar={user.avatarUrl} onEquipChange={onEquipChange} onProfileBgChange={onProfileBgChange} />
             </>
           )}
 
@@ -188,7 +189,7 @@ export function SettingsModal({ onClose, onEquipChange, onProfileBgChange, initi
   )
 }
 
-function CosmeticsSection({ meName, meAvatar, onEquipChange, onProfileBgChange }: { meName: string; meAvatar: string | null; onEquipChange?: (equipped: Record<string, string>) => void; onProfileBgChange?: (url: string | null) => void }) {
+function CosmeticsSection({ meId, meName, meAvatar, onEquipChange, onProfileBgChange }: { meId: string; meName: string; meAvatar: string | null; onEquipChange?: (equipped: Record<string, string>) => void; onProfileBgChange?: (url: string | null) => void }) {
   const [catalog, setCatalog] = useState<RankCatalog | null>(null)
   const [mine, setMine] = useState<MyRank | null>(null)
   const [equipped, setEquipped] = useState<Record<string, string>>({})
@@ -196,6 +197,7 @@ function CosmeticsSection({ meName, meAvatar, onEquipChange, onProfileBgChange }
   const [bgUrl, setBgUrl] = useState<string | null>(null) // загруженный фон профиля
   const [bgBusy, setBgBusy] = useState(false)
   const bgFileRef = useRef<HTMLInputElement>(null)
+  const [presets, setPresets] = useState<Loadout[]>(() => loadouts.list(meId)) // пресеты-образы
 
   useEffect(() => {
     let alive = true
@@ -204,6 +206,30 @@ function CosmeticsSection({ meName, meAvatar, onEquipChange, onProfileBgChange }
       .catch(() => {})
     return () => { alive = false }
   }, [])
+
+  function saveLoadout() {
+    if (!Object.keys(equipped).length) { toast.error('Сначала надень косметику'); return }
+    setPresets(loadouts.save(meId, `Образ ${presets.length + 1}`, equipped))
+    toast.ok('Образ сохранён')
+  }
+  function deleteLoadout(id: string) { setPresets(loadouts.remove(meId, id)) }
+  async function applyLoadout(lo: Loadout) {
+    const before = equipped
+    setBusy('loadout')
+    setEquipped({ ...lo.equipped }) // оптимистично весь образ сразу
+    try {
+      let saved = { ...equipped }
+      for (const slot of SLOT_ORDER) {
+        const want = lo.equipped[slot] ?? null
+        if ((saved[slot] ?? null) !== want) saved = await api.equipCosmetic(slot, want)
+      }
+      setEquipped(saved); onEquipChange?.(saved)
+      toast.ok(`Образ «${lo.name}» применён`)
+    } catch {
+      setEquipped(before); onEquipChange?.(before)
+      toast.error('Не удалось применить образ')
+    } finally { setBusy(null) }
+  }
 
   async function pickBg(file?: File) {
     if (!file) return
@@ -268,6 +294,29 @@ function CosmeticsSection({ meName, meAvatar, onEquipChange, onProfileBgChange }
             <div style={{ fontSize: 12, color: hasBg ? 'rgba(255,255,255,.85)' : 'var(--text-3)', marginTop: 3 }}>пик: ур.{mine.peakLevel}{mine.peakTitle ? ` · ${mine.peakTitle}` : ''} · открыто {unlockedCount} из {catalog.cosmetics.length}</div>
           </div>
         </div>
+      </div>
+
+      {/* пресеты-образы: сохранить текущую экипировку и переключаться в один клик */}
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-2)' }}>Образы</div>
+          <button type="button" className="no-drag" disabled={busy === 'loadout'} onClick={saveLoadout} style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--accent)', background: 'none', border: 'none', cursor: 'pointer' }}>+ Сохранить текущий</button>
+        </div>
+        {presets.length === 0 ? (
+          <div style={{ fontSize: 12, color: 'var(--text-3)' }}>Сохрани комбо косметики и переключай образы в один клик.</div>
+        ) : (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {presets.map((lo) => (
+              <div key={lo.id} style={{ position: 'relative' }}>
+                <button type="button" className="no-drag" disabled={busy === 'loadout'} onClick={() => applyLoadout(lo)} title={`Применить «${lo.name}»`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px 6px 6px', borderRadius: 11, border: '1.5px solid var(--border)', background: 'var(--surface)', cursor: 'pointer' }}>
+                  <Avatar name={meName} src={meAvatar} size={26} frame={lo.equipped.frame} glow={lo.equipped.glow} />
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>{lo.name}</span>
+                </button>
+                <button type="button" className="no-drag" title="Удалить образ" onClick={() => deleteLoadout(lo.id)} style={{ position: 'absolute', top: -5, right: -5, width: 18, height: 18, borderRadius: '50%', border: 'none', background: 'var(--danger)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, lineHeight: 1 }}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* загрузка своей картинки на фон профиля (верхняя косметика) */}
