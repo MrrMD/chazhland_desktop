@@ -6,11 +6,12 @@ name: Build desktop
 # и работает в Electron (N-API, пересборка не нужна).
 #
 # Где брать готовый билд:
-#  - push в dev → джоба СОБИРАЕТ (проверяет, что компилируется/пакуется), но артефакты НЕ грузит,
-#      чтобы не переполнять квоту хранилища (инсталлятор ~685 МБ на каждый пуш). Нужен билд из dev —
-#      запусти workflow вручную (Run workflow / workflow_dispatch) → артефакты на странице запуска:
-#      "chazhland-win-x64" (Setup .exe + .zip), "chazhland-linux-x64" (.AppImage);
-#  - push тега vX.Y.Z → артефакты + GitHub Release со всеми файлами (постоянная ссылка).
+#  - push в dev → джоба СОБИРАЕТ (проверяет, что компилируется/пакуется), но НИЧЕГО не грузит;
+#  - push тега vX.Y.Z → каждая платформенная джоба заливает свои установщики НАПРЯМУЮ в GitHub Release
+#      (softprops/action-gh-release). Ассеты релиза хранятся ОТДЕЛЬНО и НЕ попадают под квоту Actions-
+#      артефактов (она переполнялась инсталляторами ~685 МБ и валила раздачу) — постоянная ссылка;
+#  - ручной запуск (workflow_dispatch) → артефакты на странице запуска (best-effort, не валит сборку
+#      при переполненной квоте): "chazhland-win-x64" (Setup .exe + .zip), "chazhland-linux-x64" (.AppImage).
 #
 # mpv/yt-dlp: на Windows вкладываются в сборку (скачиваются ниже); на Linux НЕ бандлятся —
 # там mpv ставится системно (apt install mpv yt-dlp), код берёт его из PATH.
@@ -73,10 +74,24 @@ jobs:
       - name: Package Windows installer + zip
         run: npx --no-install electron-builder --win nsis zip --publish never
 
-      - name: Upload Windows artifact
-        # на КАЖДЫЙ пуш в dev инсталлятор не грузим (685 МБ × пуш переполняли квоту артефактов) —
-        # только на тег v* (для Release) или ручной запуск. На dev джоба всё равно собирает = проверяет.
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+      - name: Publish Windows installers to Release (tag)
+        # Заливаем .exe/.zip ПРЯМО в Release по тегу — мимо Actions-артефактов (их квота переполнялась
+        # инсталляторами и валила раздачу). action-gh-release создаёт релиз, если его ещё нет, и дополняет
+        # ассетами; linux-джоба добавит свой .AppImage в тот же релиз.
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          fail_on_unmatched_files: true
+          files: |
+            release/*.exe
+            release/*.zip
+
+      - name: Upload Windows artifact (manual runs only)
+        # Ручной запуск без тега: кладём в Actions-артефакты. best-effort — переполненная квота
+        # хранилища НЕ должна валить сборку.
+        if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: chazhland-win-x64
@@ -108,28 +123,21 @@ jobs:
       - name: Package Linux AppImage
         run: npx --no-install electron-builder --linux AppImage --publish never
 
-      - name: Upload Linux artifact
-        # см. коммент к Windows: грузим только на тег v* / ручной запуск, не на каждый push в dev
-        if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+      - name: Publish Linux AppImage to Release (tag)
+        # см. коммент к Windows: заливаем напрямую в Release, мимо Actions-артефактов
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          fail_on_unmatched_files: true
+          files: release/*.AppImage
+
+      - name: Upload Linux artifact (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: chazhland-linux-x64
           path: release/*.AppImage
           if-no-files-found: error
           retention-days: 14
-
-  release:
-    name: Publish GitHub Release
-    needs: [ windows, linux ]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
-
-      - name: Publish Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/**/*
