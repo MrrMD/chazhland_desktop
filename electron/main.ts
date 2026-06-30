@@ -205,13 +205,23 @@ function createWindow() {
       .catch(() => callback({}))
   })
 
-  // Бэк проверяет Origin при WS-handshake (setAllowedOriginPatterns). В dev origin = http://localhost:5173,
-  // которого нет в allowedOrigins → /ws отклоняется. Подменяем Origin на разрешённый frontend-домен.
+  // Бэк проверяет Origin при WS-handshake (setAllowedOriginPatterns). В паковой сборке рендерер грузится
+  // из file:// → Origin = file:// (или null), которого нет в allowedOrigins → /ws отклоняется (403) →
+  // вечный реконнект. Подменяем Origin на разрешённый frontend-домен.
+  // ВАЖНО: фильтруем по ХОСТУ, а не по match-pattern 'wss://…/*' — паттерн со схемой wss:// в Electron
+  // НЕ матчит WebSocket-handshake (валидные схемы match-pattern — http/https/file/ftp/*), из-за чего у WS
+  // Origin не подменялся и /ws падал 403 у ВСЕХ паковых клиентов, хотя REST (https://…/*) работал.
   // Только TLS (https/wss): cleartext-запрос не должен нести доверенный Origin (защита от downgrade/MITM).
+  const API_HOST = 'api.chazhland.ru'
   win.webContents.session.webRequest.onBeforeSendHeaders(
-    { urls: ['https://api.chazhland.ru/*', 'wss://api.chazhland.ru/*'] },
+    { urls: ['<all_urls>'] },
     (details, callback) => {
-      details.requestHeaders['Origin'] = 'https://chat.chazhland.ru'
+      try {
+        const u = new URL(details.url)
+        if (u.hostname === API_HOST && (u.protocol === 'https:' || u.protocol === 'wss:')) {
+          details.requestHeaders['Origin'] = 'https://chat.chazhland.ru'
+        }
+      } catch { /* details.url не URL — пропускаем без изменений */ }
       callback({ requestHeaders: details.requestHeaders })
     },
   )
