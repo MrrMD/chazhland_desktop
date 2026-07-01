@@ -115,6 +115,7 @@ export function SettingsAudio() {
           </div>
         )}
         <Hint>Нейросетевой (RNNoise) — клиентский, хорошо давит стук клавиатуры, клики мыши и фоновый гул. Браузерный — встроенный в WebRTC; на некоторых микрофонах звучит естественнее. Работает только один — одновременно оба включать нельзя (стакаются в «роботный» голос).</Hint>
+        <Toggle label="Эхоподавление" on={s.echoCancellation} onClick={() => { const v = !s.echoCancellation; voice.setProcessing({ echoCancellation: v }); setS((p) => ({ ...p, echoCancellation: v })) }} />
         <Toggle label="Авто-громкость (AGC)" on={s.autoGain} onClick={() => { const v = !s.autoGain; voice.setProcessing({ autoGain: v }); setS((p) => ({ ...p, autoGain: v })) }} />
       </Section>
       <Section label="Режим передачи">
