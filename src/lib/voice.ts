@@ -25,10 +25,13 @@ export const SCREEN_QUALITY_ORDER: ScreenQuality[] = ['source', 'q1080', 'q720',
 // верхняя граница шкалы уровня микрофона (RMS): громкая речь ≈0.15..0.3. Слайдер порога 0..1 и
 // индикатор уровня используют один масштаб, чтобы метка и полоска совпадали визуально.
 export const MIC_RMS_FULL = 0.3
+/** движок шумоподавления, когда оно включено: RNNoise (клиентский нейросетевой) или встроенный браузерный WebRTC-NS */
+export type NoiseSuppressor = 'rnnoise' | 'browser'
 export interface VoiceSettings {
   inputId: string   // '' = устройство по умолчанию
   outputId: string  // '' = по умолчанию
-  noiseSuppression: boolean
+  noiseSuppression: boolean          // мастер: шумоподавление вкл/выкл
+  noiseSuppressor: NoiseSuppressor   // какой движок использовать, когда шумоподавление включено
   echoCancellation: boolean
   autoGain: boolean
   mode: VoiceMode
@@ -67,7 +70,7 @@ const INITIAL: VoiceState = {
 }
 const LS = 'chazh.voice'
 const LS_VOL = 'chazh.voice.vol' // персональная громкость собеседников: identity -> множитель (0..2)
-const DEFAULTS: VoiceSettings = { inputId: '', outputId: '', noiseSuppression: true, echoCancellation: true, autoGain: true, mode: 'voice', pttKey: 'Space', micThreshold: 0, soundboardMuted: false, screenQuality: 'q720', screenAudio: false, masterVolume: 1, soundboardVolume: 1, streamVolume: 1, micVolume: 1 }
+const DEFAULTS: VoiceSettings = { inputId: '', outputId: '', noiseSuppression: true, noiseSuppressor: 'rnnoise', echoCancellation: true, autoGain: true, mode: 'voice', pttKey: 'Space', micThreshold: 0, soundboardMuted: false, screenQuality: 'q720', screenAudio: false, masterVolume: 1, soundboardVolume: 1, streamVolume: 1, micVolume: 1 }
 // глобальный хоткей тумблера микрофона (работает вне фокуса окна; true hold-PTT недоступен через globalShortcut)
 const MIC_HOTKEY = 'CommandOrControl+Shift+M'
 const SB_TRACK_NAME = 'soundboard' // имя публикуемого аудио-трека саундпада (отличаем на приёмнике от голоса)
@@ -141,15 +144,19 @@ class Voice {
   }
   private set(p: Partial<VoiceState>) { this.state = { ...this.state, ...p }; this.cbs.forEach((c) => c(this.state)) }
 
+  // Активен ли выбранный движок шумодава (при включённом шумоподавлении). Два движка одновременно НЕ
+  // включаем: браузерный NS + RNNoise стакаются — браузер курочит сигнал до RNNoise («роботный» голос).
+  private rnnoiseActive() { return this.settings.noiseSuppression && this.settings.noiseSuppressor === 'rnnoise' }
+  private browserNsActive() { return this.settings.noiseSuppression && this.settings.noiseSuppressor === 'browser' }
+
   private captureOpts(): AudioCaptureOptions {
     return {
       deviceId: this.settings.inputId || undefined,
-      // браузерный WebRTC-NS ВЫКЛЮЧЕН: шумоподавлением заведует RNNoise (MicProcessor). Иначе два шумодава
-      // стакаются — браузер курочит сигнал до RNNoise (пересглаживание/«роботный» голос) и дерётся с AGC.
-      // Тумблер «Шумоподавление» теперь управляет ТОЛЬКО RNNoise (refreshMicProcessor). AEC/AGC оставляем
-      // браузеру (RNNoise их не делает). Если RNNoise не загрузится (крайне редко в Electron — WASM в бандле),
-      // NS не будет — приемлемо.
-      noiseSuppression: false,
+      // Браузерный WebRTC-NS включаем ТОЛЬКО когда движок = 'browser'. При движке 'rnnoise' здесь false, а
+      // шумодавом заведует RNNoise (MicProcessor, см. refreshMicProcessor) — иначе два шумодава стакаются.
+      // Если RNNoise не загрузится (крайне редко в Electron — WASM в бандле), NS не будет — приемлемо.
+      // AEC/AGC всегда отдаём браузеру (RNNoise их не делает).
+      noiseSuppression: this.browserNsActive(),
       echoCancellation: this.settings.echoCancellation,
       autoGainControl: this.settings.autoGain,
     }
@@ -464,14 +471,14 @@ class Voice {
           deviceId: this.settings.inputId ? { exact: this.settings.inputId } : undefined,
           echoCancellation: this.settings.echoCancellation,
           autoGainControl: this.settings.autoGain,
-          noiseSuppression: false, // как в реальном тракте — шумодавом заведует RNNoise ниже
+          noiseSuppression: this.browserNsActive(), // как в реальном тракте: браузерный NS только при движке 'browser'
         },
       })
       this.monStream = stream
       let out = stream.getAudioTracks()[0]
-      if (this.settings.noiseSuppression || this.settings.micVolume !== 1) {
+      if (this.rnnoiseActive() || this.settings.micVolume !== 1) {
         try {
-          const proc = createMicProcessor({ suppress: this.settings.noiseSuppression, gain: this.settings.micVolume })
+          const proc = createMicProcessor({ suppress: this.rnnoiseActive(), gain: this.settings.micVolume })
           await proc.init({ track: out } as unknown as AudioProcessorOptions) // init читает только opts.track
           if (proc.processedTrack) { this.monProc = proc; out = proc.processedTrack }
         } catch { /* RNNoise не поднялся — слышим сырой мик */ }
@@ -520,7 +527,7 @@ class Voice {
     this.soundboardEls.forEach(apply)
     this.screenAudioEls.forEach(apply)
   }
-  async setProcessing(p: Partial<Pick<VoiceSettings, 'noiseSuppression' | 'echoCancellation' | 'autoGain'>>) {
+  async setProcessing(p: Partial<Pick<VoiceSettings, 'noiseSuppression' | 'noiseSuppressor' | 'echoCancellation' | 'autoGain'>>) {
     Object.assign(this.settings, p); this.saveSettings()
     if (this.room && this.state.micOn) {
       // restartTrack пере-захватывает getUserMedia с новыми constraints. Через mute/unmute это НЕ работало
@@ -550,7 +557,7 @@ class Voice {
     if (MOCK || !this.room) return
     const track = this.room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track as LocalAudioTrack | undefined
     if (!track) return
-    const suppress = this.settings.noiseSuppression
+    const suppress = this.rnnoiseActive() // RNNoise-шумодав активен только при движке 'rnnoise'
     const gain = this.settings.micVolume
     const need = suppress || gain !== 1
     const cur = this.micProcessor && track.getProcessor() === this.micProcessor ? this.micProcessor : null

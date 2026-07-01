@@ -107,9 +107,14 @@ export function SettingsAudio() {
         <Hint>{monitoring ? 'Говорите — вы должны слышать себя в наушниках/колонках. Постучите по клавиатуре и подвигайте мышью, чтобы оценить шумоподавление.' : 'Включите, чтобы услышать себя так, как вас слышат другие (с текущим шумоподавлением).'}</Hint>
       </Section>
       <Section label="Обработка звука">
-        <Toggle label="Шумоподавление (RNNoise)" on={s.noiseSuppression} onClick={() => { const v = !s.noiseSuppression; voice.setProcessing({ noiseSuppression: v }); setS((p) => ({ ...p, noiseSuppression: v })) }} />
-        <Hint>Нейросетевой шумодав в клиенте — давит стук клавиатуры, клики мыши и фоновый гул. Браузерный шумодав при этом выключен (чтобы не было двойной обработки).</Hint>
-        <Toggle label="Эхоподавление" on={s.echoCancellation} onClick={() => { const v = !s.echoCancellation; voice.setProcessing({ echoCancellation: v }); setS((p) => ({ ...p, echoCancellation: v })) }} />
+        <Toggle label="Шумоподавление" on={s.noiseSuppression} onClick={() => { const v = !s.noiseSuppression; voice.setProcessing({ noiseSuppression: v }); setS((p) => ({ ...p, noiseSuppression: v })) }} />
+        {s.noiseSuppression && (
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <ModeBtn active={s.noiseSuppressor === 'rnnoise'} onClick={() => { voice.setProcessing({ noiseSuppressor: 'rnnoise' }); setS((p) => ({ ...p, noiseSuppressor: 'rnnoise' })) }} title="Нейросеть (RNNoise)" desc="давит клавиши/мышь/гул" />
+            <ModeBtn active={s.noiseSuppressor === 'browser'} onClick={() => { voice.setProcessing({ noiseSuppressor: 'browser' }); setS((p) => ({ ...p, noiseSuppressor: 'browser' })) }} title="Браузерный" desc="встроенный WebRTC-шумодав" />
+          </div>
+        )}
+        <Hint>Нейросетевой (RNNoise) — клиентский, хорошо давит стук клавиатуры, клики мыши и фоновый гул. Браузерный — встроенный в WebRTC; на некоторых микрофонах звучит естественнее. Работает только один — одновременно оба включать нельзя (стакаются в «роботный» голос).</Hint>
         <Toggle label="Авто-громкость (AGC)" on={s.autoGain} onClick={() => { const v = !s.autoGain; voice.setProcessing({ autoGain: v }); setS((p) => ({ ...p, autoGain: v })) }} />
       </Section>
       <Section label="Режим передачи">
